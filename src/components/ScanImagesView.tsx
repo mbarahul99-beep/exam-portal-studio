@@ -361,7 +361,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   return (
     <div className="scan-images-portal animate-fade-in">
       {/* Top Header Breadcrumb Trail */}
-      <div className="breadcrumb-nav mb-4" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', opacity: 0.7 }}>
+      <div className="breadcrumb-nav mb-4">
         <span style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={onClose}>Exams</span>
         <ChevronRight size={14} />
         <span style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={onClose}>{exam.title}</span>
@@ -369,10 +369,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         <span style={{ fontWeight: 'bold' }}>Scan images</span>
       </div>
 
-      <div className="split-scan-view" style={{ display: 'flex', gap: '20px', minHeight: 'calc(100vh - 160px)' }}>
+      <div className="split-scan-view">
         
         {/* LEFT COLUMN: File Listing & Upload */}
-        <div className="left-panel glass-card" style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+        <div className="left-panel glass-card">
           {fileList.length === 0 ? (
             /* Empty State Layout (Screenshot 2) */
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 12px' }}>
@@ -473,7 +473,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
 
         {/* RIGHT COLUMN: Image Preview Canvas & Grading Verification */}
-        <div className="right-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="right-panel">
           
           {/* Main Visual Crop Panel */}
           <div className="glass-card" style={{ flex: 1, position: 'relative', display: 'flex', background: '#f7fafc', minHeight: '400px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
@@ -598,7 +598,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           )}
 
           {/* Bottom Toolbar Action Bar */}
-          <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderRadius: '12px' }}>
+          <div className="glass-card scan-bottom-bar">
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
               <input type="checkbox" checked={syncToCloud} onChange={(e) => setSyncToCloud(e.target.checked)} />
               Sync images to cloud

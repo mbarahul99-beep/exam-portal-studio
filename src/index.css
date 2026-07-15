@@ -925,6 +925,17 @@ button {
   border-color: #f56565 !important;
 }
 
+.attendance-mobile-card {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
 /* Responsive overrides for Admin Dashboard and Exam Wizard */
 @media (max-width: 768px) {
   /* Stepper Progress Bar */
@@ -1098,5 +1109,8 @@ button {
   .attendance-btn-group button {
     flex: 1 !important;
     justify-content: center !important;
+    padding: 6px 4px !important;
+    font-size: 0.72rem !important;
+    gap: 2px !important;
   }
 }

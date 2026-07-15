@@ -286,11 +286,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 const currentStatus = record ? record.status : 'Unmarked';
                 
                 return (
-                  <div key={`att-card-${student.id}`} className="attendance-mobile-card glass-card mb-3" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div key={`att-card-${student.id}`} className="attendance-mobile-card mb-3">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{student.name}</h4>
-                        <code style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll ID: {student.studentNum}</code>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1.2' }}>{student.name}</h4>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Roll ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{student.studentNum}</code></span>
                       </div>
                       <span className={`status-badge ${
                         currentStatus === 'Present' ? 'success' :

@@ -336,67 +336,69 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 </span>
               </div>
               
-              <table className="app-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Roll ID</th>
-                    <th>Student Name</th>
-                    <th>Attempt</th>
-                    <th>Violations</th>
-                    <th>Score</th>
-                    <th>Grade %</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rankedRows.map((sub) => {
-                    const pct = Math.round((sub.score / (exam.numQuestions * exam.correctMarks)) * 100);
-                    return (
-                      <tr key={`rank-row-${sub.id}`} className="hover-row">
-                        <td><strong>#{sub.rank}</strong></td>
-                        <td><code>{sub.studentNum}</code></td>
-                        <td><strong>{sub.studentName}</strong></td>
-                        <td>
-                          <span className={`status-badge ${sub.attemptType === 'Online' ? 'info' : 'success'}`} style={{ fontSize: '0.7rem' }}>
-                            {sub.attemptType || 'OMR'}
-                          </span>
-                        </td>
-                        <td>
-                          {sub.cheatingAlertsCount && sub.cheatingAlertsCount > 0 ? (
-                            <span className="status-badge fail" style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>
-                              ⚠ {sub.cheatingAlertsCount} blurs
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                <table className="app-table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Roll ID</th>
+                      <th>Student Name</th>
+                      <th>Attempt</th>
+                      <th>Violations</th>
+                      <th>Score</th>
+                      <th>Grade %</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedRows.map((sub) => {
+                      const pct = Math.round((sub.score / (exam.numQuestions * exam.correctMarks)) * 100);
+                      return (
+                        <tr key={`rank-row-${sub.id}`} className="hover-row">
+                          <td><strong>#{sub.rank}</strong></td>
+                          <td><code>{sub.studentNum}</code></td>
+                          <td><strong>{sub.studentName}</strong></td>
+                          <td>
+                            <span className={`status-badge ${sub.attemptType === 'Online' ? 'info' : 'success'}`} style={{ fontSize: '0.7rem' }}>
+                              {sub.attemptType || 'OMR'}
                             </span>
-                          ) : (
-                            <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>None</span>
-                          )}
-                        </td>
-                        <td><strong>{sub.score}</strong> <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>/ {exam.numQuestions * exam.correctMarks}</span></td>
-                        <td>
-                          <span className={`status-badge ${pct >= 75 ? 'success' : pct >= 50 ? 'info' : 'warning'}`}>
-                            {pct}%
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button 
-                            className="btn-link" 
-                            style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px', textDecoration: 'underline', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            onClick={() => onPrintReport({
-                              score: sub.score,
-                              answers: sub.answers,
-                              scannedAt: sub.scannedAt,
-                              studentId: sub.studentId
-                            })}
-                            title="Print/Download Report Card PDF"
-                          >
-                            Report PDF
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                          <td>
+                            {sub.cheatingAlertsCount && sub.cheatingAlertsCount > 0 ? (
+                              <span className="status-badge fail" style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                ⚠ {sub.cheatingAlertsCount} blurs
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>None</span>
+                            )}
+                          </td>
+                          <td><strong>{sub.score}</strong> <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>/ {exam.numQuestions * exam.correctMarks}</span></td>
+                          <td>
+                            <span className={`status-badge ${pct >= 75 ? 'success' : pct >= 50 ? 'info' : 'warning'}`}>
+                              {pct}%
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button 
+                              className="btn-link" 
+                              style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px', textDecoration: 'underline', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                              onClick={() => onPrintReport({
+                                score: sub.score,
+                                answers: sub.answers,
+                                scannedAt: sub.scannedAt,
+                                studentId: sub.studentId
+                              })}
+                              title="Print/Download Report Card PDF"
+                            >
+                              Report PDF
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -414,7 +416,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           ) : (
             <div className="analysis-box-container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Class Summary Stats */}
-              <div className="stats-box" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              <div className="stats-box">
                 <div className="box-stat">
                   <span className="box-label">Total Student Submissions</span>
                   <span className="box-val text-success">{examSubs.length}</span>
@@ -466,7 +468,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       {/* SUBTAB 3: QUESTIONS PANEL */}
       {activeSubTab === 'questions' && (
         <div className="subtab-content-pane">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px' }}>
+          <div className="exam-questions-layout">
             
             {/* Left Column: CSV Import & Markings */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

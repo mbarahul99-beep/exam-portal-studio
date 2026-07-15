@@ -134,7 +134,7 @@ export default function App() {
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
   // Populate Mock Data Helper
-  const handleSeedData = async () => {
+  const handleSeedData = async (silent = false) => {
     try {
       // 1. Clear existing
       await db.students.clear();
@@ -225,12 +225,27 @@ export default function App() {
         scannedAt: new Date()
       });
 
-      confetti({ particleCount: 80, spread: 60 });
-      alert('Mock data loaded! 5 Students, 1 NEET Exam (200 Qs), and 3 scan results created.');
+      if (!silent) {
+        confetti({ particleCount: 80, spread: 60 });
+        alert('Mock data loaded! 5 Students, 1 NEET Exam (200 Qs), and 3 scan results created.');
+      }
     } catch (err: any) {
-      alert(`Error loading mock data: ${err.message}`);
+      if (!silent) {
+        alert(`Error loading mock data: ${err.message}`);
+      }
     }
   };
+
+  // Auto-seed database if empty on startup (silent load)
+  useEffect(() => {
+    const autoSeed = async () => {
+      const classCount = await db.classes.count();
+      if (classCount === 0) {
+        await handleSeedData(true);
+      }
+    };
+    autoSeed();
+  }, []);
 
 
 
@@ -1488,7 +1503,7 @@ export default function App() {
 
           {/* Seed Data Utility in sidebar */}
           <div className="sidebar-footer">
-            <button className="btn-seed" onClick={handleSeedData} style={{ width: '100%', marginBottom: '8px' }}>
+            <button className="btn-seed" onClick={() => handleSeedData(false)} style={{ width: '100%', marginBottom: '8px' }}>
               <RefreshCw size={14} /> Load Demo Setup
             </button>
             
@@ -1943,15 +1958,28 @@ export default function App() {
             <div className="tab-pane animate-fade-in">
               {selectedExamId ? (
                 /* EXAM DETAILS VIEW */
-                <ExamDetailsView 
-                  exam={exams.find(e => e.id === selectedExamId)!}
-                  submissions={submissions}
-                  students={students}
-                  onClose={() => setSelectedExamId(null)}
-                  onPrintRedirect={(exam) => triggerPrint(exam)}
-                  onDownloadJPG={(exam) => handleDownloadJPG(exam)}
-                  onPrintReport={(sub) => triggerPrintReport(sub)}
-                />
+                (() => {
+                  const examObj = exams.find(e => e.id === selectedExamId);
+                  if (!examObj) {
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', gap: '8px' }}>
+                        <RefreshCw size={24} className="spin" style={{ color: 'var(--primary)' }} />
+                        <span>Loading Exam Details...</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <ExamDetailsView 
+                      exam={examObj}
+                      submissions={submissions}
+                      students={students}
+                      onClose={() => setSelectedExamId(null)}
+                      onPrintRedirect={(exam) => triggerPrint(exam)}
+                      onDownloadJPG={(exam) => handleDownloadJPG(exam)}
+                      onPrintReport={(sub) => triggerPrintReport(sub)}
+                    />
+                  );
+                })()
               ) : (
                 /* EXAMS LIST TABLE PAGE */
                 <div className="exams-list-portal animate-fade-in">

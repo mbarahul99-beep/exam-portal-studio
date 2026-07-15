@@ -649,6 +649,18 @@ button {
   border: 1px solid var(--border-color);
 }
 
+.stats-box {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.exam-questions-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 24px;
+}
+
 .action-icon-btn {
   background: transparent;
   border: none;
@@ -880,5 +892,28 @@ button {
   }
   .template-selectors button {
     flex-grow: 1;
+  }
+
+  /* Exam details subtab contents responsive collapse */
+  .stats-box {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .exam-questions-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .header-meta-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .action-icons-bar {
+    width: 100% !important;
+    justify-content: space-between !important;
+    overflow-x: auto !important;
+  }
+  .detail-exam-title {
+    font-size: 1.25rem !important;
   }
 }

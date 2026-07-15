@@ -148,17 +148,17 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* Analytics widgets row */}
       <div className="attendance-stats-grid mb-4">
         <div className="glass-card flex-between-stat">
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span className="box-label">Enrolled Students</span>
-            <span className="box-val text-indigo">{totalCount}</span>
+            <span className="box-val text-indigo" style={{ fontSize: '1.75rem', fontWeight: '800' }}>{totalCount}</span>
           </div>
           <Users size={28} style={{ opacity: 0.2 }} />
         </div>
 
         <div className="glass-card flex-between-stat">
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span className="box-label">Check-in Status</span>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.85rem' }}><Check size={14} style={{ color: '#48bb78', verticalAlign: 'middle', marginRight: '2px' }} />Present: <strong>{presentCount}</strong></span>
               <span style={{ fontSize: '0.85rem' }}><Clock size={14} style={{ color: '#ecc94b', verticalAlign: 'middle', marginRight: '2px' }} />Late: <strong>{lateCount}</strong></span>
               <span style={{ fontSize: '0.85rem' }}><X size={14} style={{ color: '#f56565', verticalAlign: 'middle', marginRight: '2px' }} />Absent: <strong>{absentCount}</strong></span>
@@ -167,9 +167,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         </div>
 
         <div className="glass-card flex-between-stat">
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span className="box-label">Attendance Rate</span>
-            <span className={`box-val ${attendanceRate >= 75 ? 'text-success' : attendanceRate >= 50 ? 'text-warning' : 'text-danger'}`}>
+            <span className={`box-val ${attendanceRate >= 75 ? 'text-success' : attendanceRate >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.75rem', fontWeight: '800' }}>
               {attendanceRate}%
             </span>
           </div>

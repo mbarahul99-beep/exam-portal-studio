@@ -3676,7 +3676,7 @@ export default function App() {
             transform: translateX(-100%);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 10px 0 25px rgba(0, 0, 0, 0.15);
-            background: rgba(10, 8, 25, 0.98) !important;
+            background: #ffffff !important;
             border-right: 1px solid var(--border-color);
           }
 
@@ -3685,6 +3685,7 @@ export default function App() {
           }
 
           .main-viewport {
+            margin-left: 0 !important;
             padding: 20px 16px !important;
             max-width: 100% !important;
           }

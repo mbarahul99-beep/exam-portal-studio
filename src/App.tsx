@@ -239,9 +239,17 @@ export default function App() {
   // Auto-seed database if empty on startup (silent load)
   useEffect(() => {
     const autoSeed = async () => {
-      const classCount = await db.classes.count();
-      if (classCount === 0) {
-        await handleSeedData(true);
+      try {
+        const classCount = await db.classes.count();
+        const studentCount = await db.students.count();
+        const examCount = await db.exams.count();
+        
+        if (classCount === 0 || studentCount === 0 || examCount === 0) {
+          console.log("Database looks empty or incomplete on startup. Auto-seeding mock data...");
+          await handleSeedData(true);
+        }
+      } catch (e) {
+        console.error("Auto-seeding check failed:", e);
       }
     };
     autoSeed();

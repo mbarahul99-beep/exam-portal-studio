@@ -77,3 +77,14 @@ class AppDatabase extends Dexie {
 }
 
 export const db = new AppDatabase();
+
+// Handle upgrade errors by deleting and recreating DB
+db.open().catch(async (err) => {
+  console.error("Dexie database open failed, recreating:", err);
+  try {
+    await Dexie.delete('OMRExamsDatabase');
+    window.location.reload();
+  } catch (e) {
+    console.error("Failed to delete database:", e);
+  }
+});

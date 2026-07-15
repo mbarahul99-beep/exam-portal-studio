@@ -122,7 +122,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         </div>
         
         {/* Date and Class Selectors */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="attendance-selectors">
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '8px' }}>
             <Calendar size={16} style={{ color: 'var(--text-secondary)' }} />
             <input 
@@ -180,7 +180,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* Control panel and table */}
       <div className="glass-card">
         {/* Roster Controls */}
-        <div className="roster-header mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+        <div className="roster-header mb-4" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button 
               className="btn-secondary" 
@@ -217,65 +217,118 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             <p>No students enrolled in Class {selectedClass} yet.</p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-            <table className="app-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '120px' }}>Roll ID</th>
-                  <th>Student Name</th>
-                  <th style={{ width: '150px' }}>Current Status</th>
-                  <th style={{ width: '300px', textAlign: 'right' }}>Attendance Triggers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classStudents.map(student => {
-                  const record = attendanceMap.get(student.id!);
-                  const currentStatus = record ? record.status : 'Unmarked';
-                  
-                  return (
-                    <tr key={`att-row-${student.id}`} className="hover-row">
-                      <td><code>{student.studentNum}</code></td>
-                      <td><strong>{student.name}</strong></td>
-                      <td>
-                        <span className={`status-badge ${
-                          currentStatus === 'Present' ? 'success' :
-                          currentStatus === 'Late' ? 'warning' :
-                          currentStatus === 'Absent' ? 'fail' : 'loading'
-                        }`} style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                          {currentStatus}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="attendance-btn-group" style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button 
-                            className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
-                            onClick={() => handleSetStatus(student.id!, 'Present')}
-                            title="Mark Present"
-                          >
-                            <Check size={14} /> Present
-                          </button>
-                          <button 
-                            className={`btn-att btn-late ${currentStatus === 'Late' ? 'active' : ''}`}
-                            onClick={() => handleSetStatus(student.id!, 'Late')}
-                            title="Mark Late"
-                          >
-                            <Clock size={14} /> Late
-                          </button>
-                          <button 
-                            className={`btn-att btn-absent ${currentStatus === 'Absent' ? 'active' : ''}`}
-                            onClick={() => handleSetStatus(student.id!, 'Absent')}
-                            title="Mark Absent"
-                          >
-                            <X size={14} /> Absent
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Desktop Table View */}
+            <div className="attendance-desktop-table-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+              <table className="app-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '120px' }}>Roll ID</th>
+                    <th>Student Name</th>
+                    <th style={{ width: '150px' }}>Current Status</th>
+                    <th style={{ width: '300px', textAlign: 'right' }}>Attendance Triggers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {classStudents.map(student => {
+                    const record = attendanceMap.get(student.id!);
+                    const currentStatus = record ? record.status : 'Unmarked';
+                    
+                    return (
+                      <tr key={`att-row-${student.id}`} className="hover-row">
+                        <td><code>{student.studentNum}</code></td>
+                        <td><strong>{student.name}</strong></td>
+                        <td>
+                          <span className={`status-badge ${
+                            currentStatus === 'Present' ? 'success' :
+                            currentStatus === 'Late' ? 'warning' :
+                            currentStatus === 'Absent' ? 'fail' : 'loading'
+                          }`} style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                            {currentStatus}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="attendance-btn-group" style={{ display: 'inline-flex', gap: '6px' }}>
+                            <button 
+                              className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
+                              onClick={() => handleSetStatus(student.id!, 'Present')}
+                              title="Mark Present"
+                            >
+                              <Check size={14} /> Present
+                            </button>
+                            <button 
+                              className={`btn-att btn-late ${currentStatus === 'Late' ? 'active' : ''}`}
+                              onClick={() => handleSetStatus(student.id!, 'Late')}
+                              title="Mark Late"
+                            >
+                              <Clock size={14} /> Late
+                            </button>
+                            <button 
+                              className={`btn-att btn-absent ${currentStatus === 'Absent' ? 'active' : ''}`}
+                              onClick={() => handleSetStatus(student.id!, 'Absent')}
+                              title="Mark Absent"
+                            >
+                              <X size={14} /> Absent
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards View */}
+            <div className="attendance-mobile-cards-view">
+              {classStudents.map(student => {
+                const record = attendanceMap.get(student.id!);
+                const currentStatus = record ? record.status : 'Unmarked';
+                
+                return (
+                  <div key={`att-card-${student.id}`} className="attendance-mobile-card glass-card mb-3" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{student.name}</h4>
+                        <code style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll ID: {student.studentNum}</code>
+                      </div>
+                      <span className={`status-badge ${
+                        currentStatus === 'Present' ? 'success' :
+                        currentStatus === 'Late' ? 'warning' :
+                        currentStatus === 'Absent' ? 'fail' : 'loading'
+                      }`} style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                        {currentStatus}
+                      </span>
+                    </div>
+                    
+                    <div className="attendance-btn-group" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                      <button 
+                        className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
+                        onClick={() => handleSetStatus(student.id!, 'Present')}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <Check size={14} /> Present
+                      </button>
+                      <button 
+                        className={`btn-att btn-late ${currentStatus === 'Late' ? 'active' : ''}`}
+                        onClick={() => handleSetStatus(student.id!, 'Late')}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <Clock size={14} /> Late
+                      </button>
+                      <button 
+                        className={`btn-att btn-absent ${currentStatus === 'Absent' ? 'active' : ''}`}
+                        onClick={() => handleSetStatus(student.id!, 'Absent')}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <X size={14} /> Absent
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

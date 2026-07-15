@@ -677,6 +677,21 @@ button {
   gap: 12px;
 }
 
+.attendance-selectors {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.attendance-desktop-table-view {
+  display: block;
+}
+
+.attendance-mobile-cards-view {
+  display: none;
+}
+
 .breadcrumb-nav {
   display: flex;
   align-items: center;
@@ -1060,18 +1075,28 @@ button {
   }
 
   /* Attendance Portal Mobile Overrides */
+  .attendance-selectors {
+    justify-content: center !important;
+    width: 100% !important;
+  }
+  .attendance-desktop-table-view {
+    display: none !important;
+  }
+  .attendance-mobile-cards-view {
+    display: block !important;
+  }
   .attendance-stats-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
   }
   .attendance-btn-group {
     display: flex !important;
-    flex-direction: column !important;
+    flex-direction: row !important;
     width: 100% !important;
-    gap: 6px !important;
+    gap: 8px !important;
   }
   .attendance-btn-group button {
-    width: 100% !important;
+    flex: 1 !important;
     justify-content: center !important;
   }
 }

@@ -549,14 +549,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           {/* Verification Results Panel (if sheet is scanned) */}
           {activeResult && (
             <div className="glass-card animate-scale-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="scan-diag-header">
                 <h4 style={{ margin: 0, fontWeight: 'bold' }}>Scan Diagnostics & Verification</h4>
                 <span className="status-badge success" style={{ textTransform: 'capitalize' }}>
                   ✔ OMR Processed
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="scan-diag-grid">
                 {/* Associate Student */}
                 <div className="form-group" style={{ margin: 0 }}>
                   <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
@@ -590,7 +590,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+              <div className="scan-diag-actions" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
                 <button className="btn-secondary" onClick={() => setActiveResult(null)}>Close Results</button>
                 <button className="btn-primary" onClick={handleSaveResult}>Save Scanned Score</button>
               </div>

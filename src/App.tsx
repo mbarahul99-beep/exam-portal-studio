@@ -30,7 +30,8 @@ import {
   Trash2,
   X,
   ChevronRight,
-  LogOut
+  LogOut,
+  Menu
 } from 'lucide-react';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [onlineExamId, setOnlineExamId] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Authentication State
   const [sessionRole, setSessionRole] = useState<'admin' | 'student' | null>(
@@ -1387,10 +1389,30 @@ export default function App() {
       )}
 
       {/* 2. NO-PRINT INTERACTIVE WEB APP: Main Dashboard */}
+      {mobileMenuOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
+      )}
+
+      {/* Mobile Top Header Navigation */}
+      <header className="mobile-header no-print">
+        <button 
+          className="hamburger-btn" 
+          onClick={() => setMobileMenuOpen(true)}
+          style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+        >
+          <Menu size={24} />
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>⚡</span>
+          <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>Appex</span>
+        </div>
+        <div style={{ width: '24px' }}></div>
+      </header>
+
       <div className="no-print app-layout">
         
         {/* Sidebar Panel */}
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px' }}>
             <span style={{ fontSize: '1.4rem', color: 'var(--primary)', marginRight: '-2px' }}>⚡</span>
             <span style={{ fontWeight: 'bold', fontSize: '1.1rem', letterSpacing: '0.5px', color: 'var(--text-primary)' }}>Appex</span>
@@ -1402,6 +1424,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab('exams');
                 setSelectedExamId(null);
+                setMobileMenuOpen(false);
               }}
             >
               <FileText size={18} /> Exams
@@ -1414,7 +1437,10 @@ export default function App() {
             </button>
             <button 
               className={`nav-item ${activeTab === 'students' ? 'active' : ''}`}
-              onClick={() => setActiveTab('students')}
+              onClick={() => {
+                setActiveTab('students');
+                setMobileMenuOpen(false);
+              }}
             >
               <Users size={18} /> Classes
             </button>
@@ -1432,19 +1458,28 @@ export default function App() {
             </button>
             <button 
               className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`}
-              onClick={() => setActiveTab('analysis')}
+              onClick={() => {
+                setActiveTab('analysis');
+                setMobileMenuOpen(false);
+              }}
             >
               <Award size={18} /> Reports
             </button>
              <button 
               className={`nav-item ${activeTab === 'scanner' ? 'active' : ''}`}
-              onClick={() => setActiveTab('scanner')}
+              onClick={() => {
+                setActiveTab('scanner');
+                setMobileMenuOpen(false);
+              }}
             >
               <Camera size={18} /> OMR Scanner
             </button>
             <button 
               className="nav-item"
-              onClick={handleLogout}
+              onClick={() => {
+                handleLogout();
+                setMobileMenuOpen(false);
+              }}
               style={{ color: '#e53e3e', borderTop: '1px solid var(--border-color)', marginTop: '16px', paddingTop: '12px' }}
             >
               <LogOut size={18} /> Log Out
@@ -1514,42 +1549,44 @@ export default function App() {
                       <p>No scans completed yet. Go to OMR Scanner to scan your first sheet.</p>
                     </div>
                   ) : (
-                    <table className="app-table">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Student</th>
-                          <th>Exam</th>
-                          <th>Score</th>
-                          <th>Result</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {submissions.slice(-5).reverse().map((sub) => {
-                          const s = students.find(std => std.id === sub.studentId);
-                          const e = exams.find(ex => ex.id === sub.examId);
-                          return (
-                            <tr key={`recent-${sub.id}`}>
-                              <td>{new Date(sub.scannedAt).toLocaleDateString()}</td>
-                              <td><strong>{s ? s.name : 'Unknown'}</strong></td>
-                              <td>{e ? e.title : 'Deleted Exam'}</td>
-                              <td>{sub.score} / {e ? e.numQuestions * (e.correctMarks ?? 4) : 0}</td>
-                              <td>
-                                {(() => {
-                                  const totalPossible = e ? e.numQuestions * (e.correctMarks ?? 4) : 1;
-                                  const pct = totalPossible > 0 ? Math.max(0, Math.round((sub.score / totalPossible) * 100)) : 0;
-                                  return (
-                                    <span className={`pill ${pct >= 50 ? 'pass' : 'fail'}`}>
-                                      {pct}%
-                                    </span>
-                                  );
-                                })()}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table className="app-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Student</th>
+                            <th>Exam</th>
+                            <th>Score</th>
+                            <th>Result</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {submissions.slice(-5).reverse().map((sub) => {
+                            const s = students.find(std => std.id === sub.studentId);
+                            const e = exams.find(ex => ex.id === sub.examId);
+                            return (
+                              <tr key={`recent-${sub.id}`}>
+                                <td>{new Date(sub.scannedAt).toLocaleDateString()}</td>
+                                <td><strong>{s ? s.name : 'Unknown'}</strong></td>
+                                <td>{e ? e.title : 'Deleted Exam'}</td>
+                                <td>{sub.score} / {e ? e.numQuestions * (e.correctMarks ?? 4) : 0}</td>
+                                <td>
+                                  {(() => {
+                                    const totalPossible = e ? e.numQuestions * (e.correctMarks ?? 4) : 1;
+                                    const pct = totalPossible > 0 ? Math.max(0, Math.round((sub.score / totalPossible) * 100)) : 0;
+                                    return (
+                                      <span className={`pill ${pct >= 50 ? 'pass' : 'fail'}`}>
+                                        {pct}%
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1585,103 +1622,105 @@ export default function App() {
                   </header>
 
                   <div className="glass-card mt-4">
-                    <table className="app-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
-                          <th>
-                            <button 
-                              style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
-                              onClick={() => {
-                                setClassSortField('name');
-                                setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-                              }}
-                            >
-                              Class Name {classSortField === 'name' && (classSortOrder === 'asc' ? '↓' : '↑')}
-                            </button>
-                          </th>
-                          <th>
-                            <button 
-                              style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
-                              onClick={() => {
-                                setClassSortField('studentsCount');
-                                setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-                              }}
-                            >
-                              No. Of Students {classSortField === 'studentsCount' && (classSortOrder === 'asc' ? '↓' : '↑')}
-                            </button>
-                          </th>
-                          <th>State</th>
-                          <th style={{ textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const classList = [...classes];
-                          classList.sort((a, b) => {
-                            if (classSortField === 'name') {
-                              return classSortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-                            } else {
-                              const countA = students.filter(s => s.className === a.name).length;
-                              const countB = students.filter(s => s.className === b.name).length;
-                              return classSortOrder === 'asc' ? countA - countB : countB - countA;
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table className="app-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
+                            <th>
+                              <button 
+                                style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
+                                onClick={() => {
+                                  setClassSortField('name');
+                                  setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                }}
+                              >
+                                Class Name {classSortField === 'name' && (classSortOrder === 'asc' ? '↓' : '↑')}
+                              </button>
+                            </th>
+                            <th>
+                              <button 
+                                style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
+                                onClick={() => {
+                                  setClassSortField('studentsCount');
+                                  setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                }}
+                              >
+                                No. Of Students {classSortField === 'studentsCount' && (classSortOrder === 'asc' ? '↓' : '↑')}
+                              </button>
+                            </th>
+                            <th>State</th>
+                            <th style={{ textAlign: 'right' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const classList = [...classes];
+                            classList.sort((a, b) => {
+                              if (classSortField === 'name') {
+                                return classSortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+                              } else {
+                                const countA = students.filter(s => s.className === a.name).length;
+                                const countB = students.filter(s => s.className === b.name).length;
+                                return classSortOrder === 'asc' ? countA - countB : countB - countA;
+                              }
+                            });
+
+                            if (classList.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', opacity: 0.6 }}>
+                                    No classes created yet. Click "+ Add class" to start.
+                                  </td>
+                                </tr>
+                              );
                             }
-                          });
 
-                          if (classList.length === 0) {
-                            return (
-                              <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', padding: '24px', opacity: 0.6 }}>
-                                  No classes created yet. Click "+ Add class" to start.
-                                </td>
-                              </tr>
-                            );
-                          }
-
-                          return classList.map(cls => {
-                            const count = students.filter(s => s.className === cls.name).length;
-                            return (
-                              <tr key={`cls-row-${cls.id}`} className="hover-row">
-                                <td><input type="checkbox" readOnly /></td>
-                                <td>
-                                  <span 
-                                    style={{ color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
-                                    onClick={() => setSelectedClassName(cls.name)}
-                                  >
-                                    {cls.name}
-                                  </span>
-                                </td>
-                                <td>{count}</td>
-                                <td>
-                                  <span className="status-badge success" style={{ textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <Check size={12} /> {cls.state}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <button 
-                                    className="action-icon-btn text-error" 
-                                    onClick={async () => {
-                                      if (confirm(`Are you sure you want to delete class "${cls.name}" and all its registered students?`)) {
-                                        await db.classes.delete(cls.id!);
-                                        const related = students.filter(s => s.className === cls.name);
-                                        for (const s of related) {
-                                          await db.students.delete(s.id!);
-                                          await db.submissions.where('studentId').equals(s.id!).delete();
+                            return classList.map(cls => {
+                              const count = students.filter(s => s.className === cls.name).length;
+                              return (
+                                <tr key={`cls-row-${cls.id}`} className="hover-row">
+                                  <td><input type="checkbox" readOnly /></td>
+                                  <td>
+                                    <span 
+                                      style={{ color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
+                                      onClick={() => setSelectedClassName(cls.name)}
+                                    >
+                                      {cls.name}
+                                    </span>
+                                  </td>
+                                  <td>{count}</td>
+                                  <td>
+                                    <span className="status-badge success" style={{ textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <Check size={12} /> {cls.state}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <button 
+                                      className="action-icon-btn text-error" 
+                                      onClick={async () => {
+                                        if (confirm(`Are you sure you want to delete class "${cls.name}" and all its registered students?`)) {
+                                          await db.classes.delete(cls.id!);
+                                          const related = students.filter(s => s.className === cls.name);
+                                          for (const s of related) {
+                                            await db.students.delete(s.id!);
+                                            await db.submissions.where('studentId').equals(s.id!).delete();
+                                          }
                                         }
-                                      }
-                                    }}
-                                    title="Delete Class"
-                                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)' }}
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          });
-                        })()}
-                      </tbody>
-                    </table>
+                                      }}
+                                      title="Delete Class"
+                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)' }}
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
 
                     {/* Classes Listing Footer Actions */}
                     <div style={{ display: 'flex', gap: '20px', marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
@@ -1938,43 +1977,45 @@ export default function App() {
                         <p>No exams created yet. Click "+ Create exam" in the top right to start.</p>
                       </div>
                     ) : (
-                      <table className="app-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
-                            <th>Exam</th>
-                            <th>Scheduled Date</th>
-                            <th>Class</th>
-                            <th>Student Appeared</th>
-                            <th>State</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {exams.map(exam => {
-                            const appeared = submissions.filter(s => s.examId === exam.id).length;
-                            return (
-                              <tr 
-                                key={`exam-row-${exam.id}`} 
-                                className="hover-row cursor-pointer"
-                                onClick={() => setSelectedExamId(exam.id!)}
-                              >
-                                <td><input type="checkbox" onClick={(e) => e.stopPropagation()} /></td>
-                                <td><strong>{exam.title}</strong></td>
-                                <td>{new Date(exam.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                                <td>{exam.className}</td>
-                                <td>{appeared}</td>
-                                <td>NA</td>
-                                <td>
-                                  <span className="status-badge private-lock-badge">
-                                    <span style={{ fontSize: '10px', marginRight: '4px' }}>🔒</span> Private
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                        <table className="app-table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
+                              <th>Exam</th>
+                              <th>Scheduled Date</th>
+                              <th>Class</th>
+                              <th>Student Appeared</th>
+                              <th>State</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {exams.map(exam => {
+                              const appeared = submissions.filter(s => s.examId === exam.id).length;
+                              return (
+                                <tr 
+                                  key={`exam-row-${exam.id}`} 
+                                  className="hover-row cursor-pointer"
+                                  onClick={() => setSelectedExamId(exam.id!)}
+                                >
+                                  <td><input type="checkbox" onClick={(e) => e.stopPropagation()} /></td>
+                                  <td><strong>{exam.title}</strong></td>
+                                  <td>{new Date(exam.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                                  <td>{exam.className}</td>
+                                  <td>{appeared}</td>
+                                  <td>NA</td>
+                                  <td>
+                                    <span className="status-badge private-lock-badge">
+                                      <span style={{ fontSize: '10px', marginRight: '4px' }}>🔒</span> Private
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2631,12 +2672,23 @@ export default function App() {
 
       {/* CSS Stylesheet for the web app UI (glassmorphic styling, sidebar alignment) */}
       <style>{`
+        .mobile-header {
+          display: none;
+        }
+
+        .sidebar-backdrop {
+          display: none;
+        }
+
         .app-container {
           min-height: 100vh;
+          display: flex;
+          flex-direction: column;
         }
 
         .app-layout {
           display: flex;
+          flex-grow: 1;
           min-height: 100vh;
         }
 
@@ -3583,6 +3635,80 @@ export default function App() {
         /* Breadcrumb style decoration */
         .breadcrumb-nav span:hover {
           color: var(--primary-hover) !important;
+        }
+
+        @media (max-width: 992px) {
+          .mobile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 999;
+            width: 100%;
+            height: 60px;
+          }
+
+          .sidebar-backdrop {
+            display: block;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+          }
+
+          .app-layout {
+            flex-direction: column;
+            min-height: calc(100vh - 60px);
+          }
+
+          .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            z-index: 1001;
+            transform: translateX(-100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 10px 0 25px rgba(0, 0, 0, 0.15);
+            background: rgba(10, 8, 25, 0.98) !important;
+            border-right: 1px solid var(--border-color);
+          }
+
+          .sidebar.open {
+            transform: translateX(0);
+          }
+
+          .main-viewport {
+            padding: 20px 16px !important;
+            max-width: 100% !important;
+          }
+
+          .form-cols {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+
+          .stats-grid {
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+            gap: 16px !important;
+          }
+
+          /* Ensure OMR scanner splits stack on mobile */
+          .scanner-layout {
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+          }
+
+          /* General layouts stacking */
+          .dashboard-content {
+            flex-direction: column !important;
+          }
         }
 
         @media print {

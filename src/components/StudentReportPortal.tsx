@@ -260,7 +260,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
             </div>
 
             {/* Split layout: Section-wise table (left) & Question grid (right) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '28px', alignItems: 'start' }} className="student-dashboard-split">
+            <div className="student-analysis-split">
               
               {/* Left Column: Section Analysis Table */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -458,7 +458,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
             </div>
 
             {/* Split layout: Table roster & Subject aggregation */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '32px', alignItems: 'start' }} className="student-dashboard-split">
+            <div className="student-dashboard-split">
               
               {/* Left Column: Detailed logs list */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -617,8 +617,15 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
           gap: 32px;
           align-items: start;
         }
+        .student-analysis-split {
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 28px;
+          align-items: start;
+        }
         @media (max-width: 992px) {
-          .student-dashboard-split {
+          .student-dashboard-split,
+          .student-analysis-split {
             grid-template-columns: 1fr !important;
             gap: 24px !important;
           }

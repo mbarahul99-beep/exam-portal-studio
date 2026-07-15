@@ -329,7 +329,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           ) : (
             /* Results Table Leaderboard */
             <div className="glass-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div className="leaderboard-header">
                 <h3 style={{ margin: 0 }}>Class Leaderboard</h3>
                 <span className="status-badge success" style={{ textTransform: 'capitalize' }}>
                   {examSubs.length} Submissions Graded
@@ -569,7 +569,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
             {/* Right Column: Questions List */}
             <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div className="question-bank-header">
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Question Bank ({dbQuestions.length})</h3>
                 {dbQuestions.length > 0 && (
                   <button 

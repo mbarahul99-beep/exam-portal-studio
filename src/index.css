@@ -661,6 +661,22 @@ button {
   gap: 24px;
 }
 
+.leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.question-bank-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
 .action-icon-btn {
   background: transparent;
   border: none;
@@ -915,5 +931,17 @@ button {
   }
   .detail-exam-title {
     font-size: 1.25rem !important;
+  }
+  .leaderboard-header {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 8px !important;
+  }
+  .question-bank-header {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 8px !important;
   }
 }

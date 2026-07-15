@@ -56,22 +56,37 @@ export interface ExamSubmission {
   attemptType?: 'OMR' | 'Online';
 }
 
+export interface AttendanceRecord {
+  id?: number;
+  date: string;         // YYYY-MM-DD
+  studentId: number;
+  className: string;
+  status: 'Present' | 'Absent' | 'Late';
+  remarks?: string;
+  createdAt: Date;
+}
+
 class AppDatabase extends Dexie {
   students!: Table<Student>;
   exams!: Table<Exam>;
   submissions!: Table<ExamSubmission>;
   classes!: Table<ClassEntity>;
   questions!: Table<Question>;
+  attendance!: Table<AttendanceRecord>;
 
   constructor() {
     super('OMRExamsDatabase');
-    // Bumped to version 6 to support online exam details and questions table
+    // Version 6 support online exam details and questions table
     this.version(6).stores({
       students: '++id, &studentNum, className',
       exams: '++id, title, className, date, status, createdAt',
       submissions: '++id, examId, studentId, scannedAt, [examId+studentId]',
       classes: '++id, &name, state',
       questions: '++id, examId, sectionName'
+    });
+    // Version 7 adds the attendance table for daily tracking
+    this.version(7).stores({
+      attendance: '++id, date, studentId, className, [date+studentId]'
     });
   }
 }

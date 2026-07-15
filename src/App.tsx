@@ -11,6 +11,7 @@ import { ExamDetailsView } from './components/ExamDetailsView';
 import { OnlineExamPortal } from './components/OnlineExamPortal';
 import { UnifiedLoginPortal } from './components/UnifiedLoginPortal';
 import { StudentReportPortal } from './components/StudentReportPortal';
+import { AttendancePortal } from './components/AttendancePortal';
 import { 
   Users, 
   FileText, 
@@ -31,14 +32,15 @@ import {
   X,
   ChevronRight,
   LogOut,
-  Menu
+  Menu,
+  CalendarCheck
 } from 'lucide-react';
 
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance'>('dashboard');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -1453,10 +1455,13 @@ export default function App() {
               <FileText size={18} /> Exams
             </button>
             <button 
-              className="nav-item disabled-nav" 
-              onClick={() => alert('Attendance Module is coming soon!')}
+              className={`nav-item ${activeTab === 'attendance' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('attendance');
+                setMobileMenuOpen(false);
+              }}
             >
-              <CheckCircle size={18} /> Attendance
+              <CalendarCheck size={18} /> Attendance
             </button>
             <button 
               className={`nav-item ${activeTab === 'students' ? 'active' : ''}`}
@@ -2592,6 +2597,12 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'attendance' && (
+            <AttendancePortal 
+              classes={classes}
+              students={students}
+            />
+          )}
         </main>
       </div>
 

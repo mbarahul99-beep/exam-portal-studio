@@ -864,6 +864,52 @@ button {
   gap: 15px;
 }
 
+/* Attendance Portal Styles */
+.attendance-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.flex-between-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+}
+.btn-att {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+  outline: none;
+}
+.btn-att:hover {
+  background: #f7fafc;
+}
+.btn-att.btn-present.active {
+  background: #48bb78 !important;
+  color: #ffffff !important;
+  border-color: #48bb78 !important;
+}
+.btn-att.btn-late.active {
+  background: #ecc94b !important;
+  color: #ffffff !important;
+  border-color: #ecc94b !important;
+}
+.btn-att.btn-absent.active {
+  background: #f56565 !important;
+  color: #ffffff !important;
+  border-color: #f56565 !important;
+}
+
 /* Responsive overrides for Admin Dashboard and Exam Wizard */
 @media (max-width: 768px) {
   /* Stepper Progress Bar */
@@ -1011,5 +1057,21 @@ button {
   }
   .scan-bottom-bar button {
     flex-grow: 1 !important;
+  }
+
+  /* Attendance Portal Mobile Overrides */
+  .attendance-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .attendance-btn-group {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 6px !important;
+  }
+  .attendance-btn-group button {
+    width: 100% !important;
+    justify-content: center !important;
   }
 }

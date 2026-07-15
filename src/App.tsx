@@ -1622,7 +1622,7 @@ export default function App() {
               {selectedClassName === null ? (
                 /* CLASS LISTING VIEW (Screenshot 1) */
                 <div className="classes-portal">
-                  <header className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <header className="pane-header">
                     <div>
                       <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }}>Classes</h2>
                     </div>
@@ -1799,7 +1799,7 @@ export default function App() {
                     <span style={{ fontWeight: 'bold' }}>{selectedClassName}</span>
                   </div>
 
-                  <header className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <header className="pane-header">
                     <div>
                       <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }}>Students</h2>
                     </div>
@@ -1991,7 +1991,7 @@ export default function App() {
               ) : (
                 /* EXAMS LIST TABLE PAGE */
                 <div className="exams-list-portal animate-fade-in">
-                  <header className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <header className="pane-header">
                     <div>
                       <h2>Exams</h2>
                       <p className="subtitle">View scheduled exam entries, class sizes, and OMR submission reports.</p>
@@ -2842,7 +2842,11 @@ export default function App() {
         }
 
         .pane-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           margin-bottom: 32px;
+          gap: 16px;
         }
 
         .pane-header h2 {
@@ -3745,6 +3749,21 @@ export default function App() {
           /* General layouts stacking */
           .dashboard-content {
             flex-direction: column !important;
+          }
+
+          .pane-header {
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            gap: 12px !important;
+          }
+          .pane-header > div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          .pane-header .subtitle {
+            text-align: center;
           }
         }
 

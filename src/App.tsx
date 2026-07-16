@@ -2162,8 +2162,9 @@ export default function App() {
                     }
 
                     return (
-                      <div className="glass-card mt-4">
-                        <table className="app-table">
+                      <div className="glass-card mt-4" style={{ padding: '0px', overflow: 'hidden' }}>
+                        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                          <table className="app-table" style={{ minWidth: '600px' }}>
                           <thead>
                             <tr>
                               <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
@@ -2241,6 +2242,7 @@ export default function App() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
                     );
                   })()}
                 </div>

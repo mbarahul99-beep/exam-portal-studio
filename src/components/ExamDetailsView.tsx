@@ -16,6 +16,7 @@ import {
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ScanImagesView } from './ScanImagesView';
+import { MathRenderer } from './MathRenderer';
 
 interface ExamDetailsViewProps {
   exam: Exam;
@@ -609,10 +610,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <span style={{ fontWeight: 'bold' }}>Q{idx + 1}. <span className="status-badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'inherit', textTransform: 'uppercase', fontSize: '0.65rem' }}>{q.sectionName}</span></span>
                         <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>Correct: Option {OPTIONS[q.correctOptionIdx]}</span>
                       </div>
-                      <p style={{ margin: '0 0 8px 0', color: 'inherit' }}>{q.questionText}</p>
-                      <ul style={{ margin: 0, paddingLeft: '16px', listStyleType: 'lower-alpha', color: 'var(--text-muted)' }}>
+                      <div style={{ margin: '0 0 8px 0', color: 'inherit', textAlign: 'left' }}>
+                        <MathRenderer text={q.questionText} />
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '16px', listStyleType: 'lower-alpha', color: 'var(--text-muted)', textAlign: 'left' }}>
                         {q.options.map((o, oIdx) => (
-                          <li key={oIdx} style={{ color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>{o}</li>
+                          <li key={oIdx} style={{ color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
+                            <MathRenderer text={o} />
+                          </li>
                         ))}
                       </ul>
                     </div>

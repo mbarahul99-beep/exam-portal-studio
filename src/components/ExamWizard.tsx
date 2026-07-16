@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'lucide-react';
 import { db } from '../db';
 import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
+import { MathRenderer } from './MathRenderer';
 
 interface ExamWizardProps {
   classes: ClassEntity[];
@@ -1122,10 +1123,16 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                     return updated;
                                   });
                                 }}
-                                placeholder="Enter question description..."
+                                placeholder="Enter question description... Use $...$ for inline math (e.g. $E=mc^2$) or $$...$$ for block formulas."
                                 style={{ width: '100%', minHeight: '60px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', boxSizing: 'border-box', fontSize: '0.9rem' }}
                                 required
                               />
+                              {q.questionText.trim() && (
+                                <div style={{ marginTop: '6px', padding: '8px 12px', background: '#f7fafc', border: '1px solid #edf2f7', borderRadius: '6px', fontSize: '0.85rem' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>LIVE PREVIEW</span>
+                                  <MathRenderer text={q.questionText} />
+                                </div>
+                              )}
                             </div>
 
                             {/* Options A-E input fields */}
@@ -1135,46 +1142,53 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                 const letter = ['A', 'B', 'C', 'D', 'E'][optIdx];
                                 const isCorrect = q.correctOptionIdx === optIdx;
                                 return (
-                                  <div key={`opt-field-${optIdx}`} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setQuestionsState(prev => {
-                                          const updated = [...prev];
-                                          updated[activeQuestionIndex].correctOptionIdx = optIdx;
-                                          return updated;
-                                        });
-                                      }}
-                                      style={{
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '50%',
-                                        border: isCorrect ? '2px solid #48bb78' : '1px solid var(--border-color)',
-                                        background: isCorrect ? '#48bb78' : '#fff',
-                                        color: isCorrect ? '#fff' : '#718096',
-                                        fontWeight: 'bold',
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer',
-                                        flexShrink: 0
-                                      }}
-                                    >
-                                      {letter}
-                                    </button>
-                                    <input
-                                      type="text"
-                                      placeholder={`Option ${letter} value`}
-                                      value={optValue}
-                                      onChange={(e) => {
-                                        setQuestionsState(prev => {
-                                          const updated = [...prev];
-                                          const nextOpts = [...updated[activeQuestionIndex].options];
-                                          nextOpts[optIdx] = e.target.value;
-                                          updated[activeQuestionIndex].options = nextOpts;
-                                          return updated;
-                                        });
-                                      }}
-                                      style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
-                                    />
+                                  <div key={`opt-field-${optIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setQuestionsState(prev => {
+                                            const updated = [...prev];
+                                            updated[activeQuestionIndex].correctOptionIdx = optIdx;
+                                            return updated;
+                                          });
+                                        }}
+                                        style={{
+                                          width: '28px',
+                                          height: '28px',
+                                          borderRadius: '50%',
+                                          border: isCorrect ? '2px solid #48bb78' : '1px solid var(--border-color)',
+                                          background: isCorrect ? '#48bb78' : '#fff',
+                                          color: isCorrect ? '#fff' : '#718096',
+                                          fontWeight: 'bold',
+                                          fontSize: '0.8rem',
+                                          cursor: 'pointer',
+                                          flexShrink: 0
+                                        }}
+                                      >
+                                        {letter}
+                                      </button>
+                                      <input
+                                        type="text"
+                                        placeholder={`Option ${letter} value... (use $...$ for formulas)`}
+                                        value={optValue}
+                                        onChange={(e) => {
+                                          setQuestionsState(prev => {
+                                            const updated = [...prev];
+                                            const nextOpts = [...updated[activeQuestionIndex].options];
+                                            nextOpts[optIdx] = e.target.value;
+                                            updated[activeQuestionIndex].options = nextOpts;
+                                            return updated;
+                                          });
+                                        }}
+                                        style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
+                                      />
+                                    </div>
+                                    {optValue.trim() && (optValue.includes('$') || optValue.includes('$$')) && (
+                                      <div style={{ marginLeft: '38px', fontSize: '0.8rem', color: '#4a5568' }}>
+                                        <MathRenderer text={optValue} />
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1195,6 +1209,12 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                 placeholder="Explain correct answer logic..."
                                 style={{ width: '100%', minHeight: '50px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', boxSizing: 'border-box', fontSize: '0.85rem' }}
                               />
+                              {q.explanation.trim() && (
+                                <div style={{ marginTop: '6px', padding: '8px 12px', background: '#f7fafc', border: '1px solid #edf2f7', borderRadius: '6px', fontSize: '0.85rem' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>EXPLANATION PREVIEW</span>
+                                  <MathRenderer text={q.explanation} />
+                                </div>
+                              )}
                             </div>
 
                             {/* Upload Image (Base64) */}

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { db, type Exam, type Student, type Question } from '../db';
 import confetti from 'canvas-confetti';
+import { MathRenderer } from './MathRenderer';
 
 interface OnlineExamPortalProps {
   examId: number;
@@ -588,9 +589,9 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
               {/* Question Text & Media area */}
               <div style={{ flex: 1 }}>
-                <p style={{ fontSize: '1rem', color: '#2d3748', lineHeight: '1.5', fontWeight: 'bold', marginBottom: '24px', whiteSpace: 'pre-line' }}>
-                  {currentQ.questionText}
-                </p>
+                <div style={{ fontSize: '1rem', color: '#2d3748', lineHeight: '1.5', fontWeight: 'bold', marginBottom: '24px', whiteSpace: 'pre-line', textAlign: 'left' }}>
+                  <MathRenderer text={currentQ.questionText} />
+                </div>
 
                 {currentQ.questionImage && (
                   <div style={{ marginBottom: '24px', textAlign: 'center', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', display: 'inline-block', maxWidth: '100%' }}>
@@ -637,12 +638,13 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                           background: isSelected ? 'var(--primary)' : '#fff',
                           color: isSelected ? '#fff' : 'var(--text-dark)',
                           fontWeight: 'bold',
-                          fontSize: '0.85rem'
+                          fontSize: '0.85rem',
+                          flexShrink: 0
                         }}>
                           {letter}
                         </span>
                         <span style={{ fontSize: '0.9rem', color: '#4a5568', fontWeight: isSelected ? 'bold' : 'normal' }}>
-                          {optText}
+                          <MathRenderer text={optText} />
                         </span>
                       </button>
                     );

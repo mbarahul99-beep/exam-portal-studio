@@ -2325,15 +2325,28 @@ export default function App() {
                                   onClick={() => setSelectedExamId(exam.id!)}
                                 >
                                   <td><input type="checkbox" onClick={(e) => e.stopPropagation()} /></td>
-                                  <td><strong>{exam.title}</strong></td>
+                                  <td>
+                                    <strong>{exam.title}</strong>
+                                    {exam.startsAt ? (
+                                      <span style={{ marginLeft: '8px', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 88, 202, 0.1)', color: 'var(--primary)', fontWeight: 'bold' }}>ONLINE</span>
+                                    ) : (
+                                      <span style={{ marginLeft: '8px', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: '#edf2f7', color: '#4a5568', fontWeight: 'bold' }}>OFFLINE</span>
+                                    )}
+                                  </td>
                                   <td>{new Date(exam.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                                   <td>{exam.className}</td>
                                   <td>{appeared}</td>
-                                  <td>NA</td>
+                                  <td style={{ fontSize: '0.85rem' }}>{exam.startsAt ? new Date(exam.startsAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : "OMR Sheet"}</td>
                                   <td>
-                                    <span className="status-badge private-lock-badge">
-                                      <span style={{ fontSize: '10px', marginRight: '4px' }}>🔒</span> Private
-                                    </span>
+                                    {exam.status === 'public' ? (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#e6fffa', color: '#319795', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                        🟢 Published
+                                      </span>
+                                    ) : (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f7fafc', color: '#718096', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                        🔒 Draft
+                                      </span>
+                                    )}
                                   </td>
                                 </tr>
                               );

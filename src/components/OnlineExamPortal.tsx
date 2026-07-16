@@ -29,6 +29,8 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
   // Student auth states
   const [rollNo, setRollNo] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [student, setStudent] = useState<Student | null>(null);
 
   // Exam taking states
@@ -138,7 +140,22 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!exam) return;
-    if (!rollNo.trim() || !phone.trim()) {
+
+    const option = exam.loginOption || 'roll_phone';
+
+    if (option === 'roll_phone' && (!rollNo.trim() || !phone.trim())) {
+      alert('Please fill in both fields.');
+      return;
+    }
+    if (option === 'roll_email' && (!rollNo.trim() || !email.trim())) {
+      alert('Please fill in both fields.');
+      return;
+    }
+    if (option === 'roll_only' && !rollNo.trim()) {
+      alert('Please enter your Roll Number.');
+      return;
+    }
+    if (option === 'passcode' && (!rollNo.trim() || !passcode.trim())) {
       alert('Please fill in both fields.');
       return;
     }
@@ -148,7 +165,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
       let matched = await db.students.where('studentNum').equals(rollNo.trim()).first();
       
       // Fallback: If database doesn't have the student seeded yet, but they type the standard credentials
-      if (!matched && rollNo.trim() === '1000000001' && phone.trim() === '9876543210') {
+      if (!matched && rollNo.trim() === '1000000001') {
         const defaultStudent = {
           studentNum: '1000000001',
           name: 'Aarav Sharma',
@@ -158,7 +175,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         };
         await db.students.add(defaultStudent);
         matched = await db.students.where('studentNum').equals('1000000001').first();
-      } else if (!matched && rollNo.trim() === '1000000002' && phone.trim() === '9876543211') {
+      } else if (!matched && rollNo.trim() === '1000000002') {
         const defaultStudent = {
           studentNum: '1000000002',
           name: 'Diya Patel',
@@ -170,15 +187,35 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         matched = await db.students.where('studentNum').equals('1000000002').first();
       }
 
-      // If student exists but has no phone set, dynamically register it
-      if (matched && !matched.phone && phone.trim()) {
-        await db.students.update(matched.id!, { phone: phone.trim() });
-        matched.phone = phone.trim();
+      if (!matched) {
+        alert('Authentication Failed: No registered candidate found with this Roll Number.');
+        return;
       }
 
-      if (!matched || matched.phone !== phone.trim()) {
-        alert('Authentication Failed: No registered candidate found with this Roll Number and Mobile combination.\n\nRegistered Demo Student Roll No: 1000000001 (Phone: 9876543210).\nMake sure you click "Populate Mock Data" on the main admin dashboard to seed the student records.');
-        return;
+      // Check login credentials based on settings
+      if (option === 'roll_phone') {
+        if (!matched.phone && phone.trim()) {
+          await db.students.update(matched.id!, { phone: phone.trim() });
+          matched.phone = phone.trim();
+        }
+        if (matched.phone !== phone.trim()) {
+          alert('Authentication Failed: Mobile number mismatch.');
+          return;
+        }
+      } else if (option === 'roll_email') {
+        if (!matched.email && email.trim()) {
+          await db.students.update(matched.id!, { email: email.trim() });
+          matched.email = email.trim();
+        }
+        if (matched.email !== email.trim()) {
+          alert('Authentication Failed: Email address mismatch.');
+          return;
+        }
+      } else if (option === 'passcode') {
+        if (passcode.trim() !== (exam.passcode || '1234')) {
+          alert('Authentication Failed: Invalid exam passcode.');
+          return;
+        }
       }
 
       // Auto-sync student's class to exam class for frictionless testing
@@ -352,33 +389,63 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
             </div>
 
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="form-group" style={{ margin: 0 }}>
+              <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Candidate Roll Number *</label>
                 <input 
                   type="text" 
                   placeholder="e.g. 1000000001" 
                   value={rollNo} 
                   onChange={e => setRollNo(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}
+                  style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
                   required
                 />
               </div>
 
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Mobile Number *</label>
-                <input 
-                  type="tel" 
-                  placeholder="e.g. 9876543210" 
-                  value={phone} 
-                  onChange={e => setPhone(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}
-                  required
-                />
-              </div>
+              {(exam.loginOption || 'roll_phone') === 'roll_phone' && (
+                <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Mobile Number *</label>
+                  <input 
+                    type="tel" 
+                    placeholder="e.g. 9876543210" 
+                    value={phone} 
+                    onChange={e => setPhone(e.target.value)}
+                    style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+                    required
+                  />
+                </div>
+              )}
 
-              <div style={{ background: '#fffaf0', border: '1px solid #feebc8', borderRadius: '8px', padding: '12px', fontSize: '0.75rem', color: '#c05621', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Lock size={16} />
-                <span>Verify Roll and Phone matches your registered roster card class.</span>
+              {exam.loginOption === 'roll_email' && (
+                <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Email Address *</label>
+                  <input 
+                    type="email" 
+                    placeholder="e.g. aarav@evalbee.in" 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)}
+                    style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+                    required
+                  />
+                </div>
+              )}
+
+              {exam.loginOption === 'passcode' && (
+                <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Exam Passcode *</label>
+                  <input 
+                    type="password" 
+                    placeholder="Enter passcode" 
+                    value={passcode} 
+                    onChange={e => setPasscode(e.target.value)}
+                    style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+                    required
+                  />
+                </div>
+              )}
+
+              <div style={{ background: '#fffaf0', border: '1px solid #feebc8', borderRadius: '8px', padding: '12px', fontSize: '0.75rem', color: '#c05621', display: 'flex', gap: '8px', alignItems: 'center', textAlign: 'left' }}>
+                <Lock size={16} style={{ flexShrink: 0 }} />
+                <span>Verify Roll number and credentials match your registered candidate roster.</span>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>

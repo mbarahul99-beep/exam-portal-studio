@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, HelpCircle } from 'lucide-react';
+import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'lucide-react';
 import { db } from '../db';
 import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 
@@ -22,7 +22,7 @@ interface SectionState {
 }
 
 export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSuccess }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 1: Basic Details States
   const [examName, setExamName] = useState('');
@@ -35,6 +35,31 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
     return `${yyyy}-${mm}-${dd}`;
   });
   const [examMode, setExamMode] = useState<'offline' | 'online'>('offline');
+
+  // Online Exam Settings
+  const [onlineStartsAt, setOnlineStartsAt] = useState(() => {
+    const today = new Date();
+    // Default start time to tomorrow at 10:00 AM
+    today.setDate(today.getDate() + 1);
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T10:00`;
+  });
+  const [onlineDurationMins, setOnlineDurationMins] = useState(180);
+  const [onlinePublishStatus, setOnlinePublishStatus] = useState<'draft' | 'published'>('draft');
+  const [onlineLoginOption, setOnlineLoginOption] = useState<'roll_phone' | 'roll_email' | 'roll_only' | 'passcode'>('roll_phone');
+  const [onlinePasscode, setOnlinePasscode] = useState('1234');
+
+  // Online Questions Composer States
+  const [questionsState, setQuestionsState] = useState<any[]>([]);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv'>('manual');
+  const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
+
+  // Success link states
+  const [createdExamId, setCreatedExamId] = useState<number | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Step 2: Subject Details States
   const [rollNoDigits, setRollNoDigits] = useState(6);
@@ -182,6 +207,96 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
     }));
   };
 
+  const parseCsvRow = (row: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result.map(val => val.replace(/^"|"$/g, ''));
+  };
+
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      try {
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length === 0) return;
+
+        const startIdx = lines[0].toLowerCase().includes('question') ? 1 : 0;
+        const parsed: any[] = [];
+
+        for (let i = startIdx; i < lines.length; i++) {
+          const cols = parseCsvRow(lines[i]);
+          if (cols.length < 5) continue;
+
+          const qText = cols[0];
+          const optA = cols[1] || '';
+          const optB = cols[2] || '';
+          const optC = cols[3] || '';
+          const optD = cols[4] || '';
+          const optE = cols[5] || '';
+          
+          let correctLetter = (cols[6] || 'A').toUpperCase().trim();
+          let explanation = cols[7] || '';
+          let secName = cols[8] || '';
+
+          const optionIdx = ['A', 'B', 'C', 'D', 'E'].indexOf(correctLetter);
+          const finalOptionIdx = optionIdx !== -1 ? optionIdx : 0;
+
+          parsed.push({
+            questionText: qText,
+            options: optE ? [optA, optB, optC, optD, optE] : [optA, optB, optC, optD],
+            correctOptionIdx: finalOptionIdx,
+            explanation,
+            sectionName: secName
+          });
+        }
+
+        // Map sequentially to questionsState
+        setQuestionsState(prev => {
+          const updated = [...prev];
+          for (let idx = 0; idx < updated.length; idx++) {
+            const csvQ = parsed[idx];
+            if (csvQ) {
+              updated[idx] = {
+                ...updated[idx],
+                questionText: csvQ.questionText,
+                options: csvQ.options.length === updated[idx].options.length 
+                  ? csvQ.options 
+                  : updated[idx].options.map((orig: string, oIdx: number) => csvQ.options[oIdx] || orig),
+                correctOptionIdx: csvQ.correctOptionIdx < updated[idx].options.length ? csvQ.correctOptionIdx : 0,
+                explanation: csvQ.explanation
+              };
+            }
+          }
+          return updated;
+        });
+
+        setCsvUploadSuccess(`Successfully imported ${Math.min(parsed.length, questionsState.length)} questions!`);
+      } catch (err) {
+        alert('Failed to parse CSV file. Make sure columns align with: Question Text, Option A, Option B, Option C, Option D, Option E (optional), Correct Option (A/B/C/D/E), Explanation');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleSubmit = async () => {
     try {
       const finalSubjects: ExamSubject[] = subjectsList;
@@ -198,28 +313,68 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
         maxAttempts: sec.allowOptionalAttempts ? sec.maxAttempts : undefined
       }));
 
-      // Set A key is default fallback
-      const defaultAnswerKey = answerKeys['A'] || {};
+      // Generate default answerKey from multi-set or questionsState
+      let defaultAnswerKey: Record<number, string> = {};
+      if (examMode === 'online') {
+        questionsState.forEach((q, idx) => {
+          defaultAnswerKey[idx + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
+        });
+      } else {
+        defaultAnswerKey = answerKeys['A'] || {};
+      }
+
+      // Generate answerKeys map
+      const finalAnswerKeys: Record<string, Record<number, string>> = {};
+      if (examMode === 'online') {
+        finalAnswerKeys['A'] = defaultAnswerKey;
+      } else {
+        const sets = Array.from({ length: examSetsCount }).map((_, i) => String.fromCharCode(65 + i));
+        sets.forEach(setName => {
+          finalAnswerKeys[setName] = answerKeys[setName] || {};
+        });
+      }
 
       const newExamId = await db.exams.add({
         title: examName,
         className,
         date: examDate,
-        status: 'private',
+        status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
         numQuestions: totalQuestions,
         answerKey: defaultAnswerKey,
         correctMarks: sectionsList[0]?.correctMarks ?? 4,
         incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
         unansweredMarks: 0,
         rollNoDigits,
-        examSetsCount,
+        examSetsCount: examMode === 'online' ? 1 : examSetsCount,
         subjects: finalSubjects,
         sections: finalSections,
-        answerKeys,
+        answerKeys: finalAnswerKeys,
+        startsAt: examMode === 'online' ? onlineStartsAt : undefined,
+        durationMins: examMode === 'online' ? onlineDurationMins : undefined,
+        loginOption: examMode === 'online' ? onlineLoginOption : undefined,
+        passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined,
         createdAt: new Date()
       });
 
-      onSuccess(newExamId);
+      // Write questions if online
+      if (examMode === 'online') {
+        const questionRecords = questionsState.map((q, idx) => ({
+          examId: newExamId,
+          sectionName: q.sectionName,
+          questionText: q.questionText || `Question ${idx + 1}`,
+          options: q.options.map((opt: string) => opt || `Option`),
+          correctOptionIdx: q.correctOptionIdx,
+          explanation: q.explanation || '',
+          questionImage: q.questionImage || undefined
+        }));
+        await db.questions.bulkAdd(questionRecords);
+
+        // Advance to step 5 for online links sharing!
+        setCreatedExamId(newExamId);
+        setStep(5);
+      } else {
+        onSuccess(newExamId);
+      }
     } catch (err: any) {
       alert(`Failed to create exam: ${err.message}`);
     }
@@ -235,7 +390,33 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
     } else if (step === 2) {
       handleGoToStep3();
     } else if (step === 3) {
-      handleGoToStep4();
+      // Initialize custom questions state or answer keys before moving to step 4
+      const list: any[] = [];
+      sectionsWithRanges.forEach(sec => {
+        for (let q = sec.qStart; q <= sec.qEnd; q++) {
+          list.push({
+            qNum: q,
+            sectionName: sec.sectionName,
+            subjectName: sec.subjectName,
+            questionText: '',
+            options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+            correctOptionIdx: 0, // A is default
+            explanation: '',
+            questionImage: ''
+          });
+        }
+      });
+      setQuestionsState(list);
+      setActiveQuestionIndex(0);
+      setCsvUploadSuccess(null);
+
+      if (examMode === 'online') {
+        setStep(4);
+      } else {
+        handleGoToStep4();
+      }
+    } else if (step === 4) {
+      handleSubmit();
     }
   };
 
@@ -276,8 +457,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
           <div className={`step-line ${step >= 4 ? 'active' : ''}`} />
           <div className={`step-item ${step >= 4 ? 'active' : ''}`}>
             {renderStepCircle(4)}
-            <span className="step-label">Preview & Keys</span>
+            <span className="step-label">{examMode === 'online' ? 'Questions' : 'Preview & Keys'}</span>
           </div>
+          {examMode === 'online' && (
+            <>
+              <div className={`step-line ${step >= 5 ? 'active' : ''}`} />
+              <div className={`step-item ${step >= 5 ? 'active' : ''}`}>
+                {renderStepCircle(5)}
+                <span className="step-label">Share Link</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Wizard Form Content */}
@@ -285,7 +475,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
           
           {/* STEP 1: BASIC DETAILS */}
           {step === 1 && (
-            <div className="wizard-step-content animate-fade-in">
+            <div className="wizard-step-content animate-fade-in" style={{ overflowY: 'auto', maxHeight: '425px', paddingRight: '4px' }}>
               <div className="form-row-three">
                 
                 {/* Class Name */}
@@ -329,27 +519,113 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
               </div>
 
               {/* Exam Mode */}
-              <div className="exam-mode-group">
-                <label className="mode-title-lbl">Exam Mode *</label>
-                <div className="checkbox-row">
-                  <label className="chk-label">
+              <div className="exam-mode-group" style={{ marginBottom: '20px', textAlign: 'left' }}>
+                <label className="mode-title-lbl" style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-muted)' }}>EXAM MODE *</label>
+                <div className="checkbox-row" style={{ display: 'flex', gap: '24px', marginTop: '8px' }}>
+                  <label className="chk-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.95rem' }}>
                     <input 
-                      type="checkbox" 
+                      type="radio" 
+                      name="examMode"
                       checked={examMode === 'offline'} 
                       onChange={() => setExamMode('offline')}
+                      style={{ cursor: 'pointer' }}
                     />
-                    <span>Offline</span>
+                    <span>Offline (OMR Sheet)</span>
                   </label>
-                  <label className="chk-label">
+                  <label className="chk-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.95rem' }}>
                     <input 
-                      type="checkbox" 
+                      type="radio" 
+                      name="examMode"
                       checked={examMode === 'online'} 
                       onChange={() => setExamMode('online')}
+                      style={{ cursor: 'pointer' }}
                     />
-                    <span>Online</span>
+                    <span>Online Exam Portal</span>
                   </label>
                 </div>
               </div>
+
+              {/* Detailed settings for Online Exam */}
+              {examMode === 'online' && (
+                <div className="online-details-card glass-card animate-fade-in" style={{
+                  background: '#f8fafc',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  marginTop: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  textAlign: 'left'
+                }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', letterSpacing: '0.5px' }}>ONLINE EXAM PARAMETERS</h4>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                    {/* Starts At (Schedule Test) */}
+                    <div className="floating-field">
+                      <label>Schedule Start Date & Time *</label>
+                      <input 
+                        type="datetime-local" 
+                        value={onlineStartsAt} 
+                        onChange={(e) => setOnlineStartsAt(e.target.value)} 
+                        required
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Test Duration (Minutes) */}
+                    <div className="floating-field">
+                      <label>Test Duration (Minutes) *</label>
+                      <input 
+                        type="number" 
+                        min={10} 
+                        max={600} 
+                        value={onlineDurationMins} 
+                        onChange={(e) => setOnlineDurationMins(Number(e.target.value))} 
+                        required
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                    {/* Login Option */}
+                    <div className="floating-field">
+                      <label>Select Login Option *</label>
+                      <select value={onlineLoginOption} onChange={(e) => setOnlineLoginOption(e.target.value as any)} style={{ width: '100%', boxSizing: 'border-box' }}>
+                        <option value="roll_phone">Roll Number + Mobile Number</option>
+                        <option value="roll_email">Roll Number + Email Address</option>
+                        <option value="roll_only">Roll Number Only</option>
+                        <option value="passcode">Roll Number + Exam Passcode</option>
+                      </select>
+                    </div>
+
+                    {/* Publish Status (Published/Draft) */}
+                    <div className="floating-field">
+                      <label>Exam Status *</label>
+                      <select value={onlinePublishStatus} onChange={(e) => setOnlinePublishStatus(e.target.value as any)} style={{ width: '100%', boxSizing: 'border-box' }}>
+                        <option value="draft">Draft (Private)</option>
+                        <option value="published">Published (Public)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Passcode input field if passcode login is selected */}
+                  {onlineLoginOption === 'passcode' && (
+                    <div className="floating-field animate-scale-up" style={{ maxWidth: '240px' }}>
+                      <label>Exam Passcode *</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 1234"
+                        value={onlinePasscode}
+                        onChange={(e) => setOnlinePasscode(e.target.value)}
+                        required
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -563,91 +839,450 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
             </div>
           )}
 
-          {/* STEP 4: PREVIEW & KEYS */}
+          {/* STEP 4: PREVIEW & KEYS OR QUESTIONS SETUP */}
           {step === 4 && (
-            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
-              <div className="preview-summary-card">
-                <div className="summary-field">
-                  <span className="lbl">Exam Name:</span>
-                  <span className="val"><strong>{examName.toUpperCase()}</strong></span>
-                </div>
-                <div className="summary-field">
-                  <span className="lbl">Target Class:</span>
-                  <span className="val">{className}</span>
-                </div>
-                <div className="summary-field">
-                  <span className="lbl">Roll No Digits:</span>
-                  <span className="val">{rollNoDigits} digits</span>
-                </div>
-                <div className="summary-field">
-                  <span className="lbl">Total Questions:</span>
-                  <span className="val"><strong>{totalQuestions} Questions</strong></span>
-                </div>
-              </div>
+            <>
+              {examMode === 'offline' ? (
+                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
+                  <div className="preview-summary-card">
+                    <div className="summary-field">
+                      <span className="lbl">Exam Name:</span>
+                      <span className="val"><strong>{examName.toUpperCase()}</strong></span>
+                    </div>
+                    <div className="summary-field">
+                      <span className="lbl">Target Class:</span>
+                      <span className="val">{className}</span>
+                    </div>
+                    <div className="summary-field">
+                      <span className="lbl">Roll No Digits:</span>
+                      <span className="val">{rollNoDigits} digits</span>
+                    </div>
+                    <div className="summary-field">
+                      <span className="lbl">Total Questions:</span>
+                      <span className="val"><strong>{totalQuestions} Questions</strong></span>
+                    </div>
+                  </div>
 
-              {/* Set Selection Tabs */}
-              {examSetsCount > 1 && (
-                <div className="set-tabs-row" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                  {Array.from({ length: examSetsCount }).map((_, idx) => {
-                    const setName = String.fromCharCode(65 + idx);
-                    return (
-                      <button
-                        key={`set-tab-${setName}`}
-                        className={`btn-seed ${activeSetTab === setName ? 'active-tab' : ''}`}
-                        onClick={() => setActiveSetTab(setName)}
-                        style={{
-                          padding: '6px 16px',
-                          borderRadius: '20px',
-                          border: '1px solid var(--border-color)',
-                          background: activeSetTab === setName ? 'var(--primary)' : '#ffffff',
-                          color: activeSetTab === setName ? '#ffffff' : 'var(--text-secondary)',
-                          fontWeight: 'bold',
-                          cursor: 'pointer'
-                        }}
+                  {/* Set Selection Tabs */}
+                  {examSetsCount > 1 && (
+                    <div className="set-tabs-row" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                      {Array.from({ length: examSetsCount }).map((_, idx) => {
+                        const setName = String.fromCharCode(65 + idx);
+                        return (
+                          <button
+                            key={`set-tab-${setName}`}
+                            className={`btn-seed ${activeSetTab === setName ? 'active-tab' : ''}`}
+                            onClick={() => setActiveSetTab(setName)}
+                            style={{
+                              padding: '6px 16px',
+                              borderRadius: '20px',
+                              border: '1px solid var(--border-color)',
+                              background: activeSetTab === setName ? 'var(--primary)' : '#ffffff',
+                              color: activeSetTab === setName ? '#ffffff' : 'var(--text-secondary)',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Set {setName} Key
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Answer Key Grid builder grouped by sections */}
+                  <div className="key-builder-wizard">
+                    {sectionsWithRanges.map((sec, secIdx) => {
+                      return (
+                        <div key={`wiz-sec-grid-${secIdx}`} className="mb-4">
+                          <h5 style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', borderBottom: '1px dashed var(--border-color)', paddingBottom: '4px', color: 'var(--text-primary)' }}>
+                            {sec.subjectName} - {sec.sectionName} (Q{sec.qStart} - Q{sec.qEnd})
+                          </h5>
+
+                          <div className="key-grid-scroll">
+                            {Array.from({ length: sec.qCount }).map((_, qIdx) => {
+                              const qNum = sec.qStart + qIdx;
+                              const options = sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+                              const currentKey = answerKeys[activeSetTab]?.[qNum] || 'A';
+
+                              return (
+                                <div key={`wiz-key-${qNum}`} className="key-row-item">
+                                  <span className="q-label-number">Q{String(qNum).padStart(2, '0')}</span>
+                                  <div className="opt-bubble-row">
+                                    {options.map(opt => (
+                                      <button
+                                        key={`wiz-opt-${qNum}-${opt}`}
+                                        className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
+                                        onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
+                                      >
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* ONLINE MODE QUESTIONS WORKSPACE */
+                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '420px' }}>
+                  
+                  {/* Setup Options Header tabs */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        className={`btn-seed ${questionSetupTab === 'manual' ? 'active-tab' : ''}`} 
+                        onClick={() => setQuestionSetupTab('manual')}
+                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'manual' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'manual' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
                       >
-                        Set {setName} Key
+                        Add Manually
                       </button>
-                    );
-                  })}
-                </div>
-              )}
+                      <button 
+                        className={`btn-seed ${questionSetupTab === 'csv' ? 'active-tab' : ''}`} 
+                        onClick={() => setQuestionSetupTab('csv')}
+                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'csv' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'csv' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      >
+                        Import CSV
+                      </button>
+                    </div>
 
-              {/* Answer Key Grid builder grouped by sections */}
-              <div className="key-builder-wizard">
-                {sectionsWithRanges.map((sec, secIdx) => {
-                  return (
-                    <div key={`wiz-sec-grid-${secIdx}`} className="mb-4">
-                      <h5 style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', borderBottom: '1px dashed var(--border-color)', paddingBottom: '4px', color: 'var(--text-primary)' }}>
-                        {sec.subjectName} - {sec.sectionName} (Q{sec.qStart} - Q{sec.qEnd})
-                      </h5>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Questions Added: <strong>{questionsState.filter(q => q.questionText.trim()).length} / {totalQuestions}</strong>
+                    </div>
+                  </div>
 
-                      <div className="key-grid-scroll">
-                        {Array.from({ length: sec.qCount }).map((_, qIdx) => {
-                          const qNum = sec.qStart + qIdx;
-                          const options = sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
-                          const currentKey = answerKeys[activeSetTab]?.[qNum] || 'A';
-
+                  {questionSetupTab === 'manual' ? (
+                    /* Manual entry split layout */
+                    <div style={{ display: 'flex', gap: '16px', height: 'calc(100% - 50px)', overflow: 'hidden' }}>
+                      
+                      {/* Left list panel */}
+                      <div style={{ width: '130px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', paddingRight: '8px', display: 'flex', flexDirection: 'column', gap: '6px', boxSizing: 'border-box' }}>
+                        {questionsState.map((q, idx) => {
+                          const isFilled = q.questionText.trim().length > 0;
+                          const isActive = idx === activeQuestionIndex;
                           return (
-                            <div key={`wiz-key-${qNum}`} className="key-row-item">
-                              <span className="q-label-number">Q{String(qNum).padStart(2, '0')}</span>
-                              <div className="opt-bubble-row">
-                                {options.map(opt => (
-                                  <button
-                                    key={`wiz-opt-${qNum}-${opt}`}
-                                    className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
-                                    onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
-                                  >
-                                    {opt}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
+                            <button
+                              key={`q-list-btn-${idx}`}
+                              onClick={() => setActiveQuestionIndex(idx)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                                color: isActive ? 'var(--primary)' : '#4a5568',
+                                fontWeight: isActive ? 'bold' : 'normal',
+                                cursor: 'pointer',
+                                fontSize: '0.8rem',
+                                width: '100%',
+                                textAlign: 'left'
+                              }}
+                            >
+                              <span>Q {q.qNum}</span>
+                              {isFilled && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48bb78' }} />}
+                            </button>
                           );
                         })}
                       </div>
+
+                      {/* Right Editor panel */}
+                      {questionsState[activeQuestionIndex] && (() => {
+                        const q = questionsState[activeQuestionIndex];
+                        return (
+                          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '6px', boxSizing: 'border-box', textAlign: 'left' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #edf2f7' }}>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                                {q.subjectName.toUpperCase()} - {q.sectionName.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Question {q.qNum} of {totalQuestions}</span>
+                            </div>
+
+                            {/* Question Text */}
+                            <div className="floating-field">
+                              <label>Question Text *</label>
+                              <textarea
+                                value={q.questionText}
+                                onChange={(e) => {
+                                  setQuestionsState(prev => {
+                                    const updated = [...prev];
+                                    updated[activeQuestionIndex].questionText = e.target.value;
+                                    return updated;
+                                  });
+                                }}
+                                placeholder="Enter question description..."
+                                style={{ width: '100%', minHeight: '60px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                                required
+                              />
+                            </div>
+
+                            {/* Options A-E input fields */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>OPTIONS & CORRECT ANSWER</span>
+                              {q.options.map((optValue: string, optIdx: number) => {
+                                const letter = ['A', 'B', 'C', 'D', 'E'][optIdx];
+                                const isCorrect = q.correctOptionIdx === optIdx;
+                                return (
+                                  <div key={`opt-field-${optIdx}`} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setQuestionsState(prev => {
+                                          const updated = [...prev];
+                                          updated[activeQuestionIndex].correctOptionIdx = optIdx;
+                                          return updated;
+                                        });
+                                      }}
+                                      style={{
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '50%',
+                                        border: isCorrect ? '2px solid #48bb78' : '1px solid var(--border-color)',
+                                        background: isCorrect ? '#48bb78' : '#fff',
+                                        color: isCorrect ? '#fff' : '#718096',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        flexShrink: 0
+                                      }}
+                                    >
+                                      {letter}
+                                    </button>
+                                    <input
+                                      type="text"
+                                      placeholder={`Option ${letter} value`}
+                                      value={optValue}
+                                      onChange={(e) => {
+                                        setQuestionsState(prev => {
+                                          const updated = [...prev];
+                                          const nextOpts = [...updated[activeQuestionIndex].options];
+                                          nextOpts[optIdx] = e.target.value;
+                                          updated[activeQuestionIndex].options = nextOpts;
+                                          return updated;
+                                        });
+                                      }}
+                                      style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Explanation */}
+                            <div className="floating-field">
+                              <label>Explanation / Rationale (Optional)</label>
+                              <textarea
+                                value={q.explanation}
+                                onChange={(e) => {
+                                  setQuestionsState(prev => {
+                                    const updated = [...prev];
+                                    updated[activeQuestionIndex].explanation = e.target.value;
+                                    return updated;
+                                  });
+                                }}
+                                placeholder="Explain correct answer logic..."
+                                style={{ width: '100%', minHeight: '50px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', boxSizing: 'border-box', fontSize: '0.85rem' }}
+                              />
+                            </div>
+
+                            {/* Upload Image (Base64) */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>ATTACH QUESTION IMAGE</span>
+                              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <label style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '8px 16px',
+                                  borderRadius: '6px',
+                                  border: '1px dashed var(--border-color)',
+                                  background: '#f8fafc',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem',
+                                  color: 'var(--text-secondary)'
+                                }}>
+                                  <Upload size={16} /> Choose Image File
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    style={{ display: 'none' }}
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => {
+                                          setQuestionsState(prev => {
+                                            const updated = [...prev];
+                                            updated[activeQuestionIndex].questionImage = reader.result as string;
+                                            return updated;
+                                          });
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                                {q.questionImage && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <img 
+                                      src={q.questionImage} 
+                                      alt="Preview" 
+                                      style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-color)' }} 
+                                    />
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        setQuestionsState(prev => {
+                                          const updated = [...prev];
+                                          updated[activeQuestionIndex].questionImage = '';
+                                          return updated;
+                                        });
+                                      }}
+                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                          </div>
+                        );
+                      })()}
                     </div>
-                  );
-                })}
+                  ) : (
+                    /* CSV Upload Drop-zone */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
+                      <div style={{ background: 'rgba(16,88,202,0.08)', padding: '16px', borderRadius: '50%', color: 'var(--primary)' }}>
+                        <FileText size={36} />
+                      </div>
+                      
+                      <div style={{ textAlign: 'center' }}>
+                        <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 'bold' }}>Import CSV Question File</h4>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '360px', lineHeight: '1.4' }}>
+                          Upload a comma-separated CSV file containing questions. Rows will be mapped sequentially to subjects and sections.
+                        </p>
+                      </div>
+
+                      <div style={{ background: '#fff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 14px', width: '100%', maxWidth: '400px', fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: '1.4' }}>
+                        <strong>Required Columns Header:</strong><br />
+                        <code style={{ fontSize: '0.7rem', display: 'block', background: '#f1f5f9', padding: '6px', borderRadius: '4px', marginTop: '4px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+                          Question Text, Option A, Option B, Option C, Option D, Option E, Correct Option (A/B/C/D/E), Explanation, Section Name
+                        </code>
+                      </div>
+
+                      <label style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 20px',
+                        borderRadius: '6px',
+                        background: 'var(--primary)',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      }}>
+                        <Upload size={16} /> Choose CSV File
+                        <input 
+                          type="file" 
+                          accept=".csv" 
+                          style={{ display: 'none' }} 
+                          onChange={handleCsvUpload} 
+                        />
+                      </label>
+
+                      {csvUploadSuccess && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#48bb78', fontWeight: 'bold', background: 'rgba(72,187,120,0.1)', padding: '6px 12px', borderRadius: '6px', border: '1px solid rgba(72,187,120,0.2)' }}>
+                          <Check size={16} />
+                          {csvUploadSuccess}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </>
+          )}
+
+          {/* STEP 5: ONLINE SUCCESS & SHARE LINK */}
+          {step === 5 && createdExamId && (
+            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', justifyContent: 'center', alignItems: 'center', height: '420px', textAlign: 'center' }}>
+              <div style={{ background: '#e6fffa', border: '2px solid #319795', padding: '16px', borderRadius: '50%', color: '#319795', animation: 'scaleUp 0.4s ease' }}>
+                <Check size={40} strokeWidth={3} />
+              </div>
+
+              <div>
+                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 900 }}>Online Exam Created!</h3>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>The online exam is successfully configured and saved in database.</p>
+              </div>
+
+              <div className="glass-card" style={{ background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '420px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SHARE LINK WITH CANDIDATES</span>
+                  <span style={{ fontSize: '0.7rem', color: onlinePublishStatus === 'published' ? '#48bb78' : '#e53e3e', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    {onlinePublishStatus === 'published' ? '🟢 Published' : '🔴 Draft Mode'}
+                  </span>
+                </div>
+                
+                {/* Shareable Link Input Group */}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    value={`${window.location.origin}/?onlineExamId=${createdExamId}`}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#fff', fontSize: '0.8rem', outline: 'none' }}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/?onlineExamId=${createdExamId}`);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: copiedLink ? '#48bb78' : 'var(--primary)',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {copiedLink ? <Check size={14} /> : <Copy size={14} />}
+                    {copiedLink ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                  💡 Students click this link to access the Exam Portal. {onlinePublishStatus === 'draft' && "Ensure you switch the status to 'Published' in dashboard for candidates to take the test."}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '420px' }}>
+                <a 
+                  href={`${window.location.origin}/?onlineExamId=${createdExamId}`}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="btn-secondary"
+                  style={{ flex: 1, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.85rem', padding: '10px 16px', borderRadius: '6px' }}
+                >
+                  <Eye size={16} /> Test Portal View
+                </a>
               </div>
             </div>
           )}
@@ -659,15 +1294,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
           <button 
             className="btn-outline-cancel"
             onClick={step === 1 ? onClose : handlePrevStep}
+            disabled={step === 5}
+            style={{ opacity: step === 5 ? 0.4 : 1, cursor: step === 5 ? 'not-allowed' : 'pointer' }}
           >
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
           
           <button 
             className="btn-primary-wizard"
-            onClick={step === 4 ? handleSubmit : handleNextStep}
+            onClick={step === 5 ? () => onSuccess(createdExamId!) : (step === 4 ? handleSubmit : handleNextStep)}
           >
-            {step === 4 ? 'Create Exam' : 'Next'}
+            {step === 5 ? 'Finish & Close' : (step === 4 ? 'Create Exam' : 'Next')}
           </button>
         </footer>
 

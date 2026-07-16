@@ -55,6 +55,8 @@ export interface Exam {
   subjects?: ExamSubject[];
   sections?: ExamSection[];
   answerKeys?: Record<string, Record<number, string>>; // Multi-set answer keys (Set -> QNum -> Option)
+  loginOption?: 'roll_phone' | 'roll_email' | 'roll_only' | 'passcode';
+  passcode?: string;
 }
 
 export interface Question {

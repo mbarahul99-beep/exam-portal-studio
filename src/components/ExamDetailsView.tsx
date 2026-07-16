@@ -88,7 +88,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   };
 
   const handleShareLink = () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?view=online-exam&examId=${exam.id}`;
+    const shareUrl = `${window.location.origin}/?onlineExamId=${exam.id}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       alert(`Copied Online Exam Link to Clipboard:\n\n${shareUrl}`);
     }).catch(err => {

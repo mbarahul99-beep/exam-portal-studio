@@ -69,43 +69,25 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
-  const handleSetQrStatus = async (studentId: number, status: 'Present' | 'Absent' | 'Late') => {
-    const existing = attendanceMap.get(studentId);
-    try {
-      if (existing) {
-        await db.attendance.update(existing.id!, { status, attendanceMethod: 'QR' });
-      } else {
-        await db.attendance.add({
-          date: selectedDate,
-          studentId,
-          className: selectedClass,
-          status,
-          createdAt: new Date(),
-          attendanceMethod: 'QR'
-        });
-      }
-    } catch (err: any) {
-      console.error("Failed to save QR attendance:", err);
-    }
-  };
 
-  const handleSetFaceStatus = async (studentId: number, status: 'Present' | 'Absent' | 'Late') => {
-    const existing = attendanceMap.get(studentId);
+
+  const handleCentralSetStatus = async (studentId: number, className: string, status: 'Present' | 'Absent' | 'Late', method: 'QR' | 'Face') => {
     try {
+      const existing = await db.attendance.where('[date+studentId]').equals([selectedDate, studentId]).first();
       if (existing) {
-        await db.attendance.update(existing.id!, { status, attendanceMethod: 'Face' });
+        await db.attendance.update(existing.id!, { status, attendanceMethod: method });
       } else {
         await db.attendance.add({
           date: selectedDate,
           studentId,
-          className: selectedClass,
+          className,
           status,
           createdAt: new Date(),
-          attendanceMethod: 'Face'
+          attendanceMethod: method
         });
       }
-    } catch (err: any) {
-      console.error("Failed to save Face attendance:", err);
+    } catch (err) {
+      console.error("Central check-in failed:", err);
     }
   };
 
@@ -163,13 +145,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const code = jsQR(imageData.data, imageData.width, imageData.height);
             if (code && code.data && !isCooldownRef.current) {
               const scannedNum = code.data.trim();
-              const matchedStudent = classStudents.find(s => s.studentNum === scannedNum);
+              const matchedStudent = students.find(s => s.studentNum === scannedNum);
               
               if (matchedStudent) {
-                handleSetQrStatus(matchedStudent.id!, 'Present');
+                handleCentralSetStatus(matchedStudent.id!, matchedStudent.className, 'Present', 'QR');
                 playBeep();
                 speakAttendance(matchedStudent.name);
-                setScannedFeedback(`Checked-in: ${matchedStudent.name} (Roll ID: ${scannedNum})`);
+                setScannedFeedback(`Checked-in: ${matchedStudent.name} (Class: ${matchedStudent.className})`);
                 
                 isCooldownRef.current = true;
                 setTimeout(() => {
@@ -220,7 +202,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             faceCtx.drawImage(video, x, y, size, size, 0, 0, 150, 150);
             const liveDescriptor = generateFaceDescriptor(faceCanvas);
 
-            const enrolledStudents = classStudents.filter(s => s.faceDescriptor);
+            const enrolledStudents = students.filter(s => s.faceDescriptor);
             let bestMatch: Student | null = null;
             let bestDistance = Infinity;
 
@@ -236,14 +218,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
             if (bestMatch && bestDistance < 1.8) {
               const matchPercentage = Math.round((1 - (bestDistance / 1.8) * 0.4) * 100);
-              handleSetFaceStatus(bestMatch.id!, 'Present');
+              handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
               speakAttendance(bestMatch.name);
               
-              setScannedFeedback(`Face matched: ${bestMatch.name} (${matchPercentage}% Match)`);
+              setScannedFeedback(`Face matched: ${bestMatch.name} (Class: ${bestMatch.className} - ${matchPercentage}% Match)`);
               setTrackedFace({
                 ...trackingBox,
-                name: bestMatch.name,
+                name: `${bestMatch.name} (${bestMatch.className})`,
                 pct: matchPercentage
               });
 

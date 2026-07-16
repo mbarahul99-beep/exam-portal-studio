@@ -10,7 +10,8 @@ import {
   BookOpen,
   Download,
   Share2,
-  Globe
+  Globe,
+  Edit2
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -21,6 +22,7 @@ interface ExamDetailsViewProps {
   submissions: ExamSubmission[];
   students: Student[];
   onClose: () => void;
+  onEdit: (examId: number) => void;
   onPrintRedirect: (exam: Exam) => void;
   onDownloadJPG: (exam: Exam) => void;
   onPrintReport: (submission: any) => void;
@@ -31,6 +33,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   submissions, 
   students, 
   onClose,
+  onEdit,
   onPrintRedirect,
   onDownloadJPG,
   onPrintReport
@@ -268,6 +271,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               title="View Answer Key Config"
             >
               <BookOpen size={18} />
+            </button>
+            <button 
+              className="action-icon-btn text-primary" 
+              onClick={() => onEdit(exam.id!)}
+              title="Edit Exam Layout & Settings"
+            >
+              <Edit2 size={18} style={{ color: 'var(--primary)' }} />
             </button>
             <button 
               className="action-icon-btn text-error" 

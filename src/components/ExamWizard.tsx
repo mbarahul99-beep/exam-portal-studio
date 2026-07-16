@@ -5,6 +5,7 @@ import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 
 interface ExamWizardProps {
   classes: ClassEntity[];
+  examId?: number; // Optional prop for edit mode
   onClose: () => void;
   onSuccess: (examId: number) => void;
 }
@@ -21,7 +22,7 @@ interface SectionState {
   maxAttempts: number;
 }
 
-export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSuccess }) => {
+export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose, onSuccess }) => {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 1: Basic Details States
@@ -82,6 +83,82 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
     'C': {},
     'D': {}
   });
+
+  React.useEffect(() => {
+    if (!examId) return;
+
+    const loadExamData = async () => {
+      try {
+        const exam = await db.exams.get(examId);
+        if (!exam) return;
+
+        setExamName(exam.title);
+        setClassName(exam.className);
+        setExamDate(exam.date);
+        
+        const isOnline = !!exam.startsAt;
+        setExamMode(isOnline ? 'online' : 'offline');
+
+        if (isOnline) {
+          setOnlineStartsAt(exam.startsAt || '');
+          setOnlineDurationMins(exam.durationMins || 180);
+          setOnlinePublishStatus(exam.status === 'public' ? 'published' : 'draft');
+          setOnlineLoginOption(exam.loginOption || 'roll_phone');
+          setOnlinePasscode(exam.passcode || '1234');
+        }
+
+        setRollNoDigits(exam.rollNoDigits || 6);
+        setExamSetsCount(exam.examSetsCount || 1);
+
+        if (exam.subjects) {
+          setNumSubjects(exam.subjects.length);
+          setSubjectsList(exam.subjects);
+        }
+
+        if (exam.sections) {
+          const mappedSecs: SectionState[] = exam.sections.map(sec => ({
+            subjectName: sec.subjectName,
+            sectionName: sec.sectionName,
+            qCount: sec.qCount,
+            questionType: sec.questionType,
+            correctMarks: sec.correctMarks,
+            incorrectMarks: sec.incorrectMarks,
+            allowPartialMarks: sec.allowPartialMarks || false,
+            allowOptionalAttempts: sec.allowOptionalAttempts || false,
+            maxAttempts: sec.maxAttempts || sec.qCount
+          }));
+          setSectionsList(mappedSecs);
+        }
+
+        if (exam.answerKeys) {
+          setAnswerKeys(exam.answerKeys);
+        } else if (exam.answerKey) {
+          setAnswerKeys({ 'A': exam.answerKey });
+        }
+
+        if (isOnline) {
+          const qs = await db.questions.where('examId').equals(examId).toArray();
+          if (qs.length > 0) {
+            const list = qs.map((qVal, idx) => ({
+              qNum: idx + 1,
+              sectionName: qVal.sectionName,
+              subjectName: exam.sections?.find(s => s.sectionName === qVal.sectionName)?.subjectName || 'Subject 1',
+              questionText: qVal.questionText,
+              options: qVal.options,
+              correctOptionIdx: qVal.correctOptionIdx,
+              explanation: qVal.explanation || '',
+              questionImage: qVal.questionImage || ''
+            }));
+            setQuestionsState(list);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load exam details for editing:", err);
+      }
+    };
+
+    loadExamData();
+  }, [examId]);
 
   const renderStepCircle = (stepNum: number) => {
     if (step > stepNum) {
@@ -334,32 +411,61 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
         });
       }
 
-      const newExamId = await db.exams.add({
-        title: examName,
-        className,
-        date: examDate,
-        status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
-        numQuestions: totalQuestions,
-        answerKey: defaultAnswerKey,
-        correctMarks: sectionsList[0]?.correctMarks ?? 4,
-        incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
-        unansweredMarks: 0,
-        rollNoDigits,
-        examSetsCount: examMode === 'online' ? 1 : examSetsCount,
-        subjects: finalSubjects,
-        sections: finalSections,
-        answerKeys: finalAnswerKeys,
-        startsAt: examMode === 'online' ? onlineStartsAt : undefined,
-        durationMins: examMode === 'online' ? onlineDurationMins : undefined,
-        loginOption: examMode === 'online' ? onlineLoginOption : undefined,
-        passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined,
-        createdAt: new Date()
-      });
+      let finalExamId = examId;
+      if (examId) {
+        await db.exams.update(examId, {
+          title: examName,
+          className,
+          date: examDate,
+          status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
+          numQuestions: totalQuestions,
+          answerKey: defaultAnswerKey,
+          correctMarks: sectionsList[0]?.correctMarks ?? 4,
+          incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
+          unansweredMarks: 0,
+          rollNoDigits,
+          examSetsCount: examMode === 'online' ? 1 : examSetsCount,
+          subjects: finalSubjects,
+          sections: finalSections,
+          answerKeys: finalAnswerKeys,
+          startsAt: examMode === 'online' ? onlineStartsAt : undefined,
+          durationMins: examMode === 'online' ? onlineDurationMins : undefined,
+          loginOption: examMode === 'online' ? onlineLoginOption : undefined,
+          passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined
+        });
+      } else {
+        finalExamId = await db.exams.add({
+          title: examName,
+          className,
+          date: examDate,
+          status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
+          numQuestions: totalQuestions,
+          answerKey: defaultAnswerKey,
+          correctMarks: sectionsList[0]?.correctMarks ?? 4,
+          incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
+          unansweredMarks: 0,
+          rollNoDigits,
+          examSetsCount: examMode === 'online' ? 1 : examSetsCount,
+          subjects: finalSubjects,
+          sections: finalSections,
+          answerKeys: finalAnswerKeys,
+          startsAt: examMode === 'online' ? onlineStartsAt : undefined,
+          durationMins: examMode === 'online' ? onlineDurationMins : undefined,
+          loginOption: examMode === 'online' ? onlineLoginOption : undefined,
+          passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined,
+          createdAt: new Date()
+        });
+      }
 
       // Write questions if online
-      if (examMode === 'online') {
+      if (examMode === 'online' && finalExamId) {
+        // If edit mode, delete old questions first to ensure clean state
+        if (examId) {
+          await db.questions.where('examId').equals(examId).delete();
+        }
+
         const questionRecords = questionsState.map((q, idx) => ({
-          examId: newExamId,
+          examId: finalExamId,
           sectionName: q.sectionName,
           questionText: q.questionText || `Question ${idx + 1}`,
           options: q.options.map((opt: string) => opt || `Option`),
@@ -370,10 +476,10 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
         await db.questions.bulkAdd(questionRecords);
 
         // Advance to step 5 for online links sharing!
-        setCreatedExamId(newExamId);
+        setCreatedExamId(finalExamId);
         setStep(5);
-      } else {
-        onSuccess(newExamId);
+      } else if (finalExamId) {
+        onSuccess(finalExamId);
       }
     } catch (err: any) {
       alert(`Failed to create exam: ${err.message}`);
@@ -432,7 +538,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
         
         {/* Wizard Header */}
         <header className="wizard-header">
-          <div className="wizard-breadcrumb">Exams / <strong>Create exam</strong></div>
+          <div className="wizard-breadcrumb">Exams / <strong>{examId ? "Edit exam" : "Create exam"}</strong></div>
           <button className="btn-close-icon" onClick={onClose} title="Cancel">
             <X size={18} />
           </button>
@@ -1222,7 +1328,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
               </div>
 
               <div>
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 900 }}>Online Exam Created!</h3>
+                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 900 }}>{examId ? "Online Exam Updated!" : "Online Exam Created!"}</h3>
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>The online exam is successfully configured and saved in database.</p>
               </div>
 

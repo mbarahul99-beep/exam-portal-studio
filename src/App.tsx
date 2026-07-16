@@ -46,6 +46,7 @@ export default function App() {
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [onlineExamId, setOnlineExamId] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -71,7 +72,11 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const examIdStr = params.get('examId');
-    if (view === 'online-exam' && examIdStr) {
+    const onlineExamIdStr = params.get('onlineExamId');
+    
+    if (onlineExamIdStr) {
+      setOnlineExamId(Number(onlineExamIdStr));
+    } else if (view === 'online-exam' && examIdStr) {
       setOnlineExamId(Number(examIdStr));
     }
   }, []);
@@ -2271,6 +2276,7 @@ export default function App() {
                       submissions={submissions}
                       students={students}
                       onClose={() => setSelectedExamId(null)}
+                      onEdit={(examId) => setEditingExamId(examId)}
                       onPrintRedirect={(exam) => triggerPrint(exam)}
                       onDownloadJPG={(exam) => handleDownloadJPG(exam)}
                       onPrintReport={(sub) => triggerPrintReport(sub)}
@@ -2359,14 +2365,19 @@ export default function App() {
                 </div>
               )}
 
-              {/* CREATE EXAM WIZARD STEPPER MODAL */}
-              {showCreateWizard && (
+              {/* CREATE/EDIT EXAM WIZARD STEPPER MODAL */}
+              {(showCreateWizard || editingExamId !== null) && (
                 <ExamWizard 
                   classes={classes}
-                  onClose={() => setShowCreateWizard(false)}
-                  onSuccess={(newExamId) => {
+                  examId={editingExamId || undefined}
+                  onClose={() => {
                     setShowCreateWizard(false);
-                    setSelectedExamId(newExamId);
+                    setEditingExamId(null);
+                  }}
+                  onSuccess={(examId) => {
+                    setShowCreateWizard(false);
+                    setEditingExamId(null);
+                    setSelectedExamId(examId);
                   }}
                 />
               )}

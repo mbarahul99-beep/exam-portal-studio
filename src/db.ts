@@ -7,6 +7,7 @@ export interface Student {
   className: string;
   email?: string;
   phone?: string;
+  faceDescriptor?: number[]; // Vector embedding for facial biometrics
 }
 
 export interface ClassEntity {
@@ -16,6 +17,24 @@ export interface ClassEntity {
   createdAt: Date;
 }
 
+export interface ExamSubject {
+  name: string;
+  numSections: number;
+}
+
+export interface ExamSection {
+  subjectName: string;
+  sectionName: string;
+  qStart: number;
+  qCount: number;
+  questionType: '4 option' | '5 option';
+  correctMarks: number;
+  incorrectMarks: number;
+  allowPartialMarks: boolean;
+  allowOptionalAttempts: boolean;
+  maxAttempts?: number;
+}
+
 export interface Exam {
   id?: number;
   title: string;
@@ -23,14 +42,19 @@ export interface Exam {
   date: string;       // Scheduled Date (e.g. "2026-07-14")
   status: 'private' | 'public';
   numQuestions: number;
-  answerKey: Record<number, string>; // Maps question number (1-based) to answer ('A', 'B', 'C', 'D')
-  correctMarks: number;              // Marks for correct answer (e.g. +4)
-  incorrectMarks: number;            // Marks for incorrect answer (e.g. -1)
-  unansweredMarks: number;          // Marks for unanswered question (e.g. 0)
+  answerKey: Record<number, string>; // Default answer key (Maps question number to option)
+  correctMarks: number;              // Default marks for correct answer
+  incorrectMarks: number;            // Default marks for incorrect answer
+  unansweredMarks: number;          // Default marks for unanswered question
   createdAt: Date;
   startsAt?: string;                 // Scheduled time for online exam (e.g. "2026-07-16T10:00")
   durationMins?: number;             // Duration in minutes for online exam (e.g. 180)
   sectionsMarking?: Record<string, { correctMarks: number; incorrectMarks: number; unansweredMarks: number }>; // Section-wise marking scheme
+  rollNoDigits?: number;
+  examSetsCount?: number;
+  subjects?: ExamSubject[];
+  sections?: ExamSection[];
+  answerKeys?: Record<string, Record<number, string>>; // Multi-set answer keys (Set -> QNum -> Option)
 }
 
 export interface Question {
@@ -54,6 +78,7 @@ export interface ExamSubmission {
   cheatingAlertsCount?: number; // tab blurs/cheating events
   timeTakenSeconds?: number;
   attemptType?: 'OMR' | 'Online';
+  bookletSet?: string;
 }
 
 export interface AttendanceRecord {
@@ -64,6 +89,7 @@ export interface AttendanceRecord {
   status: 'Present' | 'Absent' | 'Late';
   remarks?: string;
   createdAt: Date;
+  attendanceMethod?: 'Manual' | 'QR' | 'Face';
 }
 
 class AppDatabase extends Dexie {

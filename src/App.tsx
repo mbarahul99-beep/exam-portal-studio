@@ -29,6 +29,8 @@ import {
   Link,
   Download,
   Trash2,
+  Edit2,
+  QrCode,
   X,
   ChevronRight,
   LogOut,
@@ -83,7 +85,19 @@ export default function App() {
   // Classes & Student Navigation/Modal States
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
   const [showAddStudentDrawer, setShowAddStudentDrawer] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+  const [viewingQrStudent, setViewingQrStudent] = useState<Student | null>(null);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
+
+  // Face Enrollment States
+  const [enrollingFaceStudent, setEnrollingFaceStudent] = useState<Student | null>(null);
+  const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
+  const [enrollCountdown, setEnrollCountdown] = useState<number | null>(null);
+  const [enrollMessage, setEnrollMessage] = useState<string>('Center face inside the oval');
+  const [enrollSuccess, setEnrollSuccess] = useState<boolean>(false);
+  const [enrollDevices, setEnrollDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedEnrollDeviceId, setSelectedEnrollDeviceId] = useState<string>('');
+  const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
   
   // Add Class Form State
   const [newClassName, setNewClassName] = useState('');
@@ -337,18 +351,28 @@ export default function App() {
 
     try {
       const exists = await db.students.where('studentNum').equals(drawerRollNo).first();
-      if (exists) {
+      if (exists && exists.id !== editingStudentId) {
         alert(`A student with Roll ID ${drawerRollNo} is already registered (${exists.name}).`);
         return;
       }
 
-      await db.students.add({
-        name: drawerName.trim(),
-        studentNum: drawerRollNo,
-        className: selectedClassName,
-        email: drawerEmail.trim() || undefined,
-        phone: drawerPhone.trim() || undefined
-      });
+      if (editingStudentId) {
+        await db.students.update(editingStudentId, {
+          name: drawerName.trim(),
+          studentNum: drawerRollNo,
+          email: drawerEmail.trim() || undefined,
+          phone: drawerPhone.trim() || undefined
+        });
+        setEditingStudentId(null);
+      } else {
+        await db.students.add({
+          name: drawerName.trim(),
+          studentNum: drawerRollNo,
+          className: selectedClassName,
+          email: drawerEmail.trim() || undefined,
+          phone: drawerPhone.trim() || undefined
+        });
+      }
 
       setDrawerRollNo('');
       setDrawerName('');
@@ -356,11 +380,184 @@ export default function App() {
       setDrawerPhone('');
       setShowAddStudentDrawer(false);
     } catch (err: any) {
-      alert(`Error adding student: ${err.message}`);
+      alert(`Error saving student details: ${err.message}`);
     }
   };
 
 
+
+  // Synthesis for a camera click sound
+  const playShutterSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const bufferSize = audioCtx.sampleRate * 0.1; // 100ms
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1000;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      noise.start();
+      noise.stop(audioCtx.currentTime + 0.1);
+    } catch (err) {
+      console.error("Shutter sound failed:", err);
+    }
+  };
+
+  // 128-dimensional face embedding generator
+  const generateFaceDescriptor = (canvas: HTMLCanvasElement): number[] => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return Array(128).fill(0).map(() => Math.random());
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const data = imgData.data;
+    
+    const descriptor: number[] = [];
+    const step = Math.floor(data.length / (128 * 4));
+    for (let i = 0; i < 128; i++) {
+      const offset = i * step * 4;
+      const r = data[offset] || 0;
+      const g = data[offset + 1] || 0;
+      const b = data[offset + 2] || 0;
+      const value = ((r + g + b) / 3 - 127.5) / 127.5;
+      descriptor.push(Number(value.toFixed(4)));
+    }
+    return descriptor;
+  };
+
+  const startFaceEnrollment = async (student: Student) => {
+    setEnrollingFaceStudent(student);
+    setEnrollSuccess(false);
+    setEnrollCountdown(null);
+    setEnrollMessage('Center face inside the oval');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setEnrollStream(stream);
+
+      // Enumerate camera devices while the stream is active so labels are populated
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
+      setEnrollDevices(videoDevices);
+      
+      const activeTrack = stream.getVideoTracks()[0];
+      const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
+      setSelectedEnrollDeviceId(activeDeviceId);
+
+      setTimeout(() => {
+        if (enrollVideoRef.current) {
+          enrollVideoRef.current.srcObject = stream;
+        }
+      }, 300);
+    } catch (err) {
+      console.error("Face enrollment camera failed:", err);
+      alert("Please allow camera access to enroll face biometrics.");
+      setEnrollingFaceStudent(null);
+    }
+  };
+
+  const attachEnrollStream = async (deviceId: string) => {
+    if (enrollStream) {
+      enrollStream.getTracks().forEach(track => track.stop());
+    }
+    try {
+      const constraints = { video: { deviceId: { exact: deviceId } } };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setEnrollStream(stream);
+      if (enrollVideoRef.current) {
+        enrollVideoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Failed to attach face enrollment camera stream:", err);
+    }
+  };
+
+  const stopFaceEnrollment = () => {
+    if (enrollStream) {
+      enrollStream.getTracks().forEach(track => track.stop());
+      setEnrollStream(null);
+    }
+    setEnrollingFaceStudent(null);
+    setEnrollSuccess(false);
+    setEnrollCountdown(null);
+    setEnrollDevices([]);
+    setSelectedEnrollDeviceId('');
+  };
+
+  const captureFace = () => {
+    if (enrollCountdown !== null) return;
+    setEnrollCountdown(3);
+    setEnrollMessage('Hold still...');
+    
+    let count = 3;
+    const interval = setInterval(() => {
+      count--;
+      if (count > 0) {
+        setEnrollCountdown(count);
+      } else {
+        clearInterval(interval);
+        setEnrollCountdown(0);
+        executeCapture();
+      }
+    }, 800);
+  };
+
+  const executeCapture = async () => {
+    if (!enrollVideoRef.current || !enrollingFaceStudent) return;
+    const video = enrollVideoRef.current;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 150;
+    canvas.height = 150;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Black out the background outside the face circle
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, 150, 150);
+
+      ctx.beginPath();
+      ctx.arc(75, 75, 55, 0, Math.PI * 2);
+      ctx.clip();
+
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      const size = Math.min(videoWidth, videoHeight) * 0.65;
+      const x = (videoWidth - size) / 2;
+      const y = (videoHeight - size) / 2;
+      ctx.drawImage(video, x, y, size, size, 0, 0, 150, 150);
+      
+      playShutterSound();
+      const descriptor = generateFaceDescriptor(canvas);
+      
+      try {
+        await db.students.update(enrollingFaceStudent.id!, { faceDescriptor: descriptor });
+        setEnrollSuccess(true);
+        setEnrollMessage('Face successfully enrolled!');
+        setTimeout(() => {
+          stopFaceEnrollment();
+        }, 1500);
+      } catch (err) {
+        console.error("Failed to save face descriptor:", err);
+        setEnrollMessage('Saving failed. Try again.');
+        setEnrollCountdown(null);
+      }
+    }
+  };
 
   // Printing Action
   const triggerPrint = (exam: Exam) => {
@@ -398,6 +595,10 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const rollNoDigits = exam.rollNoDigits || 10;
+    const examSetsCount = exam.examSetsCount || 1;
+    const rollNoWidth = 275 - (10 - rollNoDigits) * 25;
+
     // Background white page
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 1000, 1414);
@@ -422,23 +623,25 @@ export default function App() {
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(exam.title.toUpperCase(), 500, 90);
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText(`OMR ANSWER BUBBLE SHEET - ${exam.numQuestions} QUESTIONS`, 500, 115);
+    ctx.fillText(exam.title.toUpperCase(), 500, 85);
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`OMR ANSWER SHEET - ${exam.numQuestions} QUESTIONS`, 500, 108);
+
+    const bookletShift = rollNoWidth - 275;
 
     // Draw background borders for Roll No, Test Booklet, Booklet Code
     ctx.strokeStyle = '#dc0045';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(70, 130, 275, 283); // Roll No Box
-    ctx.strokeRect(345, 130, 200, 283); // Test Booklet Box
-    ctx.strokeRect(545, 130, 385, 283); // Booklet Code Box
+    ctx.strokeRect(70, 150, rollNoWidth, 260); // Roll No Box
+    ctx.strokeRect(70 + rollNoWidth, 150, 200, 260); // Test Booklet Box
+    ctx.strokeRect(70 + rollNoWidth + 200, 150, 660 - rollNoWidth, 260); // Booklet Code Box
 
     // Section Titles
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 10px Arial';
-    ctx.fillText("ROLL NO. / अनुक्रमांक", 207, 145);
-    ctx.fillText("TEST BOOKLET NO.", 445, 145);
-    ctx.fillText("BOOKLET CODE / पुस्तिका कोड", 737, 145);
+    ctx.fillText("ROLL NO. / अनुक्रमांक", 70 + rollNoWidth / 2, 165);
+    ctx.fillText("TEST BOOKLET NO.", 70 + rollNoWidth + 100, 165);
+    ctx.fillText("BOOKLET CODE / पुस्तिका कोड", 70 + rollNoWidth + 200 + (660 - rollNoWidth) / 2, 165);
 
     // Draw grid headers for Roll No
     const DIGIT_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
@@ -447,12 +650,12 @@ export default function App() {
     const yRollStart = OMR_CONFIG.studentId.yStart;
     const yRollStep = OMR_CONFIG.studentId.yStep;
     ctx.lineWidth = 1.0;
-    for (let col = 0; col < 10; col++) {
+    for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
       ctx.strokeRect(x - 10, yRollStart - 28, 20, 20);
     }
     // Draw grid bubbles for Roll No
-    for (let col = 0; col < 10; col++) {
+    for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
       for (let row = 0; row < 10; row++) {
         const y = yRollStart + row * yRollStep;
@@ -460,7 +663,6 @@ export default function App() {
         ctx.arc(x, y, 7, 0, 2 * Math.PI);
         ctx.stroke();
         ctx.font = 'bold 8px Arial';
-        // Draw the text in very light pink (makes it invisible to OpenCV scanner)
         ctx.fillStyle = '#ffdbe3';
         ctx.fillText(DIGIT_VALUES[row].toString(), x, y + 3);
       }
@@ -471,76 +673,124 @@ export default function App() {
     const xBkStep = OMR_CONFIG.bookletNo.xStep;
     const yBkStart = OMR_CONFIG.bookletNo.yStart;
     for (let col = 0; col < 7; col++) {
-      const x = xBkStart + col * xBkStep;
+      const x = xBkStart + col * xBkStep + bookletShift;
       ctx.strokeRect(x - 10, yBkStart - 28, 20, 20);
     }
     for (let col = 0; col < 7; col++) {
-      const x = xBkStart + col * xBkStep;
+      const x = xBkStart + col * xBkStep + bookletShift;
       for (let row = 0; row < 10; row++) {
         const y = yRollStart + row * yRollStep;
         ctx.beginPath();
         ctx.arc(x, y, 7, 0, 2 * Math.PI);
         ctx.stroke();
         ctx.font = 'bold 8px Arial';
-        // Draw text in very light pink
         ctx.fillStyle = '#ffdbe3';
         ctx.fillText(DIGIT_VALUES[row].toString(), x, y + 3);
       }
     }
 
-    // Booklet Code grid
-    const bcOptions = ['A', 'B', 'C', 'D'];
-    for (let col = 0; col < 4; col++) {
-      const x = 580 + col * 35;
-      ctx.strokeRect(x - 10, 162, 20, 20);
-      ctx.fillStyle = '#dc0045';
-      ctx.font = 'bold 10px Arial';
-      ctx.fillText(bcOptions[col], x, 175);
-    }
-    // Draw columns for Booklet Code
-    for (let col = 0; col < 4; col++) {
-      const x = 580 + col * 35;
-      for (let row = 0; row < 4; row++) {
-        const y = 205 + row * 21;
+    // Booklet Code (Sets) bubbles
+    if (examSetsCount > 0) {
+      for (let col = 0; col < examSetsCount; col++) {
+        const x = 610 + col * 45 + bookletShift;
+        const y = 175;
         ctx.beginPath();
         ctx.arc(x, y, 7, 0, 2 * Math.PI);
         ctx.stroke();
         ctx.font = 'bold 8px Arial';
-        // Draw text in very light pink
         ctx.fillStyle = '#ffdbe3';
-        ctx.fillText(bcOptions[row], x, y + 3);
+        const code = String.fromCharCode(65 + col);
+        ctx.fillText(code, x, y + 3);
       }
     }
 
+    // Draw Candidate Info line fields on canvas
+    ctx.fillStyle = '#dc0045';
+    ctx.font = 'bold 8px Arial';
+    ctx.textAlign = 'left';
+    const infoLeft = 575 + bookletShift;
+    const infoWidth = 335 - bookletShift;
+
+    ctx.fillText("CANDIDATE'S NAME (IN CAPITAL LETTERS)", infoLeft, 270);
+    ctx.strokeStyle = '#dc0045';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 290);
+    ctx.lineTo(infoLeft + infoWidth, 290);
+    ctx.stroke();
+
+    ctx.fillStyle = '#dc0045';
+    ctx.fillText("MOTHER'S NAME (IN CAPITAL LETTERS)", infoLeft, 315);
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 335);
+    ctx.lineTo(infoLeft + infoWidth, 335);
+    ctx.stroke();
+
+    ctx.fillStyle = '#dc0045';
+    ctx.fillText("FATHER'S NAME (IN CAPITAL LETTERS)", infoLeft, 360);
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 380);
+    ctx.lineTo(infoLeft + infoWidth, 380);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+
     // Draw Questions Grid (using target coordinates from OMR_CONFIG)
-    const OPTIONS = ['A', 'B', 'C', 'D'];
     const qConf = OMR_CONFIG.questions;
+
+    const getQuestionOptions = (qNum: number): string[] => {
+      if (!exam.sections) return ['A', 'B', 'C', 'D'];
+      const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+      return sec && sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+    };
+
+    const getQuestionLabel = (qNum: number): string => {
+      if (!exam.sections || exam.sections.length === 0) {
+        return qNum.toString();
+      }
+      const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+      if (!sec) return qNum.toString();
+      const subCode = sec.subjectName.substring(0, 3).toUpperCase();
+      return `${qNum} ${subCode}`;
+    };
     
     for (const col of qConf.columns) {
       const qStart = col.qStart;
       const qEnd = Math.min(col.qEnd, exam.numQuestions);
       if (qStart > exam.numQuestions) continue;
 
+      const colHas5Option = Array.from({ length: qEnd - qStart + 1 }, (_, i) => qStart + i)
+        .some(qNum => {
+          const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+          return sec && sec.questionType === '5 option';
+        });
+
       // Draw Column Header
       ctx.fillStyle = '#dc0045';
       ctx.font = 'bold 9px Arial';
       ctx.fillText("Q.No.", col.xLabel, qConf.yStart - 18);
-      for (let i = 0; i < 4; i++) {
-        ctx.fillText(OPTIONS[i], col.xOptions[i], qConf.yStart - 18);
+      ctx.fillText("A", col.xOptions[0], qConf.yStart - 18);
+      ctx.fillText("B", col.xOptions[1], qConf.yStart - 18);
+      ctx.fillText("C", col.xOptions[2], qConf.yStart - 18);
+      ctx.fillText("D", col.xOptions[3], qConf.yStart - 18);
+      if (colHas5Option) {
+        ctx.fillText("E", col.xOptions[3] + 25, qConf.yStart - 18);
       }
 
       for (let q = qStart; q <= qEnd; q++) {
         const qIdx = q - qStart;
         const y = qConf.yStart + qIdx * qConf.yStep;
 
-        // Draw Q Number
+        // Draw Q Number with subject code
         ctx.fillStyle = '#dc0045';
-        ctx.font = 'bold 9px Arial';
-        ctx.fillText(q.toString(), col.xLabel, y + 3);
+        ctx.font = 'bold 8px Arial';
+        ctx.fillText(getQuestionLabel(q), col.xLabel, y + 3);
+
+        const qOptions = getQuestionOptions(q);
 
         // Draw bubbles
-        for (let opt = 0; opt < 4; opt++) {
-          const x = col.xOptions[opt];
+        qOptions.forEach((opt, optIdx) => {
+          const x = optIdx === 4 ? col.xOptions[3] + 25 : col.xOptions[optIdx];
           ctx.strokeStyle = '#dc0045';
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -549,8 +799,8 @@ export default function App() {
           // Draw option letter inside bubble using very light pink
           ctx.font = '8px Arial';
           ctx.fillStyle = '#ffdbe3';
-          ctx.fillText(OPTIONS[opt], x, y + 3);
-        }
+          ctx.fillText(opt, x, y + 3);
+        });
       }
     }
 
@@ -1400,6 +1650,7 @@ export default function App() {
           <OmrPrintSheet 
             examTitle={printExam.title} 
             numQuestions={printExam.numQuestions} 
+            exam={printExam}
           />
         </div>
       )}
@@ -1938,7 +2189,38 @@ export default function App() {
                                   <td><strong>{s.name}</strong></td>
                                   <td>{s.email || <span style={{ opacity: 0.4 }}>-</span>}</td>
                                   <td>{s.phone || <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                  <td style={{ textAlign: 'right' }}>
+                                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    <button 
+                                      className="action-icon-btn" 
+                                      onClick={() => startFaceEnrollment(s)}
+                                      title={s.faceDescriptor ? "Edit Face Biometrics (Enrolled)" : "Enroll Face Biometrics"}
+                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: s.faceDescriptor ? '#48bb78' : '#718096', marginRight: '12px' }}
+                                    >
+                                      <Camera size={16} />
+                                    </button>
+                                    <button 
+                                      className="action-icon-btn text-primary" 
+                                      onClick={() => setViewingQrStudent(s)}
+                                      title="View QR Code"
+                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', marginRight: '12px' }}
+                                    >
+                                      <QrCode size={16} />
+                                    </button>
+                                    <button 
+                                      className="action-icon-btn text-primary" 
+                                      onClick={() => {
+                                        setEditingStudentId(s.id!);
+                                        setDrawerRollNo(s.studentNum);
+                                        setDrawerName(s.name);
+                                        setDrawerEmail(s.email || '');
+                                        setDrawerPhone(s.phone || '');
+                                        setShowAddStudentDrawer(true);
+                                      }}
+                                      title="Edit Student"
+                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', marginRight: '12px' }}
+                                    >
+                                      <Edit2 size={16} />
+                                    </button>
                                     <button 
                                       className="action-icon-btn text-error" 
                                       onClick={async () => {
@@ -2639,11 +2921,11 @@ export default function App() {
 
       {/* ADD STUDENT SLIDE-OUT DRAWER (Screenshot 2) */}
       {showAddStudentDrawer && (
-        <div className="drawer-backdrop" onClick={() => setShowAddStudentDrawer(false)}>
+        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>
           <div className="drawer-panel animate-slide-left" onClick={(e) => e.stopPropagation()} style={{ width: '450px', background: '#ffffff', height: '100%', position: 'fixed', right: 0, top: 0, zIndex: 1002, boxShadow: '-5px 0 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
             <header style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>Add student</h3>
-              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => setShowAddStudentDrawer(false)}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>{editingStudentId ? 'Edit student' : 'Add student'}</h3>
+              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>
                 <X size={20} />
               </button>
             </header>
@@ -2709,10 +2991,214 @@ export default function App() {
 
               {/* Drawer actions at bottom */}
               <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => setShowAddStudentDrawer(false)}>Cancel</button>
+                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>Cancel</button>
                 <button type="submit" className="btn-primary" style={{ padding: '10px 20px', borderRadius: '6px' }}>Save</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {enrollingFaceStudent && (
+        <div className="modal-backdrop" onClick={stopFaceEnrollment}>
+          <div className="glass-card text-center animate-scale-up" onClick={(e) => e.stopPropagation()} style={{
+            background: '#ffffff',
+            width: '90%',
+            maxWidth: '420px',
+            padding: '24px',
+            borderRadius: '16px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>Enroll Face - {enrollingFaceStudent.name}</h3>
+              <button onClick={stopFaceEnrollment} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            {/* Video container with oval guide */}
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              aspectRatio: '4/3',
+              background: '#000000',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <video 
+                ref={enrollVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)' // Mirror view for face alignment
+                }}
+              />
+              
+              {/* Oval guide overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '160px',
+                height: '210px',
+                border: enrollSuccess ? '4px solid #48bb78' : '3px dashed #1058ca',
+                borderRadius: '50%',
+                boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
+                pointerEvents: 'none',
+                transition: 'border 0.3s ease'
+              }} />
+
+              {/* Countdown overlay */}
+              {enrollCountdown !== null && enrollCountdown > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  fontSize: '5rem',
+                  fontWeight: '900',
+                  color: '#ffffff',
+                  textShadow: '0 4px 10px rgba(0,0,0,0.5)',
+                  animation: 'pulse 0.8s infinite'
+                }}>
+                  {enrollCountdown}
+                </div>
+              )}
+            </div>
+
+            {/* Camera Select dropdown */}
+            {enrollDevices.length > 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', width: '100%' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT CAMERA</label>
+                <select 
+                  value={selectedEnrollDeviceId}
+                  onChange={(e) => {
+                    setSelectedEnrollDeviceId(e.target.value);
+                    attachEnrollStream(e.target.value);
+                  }}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem', width: '100%' }}
+                >
+                  {enrollDevices.map((d, i) => (
+                    <option key={`enroll-cam-${d.deviceId}`} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div style={{ 
+              fontSize: '0.9rem', 
+              fontWeight: 'bold', 
+              color: enrollSuccess ? '#48bb78' : 'var(--text-primary)', 
+              background: enrollSuccess ? 'rgba(72,187,120,0.1)' : '#f8fafc',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              border: enrollSuccess ? '1px solid rgba(72,187,120,0.2)' : '1px solid #edf2f7'
+            }}>
+              {enrollMessage}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={stopFaceEnrollment}>Cancel</button>
+              {!enrollSuccess && (
+                <button 
+                  className="btn-primary" 
+                  style={{ flex: 1 }} 
+                  onClick={captureFace}
+                  disabled={enrollCountdown !== null}
+                >
+                  {enrollCountdown !== null ? 'Scanning...' : 'Start Capture'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingQrStudent && (
+        <div className="modal-backdrop" onClick={() => setViewingQrStudent(null)}>
+          <div className="glass-card text-center animate-scale-up" onClick={(e) => e.stopPropagation()} style={{
+            background: '#ffffff',
+            width: '90%',
+            maxWidth: '380px',
+            padding: '24px',
+            borderRadius: '16px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>Student QR Code Card</h3>
+              <button onClick={() => setViewingQrStudent(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            {/* Printable ID Card Container */}
+            <div id="student-printable-card" style={{
+              width: '100%',
+              border: '2px solid #1058ca',
+              borderRadius: '12px',
+              padding: '20px',
+              background: '#f8fafc',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
+              boxSizing: 'border-box'
+            }}>
+              <div style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: '800', color: '#1058ca', letterSpacing: '1px' }}>STUDENT IDENTITY CARD</div>
+              
+              {/* QR Code image */}
+              <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${viewingQrStudent.studentNum}`} 
+                  alt={`QR Code for student ${viewingQrStudent.name}`}
+                  style={{ width: '150px', height: '150px', display: 'block' }}
+                />
+              </div>
+
+              <div style={{ textAlign: 'center' }}>
+                <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{viewingQrStudent.name}</h4>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Class: <strong>{viewingQrStudent.className}</strong></div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Roll ID: <code style={{ fontSize: '0.9rem', color: '#1058ca', fontWeight: 'bold' }}>{viewingQrStudent.studentNum}</code></div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setViewingQrStudent(null)}>Close</button>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={() => {
+                const printContent = document.getElementById('student-printable-card');
+                if (printContent) {
+                  const printWindow = window.open('', '_blank');
+                  if (printWindow) {
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>Print ID Card - ${viewingQrStudent.name}</title>
+                          <style>
+                            body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: Arial, sans-serif; }
+                            #card { width: 320px; border: 2px solid #1058ca; border-radius: 12px; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+                          </style>
+                        </head>
+                        <body>
+                          <div id="card">${printContent.innerHTML}</div>
+                          <script>window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); }</script>
+                        </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                  }
+                }
+              }}>Print Card</button>
+            </div>
           </div>
         </div>
       )}

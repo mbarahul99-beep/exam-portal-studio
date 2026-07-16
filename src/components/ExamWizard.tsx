@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
-import { Calendar, CheckCircle, X } from 'lucide-react';
+import { Calendar, X, HelpCircle } from 'lucide-react';
 import { db } from '../db';
-
-import { type ClassEntity } from '../db';
+import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 
 interface ExamWizardProps {
   classes: ClassEntity[];
   onClose: () => void;
   onSuccess: (examId: number) => void;
+}
+
+interface SectionState {
+  subjectName: string;
+  sectionName: string;
+  qCount: number;
+  questionType: '4 option' | '5 option';
+  correctMarks: number;
+  incorrectMarks: number;
+  allowPartialMarks: boolean;
+  allowOptionalAttempts: boolean;
+  maxAttempts: number;
 }
 
 export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSuccess }) => {
@@ -26,15 +37,194 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
   const [examMode, setExamMode] = useState<'offline' | 'online'>('offline');
 
   // Step 2: Subject Details States
-  const [numQuestions, setNumQuestions] = useState(20);
-  const [answerKey, setAnswerKey] = useState<Record<number, string>>({});
+  const [rollNoDigits, setRollNoDigits] = useState(6);
+  const [examSetsCount, setExamSetsCount] = useState(2);
+  const [numSubjects, setNumSubjects] = useState(3);
+  const [subjectsList, setSubjectsList] = useState<ExamSubject[]>([
+    { name: 'Subject 1', numSections: 1 },
+    { name: 'Subject 2', numSections: 1 },
+    { name: 'Subject 3', numSections: 1 }
+  ]);
 
   // Step 3: Section Details States
-  const [correctMarks, setCorrectMarks] = useState(4); // NEET Default (+4)
-  const [incorrectMarks, setIncorrectMarks] = useState(-1); // NEET Default (-1)
-  const [unansweredMarks, setUnansweredMarks] = useState(0);
+  const [sectionsList, setSectionsList] = useState<SectionState[]>([]);
 
-  // Validation
+  // Step 4: Answer Keys (Tabbed by Set, e.g. "A", "B", "C", "D")
+  const [activeSetTab, setActiveSetTab] = useState('A');
+  const [answerKeys, setAnswerKeys] = useState<Record<string, Record<number, string>>>({
+    'A': {},
+    'B': {},
+    'C': {},
+    'D': {}
+  });
+
+  const renderStepCircle = (stepNum: number) => {
+    if (step > stepNum) {
+      return (
+        <span className="step-num completed">
+          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </span>
+      );
+    }
+    return <span className={`step-num ${step === stepNum ? 'active' : ''}`}>{stepNum}</span>;
+  };
+
+  // Calculate dynamic ranges and total questions
+  let qCursor = 1;
+  const sectionsWithRanges = sectionsList.map(sec => {
+    const start = qCursor;
+    const end = qCursor + sec.qCount - 1;
+    qCursor = end + 1;
+    return { ...sec, qStart: start, qEnd: end };
+  });
+  const totalQuestions = qCursor - 1;
+
+  // Step 2 Counter Handlers
+  const handleSubjectsCountChange = (newCount: number) => {
+    if (newCount < 1 || newCount > 10) return;
+    setNumSubjects(newCount);
+    setSubjectsList(prev => {
+      const updated = [...prev];
+      if (newCount > prev.length) {
+        for (let i = prev.length; i < newCount; i++) {
+          updated.push({ name: `Subject ${i + 1}`, numSections: 1 });
+        }
+      } else {
+        updated.splice(newCount);
+      }
+      return updated;
+    });
+  };
+
+  const handleSubjectNameChange = (idx: number, name: string) => {
+    setSubjectsList(prev => {
+      const updated = [...prev];
+      updated[idx].name = name;
+      return updated;
+    });
+  };
+
+  const handleSubjectSectionsChange = (idx: number, numSections: number) => {
+    setSubjectsList(prev => {
+      const updated = [...prev];
+      updated[idx].numSections = numSections;
+      return updated;
+    });
+  };
+
+  // Step Transitions
+  const handleGoToStep3 = () => {
+    // Generate sections list based on subjects configuration
+    const list: SectionState[] = [];
+    subjectsList.forEach(sub => {
+      for (let s = 1; s <= sub.numSections; s++) {
+        // Try to preserve existing config if matches
+        const existing = sectionsList.find(sec => sec.subjectName === sub.name && sec.sectionName === `Section ${s}`);
+        if (existing) {
+          list.push(existing);
+        } else {
+          list.push({
+            subjectName: sub.name,
+            sectionName: `Section ${s}`,
+            qCount: 5, // default questions per section
+            questionType: '4 option',
+            correctMarks: 4,
+            incorrectMarks: -1,
+            allowPartialMarks: false,
+            allowOptionalAttempts: false,
+            maxAttempts: 5
+          });
+        }
+      }
+    });
+    setSectionsList(list);
+    setStep(3);
+  };
+
+  const handleGoToStep4 = () => {
+    // Validate question counts
+    for (const sec of sectionsList) {
+      if (sec.qCount <= 0) {
+        alert('Each section must have at least 1 question.');
+        return;
+      }
+    }
+
+    // Initialize answer keys with default 'A'
+    const updatedKeys = { ...answerKeys };
+    const sets = Array.from({ length: examSetsCount }).map((_, i) => String.fromCharCode(65 + i));
+    
+    sets.forEach(setName => {
+      if (!updatedKeys[setName]) {
+        updatedKeys[setName] = {};
+      }
+      for (let q = 1; q <= totalQuestions; q++) {
+        if (!updatedKeys[setName][q]) {
+          updatedKeys[setName][q] = 'A';
+        }
+      }
+    });
+    
+    setAnswerKeys(updatedKeys);
+    setActiveSetTab(sets[0]);
+    setStep(4);
+  };
+
+  const handleOptionSelect = (setName: string, qNum: number, option: string) => {
+    setAnswerKeys(prev => ({
+      ...prev,
+      [setName]: {
+        ...prev[setName],
+        [qNum]: option
+      }
+    }));
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const finalSubjects: ExamSubject[] = subjectsList;
+      const finalSections: ExamSection[] = sectionsWithRanges.map(sec => ({
+        subjectName: sec.subjectName,
+        sectionName: sec.sectionName,
+        qStart: sec.qStart,
+        qCount: sec.qCount,
+        questionType: sec.questionType,
+        correctMarks: sec.correctMarks,
+        incorrectMarks: sec.incorrectMarks,
+        allowPartialMarks: sec.allowPartialMarks,
+        allowOptionalAttempts: sec.allowOptionalAttempts,
+        maxAttempts: sec.allowOptionalAttempts ? sec.maxAttempts : undefined
+      }));
+
+      // Set A key is default fallback
+      const defaultAnswerKey = answerKeys['A'] || {};
+
+      const newExamId = await db.exams.add({
+        title: examName,
+        className,
+        date: examDate,
+        status: 'private',
+        numQuestions: totalQuestions,
+        answerKey: defaultAnswerKey,
+        correctMarks: sectionsList[0]?.correctMarks ?? 4,
+        incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
+        unansweredMarks: 0,
+        rollNoDigits,
+        examSetsCount,
+        subjects: finalSubjects,
+        sections: finalSections,
+        answerKeys,
+        createdAt: new Date()
+      });
+
+      onSuccess(newExamId);
+    } catch (err: any) {
+      alert(`Failed to create exam: ${err.message}`);
+    }
+  };
+
   const handleNextStep = () => {
     if (step === 1) {
       if (!examName.trim()) {
@@ -43,80 +233,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
       }
       setStep(2);
     } else if (step === 2) {
-      // Ensure all questions have a key
-      const missingKeys = [];
-      for (let q = 1; q <= numQuestions; q++) {
-        if (!answerKey[q]) {
-          missingKeys.push(q);
-        }
-      }
-      if (missingKeys.length > 0) {
-        if (!confirm(`Questions ${missingKeys.slice(0, 5).join(', ')}${missingKeys.length > 5 ? '...' : ''} do not have answer keys set. Default to option 'A'?`)) {
-          return;
-        }
-        // Fill missing keys with 'A'
-        const updatedKeys = { ...answerKey };
-        for (let q = 1; q <= numQuestions; q++) {
-          if (!updatedKeys[q]) {
-            updatedKeys[q] = 'A';
-          }
-        }
-        setAnswerKey(updatedKeys);
-      }
-      setStep(3);
+      handleGoToStep3();
     } else if (step === 3) {
-      setStep(4);
+      handleGoToStep4();
     }
   };
 
   const handlePrevStep = () => {
     if (step > 1) {
       setStep((step - 1) as any);
-    }
-  };
-
-  const handleOptionSelect = (qNum: number, option: string) => {
-    setAnswerKey(prev => ({ ...prev, [qNum]: option }));
-  };
-
-  const applyTemplate = (type: 'neet' | 'standard' | 'binary') => {
-    if (type === 'neet') {
-      setCorrectMarks(4);
-      setIncorrectMarks(-1);
-    } else if (type === 'standard') {
-      setCorrectMarks(1);
-      setIncorrectMarks(0);
-    } else if (type === 'binary') {
-      setCorrectMarks(2);
-      setIncorrectMarks(-0.5);
-    }
-  };
-
-  const handleSubmit = async () => {
-    // Fill any missing keys with 'A' just in case
-    const finalKey = { ...answerKey };
-    for (let q = 1; q <= numQuestions; q++) {
-      if (!finalKey[q]) {
-        finalKey[q] = 'A';
-      }
-    }
-
-    try {
-      const newExamId = await db.exams.add({
-        title: examName,
-        className,
-        date: examDate,
-        status: 'private',
-        numQuestions,
-        answerKey: finalKey,
-        correctMarks,
-        incorrectMarks,
-        unansweredMarks,
-        createdAt: new Date()
-      });
-      onSuccess(newExamId);
-    } catch (err: any) {
-      alert(`Failed to create exam: ${err.message}`);
     }
   };
 
@@ -132,26 +257,26 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
           </button>
         </header>
 
-        {/* Stepper progress bar */}
+        {/* Stepper Progress Bar */}
         <div className="wizard-stepper">
           <div className={`step-item ${step >= 1 ? 'active' : ''}`}>
-            <span className="step-num">1</span>
+            {renderStepCircle(1)}
             <span className="step-label">Basic Details</span>
           </div>
-          <div className="step-line" />
+          <div className={`step-line ${step >= 2 ? 'active' : ''}`} />
           <div className={`step-item ${step >= 2 ? 'active' : ''}`}>
-            <span className="step-num">2</span>
+            {renderStepCircle(2)}
             <span className="step-label">Subject Details</span>
           </div>
-          <div className="step-line" />
+          <div className={`step-line ${step >= 3 ? 'active' : ''}`} />
           <div className={`step-item ${step >= 3 ? 'active' : ''}`}>
-            <span className="step-num">3</span>
+            {renderStepCircle(3)}
             <span className="step-label">Section Details</span>
           </div>
-          <div className="step-line" />
+          <div className={`step-line ${step >= 4 ? 'active' : ''}`} />
           <div className={`step-item ${step >= 4 ? 'active' : ''}`}>
-            <span className="step-num">4</span>
-            <span className="step-label">Preview</span>
+            {renderStepCircle(4)}
+            <span className="step-label">Preview & Keys</span>
           </div>
         </div>
 
@@ -163,20 +288,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
             <div className="wizard-step-content animate-fade-in">
               <div className="form-row-three">
                 
-                {/* Class Name Dropdown */}
+                {/* Class Name */}
                 <div className="floating-field">
                   <label>Class Name</label>
-                  <select 
-                    value={className} 
-                    onChange={(e) => setClassName(e.target.value)}
-                  >
+                  <select value={className} onChange={(e) => setClassName(e.target.value)}>
                     {classes.length === 0 ? (
                       <>
                         <option value="NEET">NEET</option>
                         <option value="JEE">JEE</option>
                         <option value="Grade 12-A">Grade 12-A</option>
-                        <option value="Grade 12-B">Grade 12-B</option>
-                        <option value="Grade 11-A">Grade 11-A</option>
                       </>
                     ) : (
                       classes.map(c => (
@@ -186,7 +306,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
                   </select>
                 </div>
 
-                {/* Exam Name Input */}
+                {/* Exam Name */}
                 <div className="floating-field">
                   <label>Exam Name *</label>
                   <input 
@@ -198,21 +318,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
                   />
                 </div>
 
-                {/* Choose Exam Date */}
+                {/* Exam Date */}
                 <div className="floating-field field-date">
                   <label className="float-lbl">Choose Exam Date</label>
                   <div className="date-input-wrapper">
-                    <input 
-                      type="date" 
-                      value={examDate} 
-                      onChange={(e) => setExamDate(e.target.value)} 
-                    />
+                    <input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
                     <Calendar className="cal-icon" size={16} />
                   </div>
                 </div>
               </div>
 
-              {/* Exam Mode Checkboxes */}
+              {/* Exam Mode */}
               <div className="exam-mode-group">
                 <label className="mode-title-lbl">Exam Mode *</label>
                 <div className="checkbox-row">
@@ -237,109 +353,219 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
             </div>
           )}
 
-          {/* STEP 2: SUBJECT DETAILS (Questions & Answer Key Selection) */}
+          {/* STEP 2: SUBJECT DETAILS */}
           {step === 2 && (
             <div className="wizard-step-content animate-fade-in">
-              <div className="form-group mb-4" style={{ maxWidth: '280px' }}>
-                <label style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Number of Questions (Limit 200)</label>
-                <input 
-                  type="number" 
-                  min={5} 
-                  max={200} 
-                  value={numQuestions} 
-                  onChange={(e) => {
-                    const val = Math.max(5, Math.min(200, Number(e.target.value) || 20));
-                    setNumQuestions(val);
-                  }}
-                  className="w-full mt-1"
-                />
+              <div className="subject-details-setup-row mb-4">
+                {/* Roll No Digits */}
+                <div className="counter-picker">
+                  <label>ROLL NO. DIGITS</label>
+                  <div className="counter-controls">
+                    <button type="button" className="btn-count-dec" onClick={() => setRollNoDigits(prev => Math.max(4, prev - 1))}>-</button>
+                    <span className="counter-val">{rollNoDigits}</span>
+                    <button type="button" className="btn-count-inc" onClick={() => setRollNoDigits(prev => Math.min(15, prev + 1))}>+</button>
+                  </div>
+                </div>
+
+                {/* Exam Sets */}
+                <div className="counter-picker">
+                  <label>EXAM SETS</label>
+                  <div className="counter-controls">
+                    <button type="button" className="btn-count-dec" onClick={() => setExamSetsCount(prev => Math.max(1, prev - 1))}>-</button>
+                    <span className="counter-val">{examSetsCount}</span>
+                    <button type="button" className="btn-count-inc" onClick={() => setExamSetsCount(prev => Math.min(4, prev + 1))}>+</button>
+                  </div>
+                </div>
+
+                {/* Subjects */}
+                <div className="counter-picker">
+                  <label>SUBJECTS</label>
+                  <div className="counter-controls">
+                    <button type="button" className="btn-count-dec" onClick={() => handleSubjectsCountChange(numSubjects - 1)}>-</button>
+                    <span className="counter-val">{numSubjects}</span>
+                    <button type="button" className="btn-count-inc" onClick={() => handleSubjectsCountChange(numSubjects + 1)}>+</button>
+                  </div>
+                </div>
               </div>
 
-              <div className="key-builder-wizard">
-                <h4 style={{ fontSize: '0.95rem', margin: '0 0 10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
-                  Set Correct Answers (Tick Key)
-                </h4>
-                
-                <div className="key-grid-scroll">
-                  {Array.from({ length: numQuestions }).map((_, idx) => {
-                    const qNum = idx + 1;
-                    return (
-                      <div key={`wiz-key-${qNum}`} className="key-row-item">
-                        <span className="q-label-number">Q{String(qNum).padStart(2, '0')}</span>
-                        <div className="opt-bubble-row">
-                          {['A', 'B', 'C', 'D'].map(opt => (
-                            <button
-                              key={`wiz-opt-${qNum}-${opt}`}
-                              className={`wiz-opt-btn ${answerKey[qNum] === opt ? 'active' : ''}`}
-                              onClick={() => handleOptionSelect(qNum, opt)}
-                            >
-                              {opt}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              {/* Table of Subjects */}
+              <div style={{ overflowX: 'auto', width: '100%' }}>
+                <table className="wizard-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '80px', textAlign: 'center' }}>SR NO</th>
+                      <th>SUBJECT</th>
+                      <th style={{ width: '200px' }}>SECTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subjectsList.map((sub, idx) => (
+                      <tr key={`wiz-sub-row-${idx}`}>
+                        <td style={{ fontWeight: 'bold', textAlign: 'center', fontSize: '1rem' }}>{idx + 1}</td>
+                        <td>
+                          <input 
+                            type="text" 
+                            value={sub.name} 
+                            onChange={(e) => handleSubjectNameChange(idx, e.target.value)}
+                            className="wizard-table-input"
+                            placeholder={`Subject ${idx + 1}`}
+                          />
+                        </td>
+                        <td>
+                          <select 
+                            value={sub.numSections} 
+                            onChange={(e) => handleSubjectSectionsChange(idx, Number(e.target.value))}
+                            className="wizard-table-select"
+                          >
+                            <option value={1}>1</option>
+                            <option value={2}>2</option>
+                            <option value={3}>3</option>
+                            <option value={4}>4</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
-          {/* STEP 3: SECTION DETAILS (Marking Scheme Details) */}
+          {/* STEP 3: SECTION DETAILS */}
           {step === 3 && (
-            <div className="wizard-step-content animate-fade-in">
-              <h3 style={{ fontSize: '1.1rem', margin: '0 0 12px 0' }}>Configure Marking Scheme</h3>
-              <p className="subtitle mb-4">Set point systems for calculated grading. Ticks will add points, incorrect bubbles will deduct.</p>
+            <div className="wizard-step-content animate-fade-in" style={{ overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
+              {subjectsList.map((sub, subIdx) => {
+                const subSections = sectionsList.filter(sec => sec.subjectName === sub.name);
+                
+                return (
+                  <div key={`wiz-sub-grp-${subIdx}`} className="subject-section-group mb-4">
+                    <h3 className="subject-section-title">
+                      {sub.name}
+                    </h3>
+                    
+                    {subSections.map((sec) => {
+                      const globalIdx = sectionsList.findIndex(s => s.subjectName === sub.name && s.sectionName === sec.sectionName);
+                      
+                      const updateSection = (fields: Partial<SectionState>) => {
+                        setSectionsList(prev => {
+                          const updated = [...prev];
+                          updated[globalIdx] = { ...updated[globalIdx], ...fields };
+                          return updated;
+                        });
+                      };
 
-              {/* Template Quick Selectors */}
-              <div className="template-selectors mb-4">
-                <button className="btn-seed" style={{ padding: '6px 12px' }} onClick={() => applyTemplate('neet')}>
-                  NEET Scheme (+4 / -1)
-                </button>
-                <button className="btn-seed" style={{ padding: '6px 12px' }} onClick={() => applyTemplate('standard')}>
-                  General Board (+1 / 0)
-                </button>
-                <button className="btn-seed" style={{ padding: '6px 12px' }} onClick={() => applyTemplate('binary')}>
-                  JEE Style (+2 / -0.5)
-                </button>
-              </div>
+                      return (
+                        <div key={`sec-card-${globalIdx}`} className="section-config-card glass-card mb-3">
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                            <div className="floating-field">
+                              <label>Section name</label>
+                              <input 
+                                type="text" 
+                                value={sec.sectionName} 
+                                onChange={(e) => updateSection({ sectionName: e.target.value })}
+                              />
+                            </div>
 
-              <div className="form-row-three">
-                <div className="floating-field">
-                  <label>Correct Answer Marks</label>
-                  <input 
-                    type="number" 
-                    value={correctMarks} 
-                    onChange={(e) => setCorrectMarks(isNaN(Number(e.target.value)) ? 1 : Number(e.target.value))}
-                  />
-                </div>
-                <div className="floating-field">
-                  <label>Incorrect Answer Marks (Negative)</label>
-                  <input 
-                    type="number" 
-                    value={incorrectMarks} 
-                    onChange={(e) => setIncorrectMarks(isNaN(Number(e.target.value)) ? 0 : Number(e.target.value))}
-                  />
-                </div>
-                <div className="floating-field">
-                  <label>Unanswered Marks</label>
-                  <input 
-                    type="number" 
-                    value={unansweredMarks} 
-                    onChange={(e) => setUnansweredMarks(isNaN(Number(e.target.value)) ? 0 : Number(e.target.value))}
-                  />
-                </div>
-              </div>
+                            <div className="floating-field">
+                              <label>Number of Questions</label>
+                              <select 
+                                value={sec.qCount} 
+                                onChange={(e) => updateSection({ qCount: Number(e.target.value) })}
+                              >
+                                {Array.from({ length: 50 }).map((_, i) => (
+                                  <option key={`sec-qc-${i + 1}`} value={i + 1}>{i + 1}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="floating-field">
+                              <label>Question Type</label>
+                              <select 
+                                value={sec.questionType} 
+                                onChange={(e) => updateSection({ questionType: e.target.value as any })}
+                              >
+                                <option value="4 option">4 option</option>
+                                <option value="5 option">5 option</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                            <div className="floating-field">
+                              <label>Marks for correct</label>
+                              <select 
+                                value={sec.correctMarks} 
+                                onChange={(e) => updateSection({ correctMarks: Number(e.target.value) })}
+                              >
+                                <option value={1}>1</option>
+                                <option value={2}>2</option>
+                                <option value={3}>3</option>
+                                <option value={4}>4</option>
+                                <option value={5}>5</option>
+                              </select>
+                            </div>
+
+                            <div className="floating-field">
+                              <label>Marks for incorrect</label>
+                              <select 
+                                value={sec.incorrectMarks} 
+                                onChange={(e) => updateSection({ incorrectMarks: Number(e.target.value) })}
+                              >
+                                <option value={0}>0</option>
+                                <option value={-0.25}>-0.25</option>
+                                <option value={-0.5}>-0.5</option>
+                                <option value={-1}>-1</option>
+                              </select>
+                            </div>
+
+                            {sec.allowOptionalAttempts && (
+                              <div className="floating-field">
+                                <label>Max attempts</label>
+                                <select 
+                                  value={sec.maxAttempts} 
+                                  onChange={(e) => updateSection({ maxAttempts: Number(e.target.value) })}
+                                >
+                                  {Array.from({ length: sec.qCount }).map((_, i) => (
+                                    <option key={`max-att-${i + 1}`} value={i + 1}>{i + 1}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="wiz-checkbox-row">
+                            <label className="wiz-checkbox-label">
+                              <input 
+                                type="checkbox" 
+                                checked={sec.allowPartialMarks} 
+                                onChange={(e) => updateSection({ allowPartialMarks: e.target.checked })} 
+                              />
+                              <span>Allow partial marks</span>
+                              <HelpCircle size={14} style={{ opacity: 0.5 }} />
+                            </label>
+
+                            <label className="wiz-checkbox-label">
+                              <input 
+                                type="checkbox" 
+                                checked={sec.allowOptionalAttempts} 
+                                onChange={(e) => updateSection({ allowOptionalAttempts: e.target.checked, maxAttempts: Math.min(sec.maxAttempts, sec.qCount) })} 
+                              />
+                              <span>Allow optional attempts</span>
+                              <HelpCircle size={14} style={{ opacity: 0.5 }} />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* STEP 4: PREVIEW DETAILS */}
+          {/* STEP 4: PREVIEW & KEYS */}
           {step === 4 && (
-            <div className="wizard-step-content animate-fade-in">
-              <h3 style={{ fontSize: '1.1rem', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CheckCircle className="text-success" size={20} /> Review Exam Details
-              </h3>
-
+            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
               <div className="preview-summary-card">
                 <div className="summary-field">
                   <span className="lbl">Exam Name:</span>
@@ -350,27 +576,78 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, onClose, onSucc
                   <span className="val">{className}</span>
                 </div>
                 <div className="summary-field">
-                  <span className="lbl">Scheduled Date:</span>
-                  <span className="val">{new Date(examDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
-                </div>
-                <div className="summary-field">
-                  <span className="lbl">Exam Mode:</span>
-                  <span className="val" style={{ textTransform: 'capitalize' }}>{examMode}</span>
+                  <span className="lbl">Roll No Digits:</span>
+                  <span className="val">{rollNoDigits} digits</span>
                 </div>
                 <div className="summary-field">
                   <span className="lbl">Total Questions:</span>
-                  <span className="val">{numQuestions} Questions</span>
+                  <span className="val"><strong>{totalQuestions} Questions</strong></span>
                 </div>
-                <div className="summary-field">
-                  <span className="lbl">Marking Scheme:</span>
-                  <span className="val text-success">
-                    Correct: <strong>+{correctMarks}</strong> | Incorrect: <strong>{incorrectMarks}</strong> | Unanswered: <strong>{unansweredMarks}</strong>
-                  </span>
+              </div>
+
+              {/* Set Selection Tabs */}
+              {examSetsCount > 1 && (
+                <div className="set-tabs-row" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                  {Array.from({ length: examSetsCount }).map((_, idx) => {
+                    const setName = String.fromCharCode(65 + idx);
+                    return (
+                      <button
+                        key={`set-tab-${setName}`}
+                        className={`btn-seed ${activeSetTab === setName ? 'active-tab' : ''}`}
+                        onClick={() => setActiveSetTab(setName)}
+                        style={{
+                          padding: '6px 16px',
+                          borderRadius: '20px',
+                          border: '1px solid var(--border-color)',
+                          background: activeSetTab === setName ? 'var(--primary)' : '#ffffff',
+                          color: activeSetTab === setName ? '#ffffff' : 'var(--text-secondary)',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Set {setName} Key
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="summary-field">
-                  <span className="lbl">Max Score Potential:</span>
-                  <span className="val"><strong>{numQuestions * correctMarks} Points</strong></span>
-                </div>
+              )}
+
+              {/* Answer Key Grid builder grouped by sections */}
+              <div className="key-builder-wizard">
+                {sectionsWithRanges.map((sec, secIdx) => {
+                  return (
+                    <div key={`wiz-sec-grid-${secIdx}`} className="mb-4">
+                      <h5 style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', borderBottom: '1px dashed var(--border-color)', paddingBottom: '4px', color: 'var(--text-primary)' }}>
+                        {sec.subjectName} - {sec.sectionName} (Q{sec.qStart} - Q{sec.qEnd})
+                      </h5>
+
+                      <div className="key-grid-scroll">
+                        {Array.from({ length: sec.qCount }).map((_, qIdx) => {
+                          const qNum = sec.qStart + qIdx;
+                          const options = sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+                          const currentKey = answerKeys[activeSetTab]?.[qNum] || 'A';
+
+                          return (
+                            <div key={`wiz-key-${qNum}`} className="key-row-item">
+                              <span className="q-label-number">Q{String(qNum).padStart(2, '0')}</span>
+                              <div className="opt-bubble-row">
+                                {options.map(opt => (
+                                  <button
+                                    key={`wiz-opt-${qNum}-${opt}`}
+                                    className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
+                                    onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
+                                  >
+                                    {opt}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -4,6 +4,7 @@
 export interface ScanResult {
   studentNum: string;
   answers: Record<number, string>;
+  bookletSet?: string;
   debugWarpedCanvas?: HTMLCanvasElement; // For showing the warped, aligned page in UI
 }
 
@@ -24,8 +25,8 @@ export const OMR_CONFIG = {
   studentId: {
     xStart: 100, // Center of first digit column
     xStep: 25,   // Horizontal spacing between digits
-    yStart: 190, // Center of '1' bubble row
-    yStep: 21,   // Vertical spacing between rows 1-9, 0 (10 rows)
+    yStart: 216, // Center of '1' bubble row
+    yStep: 20,   // Vertical spacing between rows 1-9, 0 (10 rows)
     numDigits: 10,
     bubbleRadius: 7
   },
@@ -34,8 +35,8 @@ export const OMR_CONFIG = {
   bookletNo: {
     xStart: 370,
     xStep: 25,
-    yStart: 190,
-    yStep: 21,
+    yStart: 216,
+    yStep: 20,
     numDigits: 7,
     bubbleRadius: 7
   },
@@ -55,7 +56,6 @@ export const OMR_CONFIG = {
   }
 };
 
-const OPTIONS = ['A', 'B', 'C', 'D'];
 
 /**
  * Main OMR Scanner function. Processes an source image (HTMLCanvasElement, HTMLImageElement, or ImageData)
@@ -63,7 +63,10 @@ const OPTIONS = ['A', 'B', 'C', 'D'];
  */
 export async function scanOMRSheet(
   sourceImage: HTMLCanvasElement | HTMLImageElement,
-  numQuestions: number
+  numQuestions: number,
+  rollNoDigits: number = 10,
+  examSetsCount: number = 1,
+  sections: any[] = []
 ): Promise<ScanResult> {
   const cv = window.cv;
   if (!cv) {
@@ -271,12 +274,40 @@ export async function scanOMRSheet(
     const debugWarpedCanvas = document.createElement('canvas');
     cv.imshow(debugWarpedCanvas, warped);
 
-    // 6. Scan Roll No (10 digits)
+    // 5.5. Scan Booklet Code Set
+    let bookletSet = 'A';
+    if (examSetsCount > 1) {
+      const setIntensities: number[] = [];
+      for (let idx = 0; idx < examSetsCount; idx++) {
+        const x = 610 + idx * 45;
+        const y = 175;
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
+        setIntensities.push(avgGray);
+      }
+      let minVal = 256;
+      let maxVal = -1;
+      let minIdx = 0;
+      for (let idx = 0; idx < examSetsCount; idx++) {
+        const val = setIntensities[idx];
+        if (val < minVal) {
+          minVal = val;
+          minIdx = idx;
+        }
+        if (val > maxVal) {
+          maxVal = val;
+        }
+      }
+      if (maxVal - minVal > 40 && minVal < 155) {
+        bookletSet = String.fromCharCode(65 + minIdx);
+      }
+    }
+
+    // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
     const sidConf = OMR_CONFIG.studentId;
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
-    for (let colIdx = 0; colIdx < sidConf.numDigits; colIdx++) {
+    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
       const x = sidConf.xStart + colIdx * sidConf.xStep;
       const intensities: number[] = [];
 
@@ -313,6 +344,7 @@ export async function scanOMRSheet(
     // 7. Scan Answers (200 questions, 5 columns of 40 questions)
     const answers: Record<number, string> = {};
     const qConf = OMR_CONFIG.questions;
+    const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
     for (let q = 1; q <= numQuestions; q++) {
       let colConf = null;
@@ -328,19 +360,24 @@ export async function scanOMRSheet(
         continue;
       }
 
+      // Check section options count
+      const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
+      const is5Option = sec && sec.questionType === '5 option';
+      const numOptions = is5Option ? 5 : 4;
+
       const qIndex = q - colConf.qStart;
       const y = qConf.yStart + qIndex * qConf.yStep;
       
       const intensities: number[] = [];
-      for (let optIdx = 0; optIdx < 4; optIdx++) {
-        const x = colConf.xOptions[optIdx];
+      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+        const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
         // Inner radius 4.0px to cover the bubble interior
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
         intensities.push(avgGray);
       }
 
       let maxVal = -1;
-      for (let o = 0; o < 4; o++) {
+      for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
         if (val > maxVal) {
           maxVal = val;
@@ -349,7 +386,7 @@ export async function scanOMRSheet(
 
       // Detect all filled options for this question using strict thresholds to prevent stray lines/folds
       const filledOptions: number[] = [];
-      for (let o = 0; o < 4; o++) {
+      for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
         if (maxVal - val > 40 && val < 155) {
           filledOptions.push(o);
@@ -357,7 +394,7 @@ export async function scanOMRSheet(
       }
 
       if (filledOptions.length === 1) {
-        answers[q] = OPTIONS[filledOptions[0]];
+        answers[q] = OPTIONS_FIVE[filledOptions[0]];
       } else if (filledOptions.length > 1) {
         answers[q] = 'MULTIPLE'; // Mark wrong due to multiple bubble selections
       } else {
@@ -381,6 +418,7 @@ export async function scanOMRSheet(
     return {
       studentNum,
       answers,
+      bookletSet,
       debugWarpedCanvas
     };
 

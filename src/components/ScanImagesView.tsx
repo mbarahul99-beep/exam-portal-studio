@@ -43,6 +43,17 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   // Scanned verification states
   const [activeResult, setActiveResult] = useState<any | null>(null);
   const [detectedStudentId, setDetectedStudentId] = useState<number | null>(null);
+  const getMaxPotentialScore = () => {
+    if (exam.sections && exam.sections.length > 0) {
+      let maxScore = 0;
+      exam.sections.forEach((sec: any) => {
+        const count = sec.allowOptionalAttempts ? (sec.maxAttempts ?? sec.qCount) : sec.qCount;
+        maxScore += count * (sec.correctMarks ?? 4);
+      });
+      return maxScore;
+    }
+    return exam.numQuestions * (exam.correctMarks ?? 4);
+  };
 
   // Check OpenCV loaded
   useEffect(() => {
@@ -214,34 +225,101 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         imageSource = img;
       }
 
-      // Run OpenCV sheet scanner
-      const cvResult = await scanOMRSheet(imageSource, exam.numQuestions);
+      // Run OpenCV sheet scanner (passing rollNoDigits and examSetsCount parameters)
+      const cvResult = await scanOMRSheet(
+        imageSource, 
+        exam.numQuestions, 
+        exam.rollNoDigits ?? 10, 
+        exam.examSetsCount ?? 1, 
+        exam.sections ?? []
+      );
 
       // Match Student Roll No
       const matchedStudent = students.find(s => s.studentNum === cvResult.studentNum);
       const studentId = matchedStudent ? matchedStudent.id : null;
 
-      // Grade calculations
+      // Grade calculations using multiple sets and section configurations
       let score = 0;
       let correctCount = 0;
       let wrongCount = 0;
       let unansweredCount = 0;
-      const cMarks = exam.correctMarks ?? 4;
-      const iMarks = exam.incorrectMarks ?? -1;
-      const uMarks = exam.unansweredMarks ?? 0;
 
-      for (let q = 1; q <= exam.numQuestions; q++) {
-        const studAns = cvResult.answers[q];
-        const correctAns = exam.answerKey[q];
-        if (!studAns) {
-          score += uMarks;
-          unansweredCount++;
-        } else if (studAns === correctAns) {
-          score += cMarks;
-          correctCount++;
-        } else {
-          score += iMarks;
-          wrongCount++;
+      const detectedSet = cvResult.bookletSet || 'A';
+      const correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+
+      if (exam.sections && exam.sections.length > 0) {
+        exam.sections.forEach((sec: any) => {
+          const start = sec.qStart;
+          const secCorrectMarks = sec.correctMarks ?? 4;
+          const secIncorrectMarks = sec.incorrectMarks ?? -1;
+          const secUnansweredMarks = 0;
+
+          const qNums = Array.from({ length: sec.qCount }, (_, i) => start + i);
+
+          if (sec.allowOptionalAttempts) {
+            const maxAttempts = sec.maxAttempts ?? sec.qCount;
+            let attemptsCount = 0;
+
+            qNums.forEach(q => {
+              const studentAns = cvResult.answers[q] || '';
+              const correctAns = correctKey[q] || 'A';
+
+              if (studentAns !== '') {
+                if (attemptsCount < maxAttempts) {
+                  attemptsCount++;
+                  if (studentAns === correctAns) {
+                    score += secCorrectMarks;
+                    correctCount++;
+                  } else {
+                    score += secIncorrectMarks;
+                    wrongCount++;
+                  }
+                } else {
+                  score += secUnansweredMarks;
+                  unansweredCount++;
+                }
+              } else {
+                score += secUnansweredMarks;
+                unansweredCount++;
+              }
+            });
+          } else {
+            qNums.forEach(q => {
+              const studentAns = cvResult.answers[q] || '';
+              const correctAns = correctKey[q] || 'A';
+
+              if (studentAns === '') {
+                score += secUnansweredMarks;
+                unansweredCount++;
+              } else if (studentAns === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
+              } else {
+                score += secIncorrectMarks;
+                wrongCount++;
+              }
+            });
+          }
+        });
+      } else {
+        const cMarks = exam.correctMarks ?? 4;
+        const iMarks = exam.incorrectMarks ?? -1;
+        const uMarks = exam.unansweredMarks ?? 0;
+
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          const studentAns = cvResult.answers[q] || '';
+          const correctAns = correctKey[q] || 'A';
+
+          if (studentAns === '') {
+            score += uMarks;
+            unansweredCount++;
+          } else if (studentAns === correctAns) {
+            score += cMarks;
+            correctCount++;
+          } else {
+            score += iMarks;
+            wrongCount++;
+          }
         }
       }
 
@@ -249,6 +327,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         studentId,
         studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
         detectedStudentNum: cvResult.studentNum,
+        bookletSet: detectedSet,
         score,
         correctCount,
         wrongCount,
@@ -339,6 +418,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         studentId: detectedStudentId,
         score: activeResult.score,
         answers: activeResult.answers,
+        bookletSet: activeResult.bookletSet,
         scannedAt: new Date()
       });
 
@@ -580,7 +660,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     Grading Performance Index
                   </label>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: '#f7fafc', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                    <span style={{ fontSize: '0.9rem' }}>Score: <strong>{activeResult.score} / {exam.numQuestions * (exam.correctMarks ?? 4)}</strong></span>
+                    <span style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>Score: <strong>{activeResult.score} / {getMaxPotentialScore()}</strong></span>
+                      {exam.examSetsCount && exam.examSetsCount > 1 && (
+                        <span className="status-badge info" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>Set {activeResult.bookletSet}</span>
+                      )}
+                    </span>
                     <span style={{ fontSize: '0.8rem', color: '#4a5568', display: 'flex', gap: '8px' }}>
                       <span className="text-success">✔ {activeResult.correctCount}</span>
                       <span className="text-error">✘ {activeResult.wrongCount}</span>

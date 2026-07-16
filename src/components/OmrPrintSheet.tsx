@@ -4,19 +4,39 @@ import { OMR_CONFIG } from '../utils/omrScanner';
 interface OmrPrintSheetProps {
   examTitle: string;
   numQuestions: number;
+  exam?: any;
 }
 
-export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQuestions }) => {
-  const options = ['A', 'B', 'C', 'D'];
+export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQuestions, exam }) => {
   const totalQuestions = Math.min(numQuestions, 200);
 
   // Conversion: OMR coordinates (1000 x 1414) mapped to A4 millimeters (210 x 297)
   const toX = (x: number) => `${x * 0.21}mm`;
   const toY = (y: number) => `${y * 0.21}mm`;
 
-  const rollCols = Array.from({ length: 10 });
+  const rollNoDigits = exam?.rollNoDigits || 10;
+  const examSetsCount = exam?.examSetsCount || 4;
+  const rollNoWidth = 275 - (10 - rollNoDigits) * 25;
+
+  const rollCols = Array.from({ length: rollNoDigits });
   const bookletCols = Array.from({ length: 7 });
   const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+
+  const getQuestionOptions = (qNum: number): string[] => {
+    if (!exam || !exam.sections) return ['A', 'B', 'C', 'D'];
+    const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+    return sec && sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+  };
+
+  const getQuestionLabel = (qNum: number): string => {
+    if (!exam || !exam.sections || exam.sections.length === 0) {
+      return String(qNum).padStart(2, '0');
+    }
+    const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+    if (!sec) return String(qNum).padStart(2, '0');
+    const subCode = sec.subjectName.substring(0, 3).toUpperCase();
+    return `${String(qNum).padStart(2, '0')} ${subCode}`;
+  };
 
   return (
     <div className="omr-print-page">
@@ -36,19 +56,19 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
            }} 
       />
 
-      {/* Header section (Shifted higher to 40 to prevent overlap with title cards) */}
-      <div className="omr-header-section" style={{ top: toY(40) }}>
+      {/* Header section (Shifted higher to 72 to prevent overlap with title cards) */}
+      <div className="omr-header-section" style={{ top: toY(72) }}>
         <h1 className="omr-title">{examTitle.toUpperCase()}</h1>
-        <div className="omr-subtitle">OMR ANSWER BUBBLE SHEET - {totalQuestions} QUESTIONS</div>
+        <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
       </div>
 
-      {/* Decorative Border Cards (Moved top down to 112 to clear the header) */}
+      {/* Decorative Border Cards (Moved top down to 150 to clear the header) */}
       <div className="bg-border-card" 
            style={{
              left: toX(70),
-             top: toY(112),
-             width: toX(275),
-             height: toY(283)
+             top: toY(150),
+             width: toX(rollNoWidth),
+             height: toY(260)
            }}
       >
         <div className="box-title">ROLL NO. / अनुक्रमांक</div>
@@ -56,10 +76,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       <div className="bg-border-card" 
            style={{
-             left: toX(345),
-             top: toY(112),
+             left: toX(70 + rollNoWidth),
+             top: toY(150),
              width: toX(200),
-             height: toY(283)
+             height: toY(260)
            }}
       >
         <div className="box-title">TEST BOOKLET NO.</div>
@@ -67,10 +87,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       <div className="bg-border-card" 
            style={{
-             left: toX(545),
-             top: toY(112),
-             width: toX(385),
-             height: toY(283)
+             left: toX(70 + rollNoWidth + 200),
+             top: toY(150),
+             width: toX(660 - rollNoWidth),
+             height: toY(260)
            }}
       >
         <div className="box-title">BOOKLET CODE / पुस्तिका कोड</div>
@@ -85,7 +105,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             className="digit-box-header"
             style={{
               left: toX(x),
-              top: toY(OMR_CONFIG.studentId.yStart - 28)
+              top: toY(OMR_CONFIG.studentId.yStart - 30)
             }}
           />
         );
@@ -113,14 +133,15 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       {/* TEST BOOKLET NO DIGIT HEADER BOXES */}
       {bookletCols.map((_, colIdx) => {
-        const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep;
+        const bookletShift = rollNoWidth - 275;
+        const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep + bookletShift;
         return (
           <div 
             key={`bk-h-${colIdx}`}
             className="digit-box-header"
             style={{
               left: toX(x),
-              top: toY(OMR_CONFIG.bookletNo.yStart - 28)
+              top: toY(OMR_CONFIG.bookletNo.yStart - 30)
             }}
           />
         );
@@ -128,7 +149,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       {/* TEST BOOKLET NO BUBBLES */}
       {bookletCols.map((_, colIdx) => {
-        const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep;
+        const bookletShift = rollNoWidth - 275;
+        const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep + bookletShift;
         return digits.map((digitVal, rowIdx) => {
           const y = OMR_CONFIG.bookletNo.yStart + rowIdx * OMR_CONFIG.bookletNo.yStep;
           return (
@@ -147,34 +169,43 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
       })}
 
       {/* BOOKLET CODE OPTIONS */}
-      {['A', 'B', 'C', 'D'].map((code, idx) => (
-        <div
-          key={`bk-code-${code}`}
-          className="omr-bubble code-bubble"
-          style={{
-            left: toX(610 + idx * 45),
-            top: toY(175)
-          }}
-        >
-          {code}
-        </div>
-      ))}
+      {Array.from({ length: examSetsCount }).map((_, idx) => {
+        const bookletShift = rollNoWidth - 275;
+        const code = String.fromCharCode(65 + idx);
+        return (
+          <div
+            key={`bk-code-${code}`}
+            className="omr-bubble code-bubble"
+            style={{
+              left: toX(610 + idx * 45 + bookletShift),
+              top: toY(OMR_CONFIG.studentId.yStart)
+            }}
+          >
+            {code}
+          </div>
+        );
+      })}
 
       {/* CANDIDATE INFO FIELDS */}
-      <div className="candidate-info-table" style={{ left: toX(575), top: toY(225), width: toX(335) }}>
-        <div className="info-row">
-          <span className="info-label">CANDIDATE'S NAME (IN CAPITAL LETTERS)</span>
-          <div className="info-line" />
-        </div>
-        <div className="info-row">
-          <span className="info-label">MOTHER'S NAME (IN CAPITAL LETTERS)</span>
-          <div className="info-line" />
-        </div>
-        <div className="info-row">
-          <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
-          <div className="info-line" />
-        </div>
-      </div>
+      {(() => {
+        const bookletShift = rollNoWidth - 275;
+        return (
+          <div className="candidate-info-table" style={{ left: toX(575 + bookletShift), top: toY(250), width: toX(335 - bookletShift) }}>
+            <div className="info-row">
+              <span className="info-label">CANDIDATE'S NAME (IN CAPITAL LETTERS)</span>
+              <div className="info-line" />
+            </div>
+            <div className="info-row">
+              <span className="info-label">MOTHER'S NAME (IN CAPITAL LETTERS)</span>
+              <div className="info-line" />
+            </div>
+            <div className="info-row">
+              <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
+              <div className="info-line" />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* QUESTIONS GRID SECTION - 200 Questions (5 Columns of 40 Rows) */}
       {OMR_CONFIG.questions.columns.map((col, colIdx) => {
@@ -184,6 +215,12 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         );
 
         if (qNumbers.length === 0) return null;
+
+        // Check if this column has any 5 option questions
+        const colHas5Option = qNumbers.some(qNum => {
+          const sec = exam?.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+          return sec && sec.questionType === '5 option';
+        });
 
         return (
           <React.Fragment key={`col-grid-${colIdx}`}>
@@ -199,12 +236,16 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               <span className="q-hdr-opt" style={{ left: toX(col.xOptions[1]) }}>B</span>
               <span className="q-hdr-opt" style={{ left: toX(col.xOptions[2]) }}>C</span>
               <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3]) }}>D</span>
+              {colHas5Option && (
+                <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3] + 25) }}>E</span>
+              )}
             </div>
 
             {/* Questions list */}
             {qNumbers.map((qNum) => {
               const qIndex = qNum - col.qStart;
               const y = OMR_CONFIG.questions.yStart + qIndex * OMR_CONFIG.questions.yStep;
+              const qOptions = getQuestionOptions(qNum);
               return (
                 <React.Fragment key={`q-row-${qNum}`}>
                   {/* Number Label */}
@@ -212,15 +253,16 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                     className="omr-q-label"
                     style={{
                       left: toX(col.xLabel),
-                      top: toY(y)
+                      top: toY(y),
+                      fontSize: '5.5px'
                     }}
                   >
-                    {String(qNum).padStart(2, '0')}
+                    {getQuestionLabel(qNum)}
                   </span>
                   
-                  {/* Bubbles A, B, C, D (Sized slightly smaller to 3.6mm to fit vertical grid spacing) */}
-                  {options.map((opt, optIdx) => {
-                    const x = col.xOptions[optIdx];
+                  {/* Bubbles A, B, C, D, E (Sized slightly smaller to 3.6mm to fit vertical grid spacing) */}
+                  {qOptions.map((opt, optIdx) => {
+                    const x = optIdx === 4 ? col.xOptions[3] + 25 : col.xOptions[optIdx];
                     return (
                       <div
                         key={`q-${qNum}-opt-${opt}`}
@@ -309,10 +351,11 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         }
 
         .omr-title {
-          font-size: 22px;
+          font-size: 19px;
           font-weight: 900;
           color: #dc0045 !important;
-          margin-bottom: 2px;
+          margin: 0 0 1px 0 !important;
+          line-height: 1 !important;
           letter-spacing: 0.5px;
         }
 
@@ -320,10 +363,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           background-color: #dc0045 !important;
           color: #fff !important;
           display: inline-block;
-          font-size: 11px;
+          font-size: 9.5px;
           font-weight: 800;
-          padding: 3px 20px;
-          border-radius: 20px;
+          padding: 1.5px 16px;
+          border-radius: 12px;
           letter-spacing: 0.5px;
         }
 
@@ -374,6 +417,12 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           color: rgba(220, 0, 69, 0.22) !important;
           user-select: none;
           z-index: 2;
+        }
+
+        .id-bubble {
+          width: 3.6mm;
+          height: 3.6mm;
+          font-size: 6px;
         }
 
         .code-bubble {

@@ -280,7 +280,7 @@ export async function scanOMRSheet(
     let minTotalIntensity = Infinity;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -26; dy <= 26; dy += 2) {
+    for (let dy = -10; dy <= 10; dy += 1) {
       let totalIntensity = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
         const x = sidConf.xStart + colIdx * sidConf.xStep;

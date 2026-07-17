@@ -202,6 +202,23 @@ export default function App() {
         correctMarks: 4,
         incorrectMarks: -1,
         unansweredMarks: 0,
+        rollNoDigits: 10,
+        examSetsCount: 1,
+        subjects: [
+          { name: 'Physics', numSections: 1 },
+          { name: 'Chemistry', numSections: 1 },
+          { name: 'Botany', numSections: 1 },
+          { name: 'Zoology', numSections: 1 }
+        ],
+        sections: [
+          { subjectName: 'Physics', sectionName: 'Section 1', qStart: 1, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+          { subjectName: 'Chemistry', sectionName: 'Section 1', qStart: 51, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+          { subjectName: 'Botany', sectionName: 'Section 1', qStart: 101, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+          { subjectName: 'Zoology', sectionName: 'Section 1', qStart: 151, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 }
+        ],
+        answerKeys: {
+          'A': key
+        },
         createdAt: new Date()
       });
 

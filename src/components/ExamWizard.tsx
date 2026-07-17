@@ -116,7 +116,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           setOnlinePasscode(exam.passcode || '1234');
         }
 
-        setRollNoDigits(exam.rollNoDigits || 6);
+        setRollNoDigits(exam.rollNoDigits || (exam.numQuestions && exam.numQuestions > 100 ? 10 : 6));
         setExamSetsCount(exam.examSetsCount || 1);
 
         if (exam.subjects) {

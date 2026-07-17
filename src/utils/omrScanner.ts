@@ -277,26 +277,38 @@ export async function scanOMRSheet(
     // 5.2. Auto-Calibrate Vertical Scan Offset
     // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
     let bestDy = 0;
-    let minTotalIntensity = Infinity;
+    let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -3; dy <= 3; dy += 1) {
+    for (let dy = -16; dy <= 16; dy += 1) {
       let totalIntensity = 0;
+      let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
         const x = sidConf.xStart + colIdx * sidConf.xStep;
         let colMin = 256;
+        let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = sidConf.yStart + rowIdx * sidConf.yStep + dy;
           const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
           if (avgGray < colMin) {
             colMin = avgGray;
           }
+          if (avgGray > colMax) {
+            colMax = avgGray;
+          }
         }
-        totalIntensity += colMin;
+        // Only count columns with a clear contrast difference (indicating a filled bubble)
+        if (colMax - colMin > 50) {
+          totalIntensity += colMin;
+          filledColumnsCount++;
+        }
       }
-      if (totalIntensity < minTotalIntensity) {
-        minTotalIntensity = totalIntensity;
-        bestDy = dy;
+      if (filledColumnsCount > 0) {
+        const avg = totalIntensity / filledColumnsCount;
+        if (avg < minAvgIntensity) {
+          minAvgIntensity = avg;
+          bestDy = dy;
+        }
       }
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");

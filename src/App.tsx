@@ -4,7 +4,6 @@ import { db, type Student, type Exam } from './db';
 import { useOpenCv } from './hooks/useOpenCv';
 import { scanOMRSheet, OMR_CONFIG } from './utils/omrScanner';
 import { OmrPrintSheet } from './components/OmrPrintSheet';
-import { StudentReportPrint } from './components/StudentReportPrint';
 import confetti from 'canvas-confetti';
 import { ExamWizard } from './components/ExamWizard';
 import { ExamDetailsView } from './components/ExamDetailsView';
@@ -126,7 +125,7 @@ export default function App() {
 
   // Printing state
   const [printExam, setPrintExam] = useState<Exam | null>(null);
-  const [printReportData, setPrintReportData] = useState<{ exam: Exam; student: Student; submission: any } | null>(null);
+  const [viewingStudentAnalysisSub, setViewingStudentAnalysisSub] = useState<{ studentId: number; preSelectedExamId?: number } | null>(null);
 
   // Scanner States
   const [scannerExamId, setScannerExamId] = useState<number | null>(null);
@@ -629,25 +628,6 @@ export default function App() {
     }, 300);
   };
 
-  const triggerPrintReport = async (subInfo: { score: number; answers: Record<number, string>; scannedAt: Date; studentId: number }) => {
-    const examObj = exams.find(e => e.id === scannerExamId || e.id === selectedExamId);
-    const studentObj = students.find(s => s.id === subInfo.studentId);
-    if (!examObj || !studentObj) {
-      alert("Could not load student or exam details for the report card.");
-      return;
-    }
-
-    setPrintReportData({
-      exam: examObj,
-      student: studentObj,
-      submission: subInfo
-    });
-
-    setTimeout(() => {
-      window.print();
-      setPrintReportData(null);
-    }, 500);
-  };
 
   const handleDownloadJPG = (exam: Exam) => {
     const canvas = document.createElement('canvas');
@@ -1705,6 +1685,18 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* 0. ADMIN REPORT PORTAL OVERLAY CONTAINER */}
+      {viewingStudentAnalysisSub && (
+        <div className="admin-report-portal-modal no-print" style={{ position: 'fixed', inset: 0, zIndex: 9999, overflowY: 'auto', background: '#f8fafc' }}>
+          <StudentReportPortal 
+            studentId={viewingStudentAnalysisSub.studentId}
+            preSelectedExamId={viewingStudentAnalysisSub.preSelectedExamId}
+            adminMode={true}
+            onClose={() => setViewingStudentAnalysisSub(null)}
+          />
+        </div>
+      )}
+
       {/* 1. PRINT ONLY CONTAINER: Loaded on print dialog */}
       {printExam && (
         <div className="print-only">
@@ -1715,15 +1707,7 @@ export default function App() {
           />
         </div>
       )}
-      {printReportData && (
-        <div className="print-only">
-          <StudentReportPrint 
-            exam={printReportData.exam}
-            student={printReportData.student}
-            submission={printReportData.submission}
-          />
-        </div>
-      )}
+
 
       {/* 2. NO-PRINT INTERACTIVE WEB APP: Main Dashboard */}
       {mobileMenuOpen && (
@@ -2327,7 +2311,7 @@ export default function App() {
                       onEdit={(examId) => setEditingExamId(examId)}
                       onPrintRedirect={(exam) => triggerPrint(exam)}
                       onDownloadJPG={(exam) => handleDownloadJPG(exam)}
-                      onPrintReport={(sub) => triggerPrintReport(sub)}
+                      onViewAnalysis={(sub) => setViewingStudentAnalysisSub({ studentId: sub.studentId, preSelectedExamId: examObj.id })}
                     />
                   );
                 })()
@@ -2706,7 +2690,7 @@ export default function App() {
                 <p className="subtitle">Inspect individual student performance, test history, and detailed question correctness grids.</p>
               </header>
 
-              <div className="reports-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', alignItems: 'stretch' }}>
+              <div className="reports-layout">
                 {/* Left Pane: Student Roster List */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '720px', boxSizing: 'border-box' }}>
                   <h3>Student Roster</h3>
@@ -2822,7 +2806,7 @@ export default function App() {
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             {/* Stats Overview Grid */}
-                            <div className="stats-box" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                            <div className="stats-box-grid">
                               <div className="box-stat" style={{ padding: '10px' }}>
                                 <span className="box-label" style={{ fontSize: '0.7rem' }}>Tests Taken</span>
                                 <span className="box-val text-success" style={{ fontSize: '1.4rem' }}>{testsTaken}</span>
@@ -4009,9 +3993,15 @@ export default function App() {
         /* Reports Views */
         .reports-layout {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
+          grid-template-columns: 300px 1fr;
+          gap: 20px;
           align-items: start;
+        }
+
+        .stats-box-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
         }
 
         .stats-box {
@@ -4335,6 +4325,25 @@ export default function App() {
           }
           .pane-header .subtitle {
             text-align: center;
+          }
+
+          /* Responsive Reports View */
+          .reports-layout {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .stats-box-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+          }
+          .report-card-item {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 10px !important;
+          }
+          .report-card-item > div {
+            width: 100% !important;
+            justify-content: space-between !important;
           }
         }
 

@@ -26,7 +26,7 @@ interface ExamDetailsViewProps {
   onEdit: (examId: number) => void;
   onPrintRedirect: (exam: Exam) => void;
   onDownloadJPG: (exam: Exam) => void;
-  onPrintReport: (submission: any) => void;
+  onViewAnalysis: (submission: any) => void;
 }
 
 export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ 
@@ -37,7 +37,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onEdit,
   onPrintRedirect,
   onDownloadJPG,
-  onPrintReport
+  onViewAnalysis
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'result' | 'analysis' | 'questions'>('result');
   const [isScanningMode, setIsScanningMode] = useState(false);
@@ -393,15 +393,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                             <button 
                               className="btn-link" 
                               style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px', textDecoration: 'underline', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                              onClick={() => onPrintReport({
+                              onClick={() => onViewAnalysis({
                                 score: sub.score,
                                 answers: sub.answers,
                                 scannedAt: sub.scannedAt,
                                 studentId: sub.studentId
                               })}
-                              title="Print/Download Report Card PDF"
+                              title="View Detailed Student Report & Section Analysis"
                             >
-                              Report PDF
+                              View Analysis
                             </button>
                           </td>
                         </tr>

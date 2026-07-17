@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -6,11 +6,21 @@ import { StudentReportPrint } from './StudentReportPrint';
 
 interface StudentReportPortalProps {
   studentId: number;
-  onLogout: () => void;
+  onLogout?: () => void;
+  adminMode?: boolean;
+  onClose?: () => void;
+  preSelectedExamId?: number;
 }
 
-export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studentId, onLogout }) => {
+export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ 
+  studentId, 
+  onLogout,
+  adminMode = false,
+  onClose,
+  preSelectedExamId
+}) => {
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
+  const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
 
   // Live queries
   const student = useLiveQuery(() => db.students.get(studentId), [studentId]);
@@ -110,6 +120,16 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
     };
   }).sort((a, b) => b.percentage - a.percentage);
 
+  useEffect(() => {
+    if (preSelectedExamId && studentHistory.length > 0 && !hasInitializedPreSelected) {
+      const match = studentHistory.find(h => h.examId === preSelectedExamId);
+      if (match) {
+        setActiveAnalysisSub(match);
+        setHasInitializedPreSelected(true);
+      }
+    }
+  }, [preSelectedExamId, studentHistory, hasInitializedPreSelected]);
+
   if (!student) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f7fafc' }}>
@@ -201,13 +221,23 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             
             {/* Analysis Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <button 
-                onClick={() => setActiveAnalysisSub(null)}
-                style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                <ChevronLeft size={16} /> Back to Dashboard
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button 
+                  onClick={() => setActiveAnalysisSub(null)}
+                  style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ChevronLeft size={16} /> Back to Dashboard
+                </button>
+                {adminMode && (
+                  <button 
+                    onClick={onClose}
+                    style={{ background: 'transparent', border: '1px solid #ef4444', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    Close Analysis
+                  </button>
+                )}
+              </div>
 
               <button 
                 onClick={() => window.print()}
@@ -401,10 +431,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
               </div>
 
               <button 
-                onClick={onLogout}
+                onClick={adminMode ? onClose : onLogout}
                 style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', transition: 'all 0.2s ease', outline: 'none' }}
               >
-                <LogOut size={16} /> Log Out
+                {adminMode ? <ChevronLeft size={16} /> : <LogOut size={16} />} {adminMode ? 'Close Analysis' : 'Log Out'}
               </button>
             </header>
 
@@ -628,6 +658,22 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ studen
           .student-analysis-split {
             grid-template-columns: 1fr !important;
             gap: 24px !important;
+          }
+        }
+        @media (max-width: 768px) {
+          .student-analysis-split table th, 
+          .student-analysis-split table td {
+            padding: 8px 10px !important;
+            font-size: 0.75rem !important;
+          }
+          .student-dashboard-split table th, 
+          .student-dashboard-split table td {
+            padding: 10px 12px !important;
+            font-size: 0.75rem !important;
+          }
+          .grade-badge {
+            padding: 2px 4px !important;
+            font-size: 0.7rem !important;
           }
         }
         @media print {

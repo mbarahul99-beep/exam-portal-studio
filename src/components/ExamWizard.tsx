@@ -1633,7 +1633,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
             className="btn-primary-wizard"
             onClick={step === 5 ? () => onSuccess(createdExamId!) : (step === 4 ? handleSubmit : handleNextStep)}
           >
-            {step === 5 ? 'Finish & Close' : (step === 4 ? 'Create Exam' : 'Next')}
+            {step === 5 ? 'Finish & Close' : (step === 4 ? (examId ? 'Save Changes' : 'Create Exam') : 'Next')}
           </button>
         </footer>
 

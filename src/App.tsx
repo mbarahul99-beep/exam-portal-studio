@@ -285,6 +285,45 @@ export default function App() {
         if (classCount === 0 || studentCount === 0 || examCount === 0) {
           console.log("Database looks empty or incomplete on startup. Auto-seeding mock data...");
           await handleSeedData(true);
+        } else {
+          // Auto-upgrade legacy mock exams if subjects/sections are missing or truncated
+          const defaultExam = await db.exams
+            .where('title')
+            .equals('NEET Practice Test 1 (200 Qs)')
+            .first();
+            
+          if (defaultExam && (!defaultExam.rollNoDigits || !defaultExam.subjects || defaultExam.numQuestions === 15)) {
+            console.log("Upgrading legacy NEET mock exam in IndexedDB...");
+            
+            const key: Record<number, string> = {};
+            const options = ['A', 'B', 'C', 'D'];
+            for (let i = 1; i <= 200; i++) {
+              key[i] = options[Math.floor(Math.sin(i) * 2 + 2) % 4];
+            }
+            
+            await db.exams.update(defaultExam.id!, {
+              numQuestions: 200,
+              answerKey: key,
+              rollNoDigits: 10,
+              examSetsCount: 1,
+              subjects: [
+                { name: 'Physics', numSections: 1 },
+                { name: 'Chemistry', numSections: 1 },
+                { name: 'Botany', numSections: 1 },
+                { name: 'Zoology', numSections: 1 }
+              ],
+              sections: [
+                { subjectName: 'Physics', sectionName: 'Section 1', qStart: 1, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+                { subjectName: 'Chemistry', sectionName: 'Section 1', qStart: 51, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+                { subjectName: 'Botany', sectionName: 'Section 1', qStart: 101, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
+                { subjectName: 'Zoology', sectionName: 'Section 1', qStart: 151, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 }
+              ],
+              answerKeys: {
+                'A': key
+              }
+            });
+            console.log("Legacy NEET mock exam upgraded successfully.");
+          }
         }
       } catch (e) {
         console.error("Auto-seeding check failed:", e);

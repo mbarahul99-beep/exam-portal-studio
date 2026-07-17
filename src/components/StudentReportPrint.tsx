@@ -182,8 +182,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .report-print-page {
           width: 210mm;
           height: 297mm;
-          padding: 12mm 15mm;
-          margin: 20px auto;
+          padding: 8mm 12mm;
+          margin: 10px auto;
           box-sizing: border-box;
           background: #ffffff;
           position: relative;
@@ -197,8 +197,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           justify-content: space-between;
           align-items: center;
           border-bottom: 2px solid #2b6cb0;
-          padding-bottom: 12px;
-          margin-bottom: 20px;
+          padding-bottom: 8px;
+          margin-bottom: 12px;
         }
 
         .logo-brand {
@@ -242,17 +242,17 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .report-section {
-          margin-bottom: 18px;
+          margin-bottom: 12px;
         }
 
         .meta-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
+          gap: 8px 12px;
           background: #f7fafc;
           border: 1px solid #e2e8f0;
           border-radius: 6px;
-          padding: 12px 16px;
+          padding: 8px 12px;
         }
 
         .meta-item {
@@ -286,7 +286,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .score-card {
           border: 1.5px solid #2b6cb0;
           border-radius: 8px;
-          padding: 16px;
+          padding: 10px 14px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -295,7 +295,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .lbl {
-          font-size: 10px;
+          font-size: 9px;
           font-weight: bold;
           color: #2b6cb0;
           text-transform: uppercase;
@@ -303,14 +303,14 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .big-val {
-          font-size: 32px;
+          font-size: 26px;
           font-weight: 800;
           color: #2b6cb0;
-          margin: 6px 0;
+          margin: 4px 0;
         }
 
         .score-card .big-val .denom {
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 500;
           opacity: 0.7;
         }
@@ -339,42 +339,42 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .score-card-group {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 6px;
         }
 
         .sub-score-card {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 10px 14px;
+          padding: 6px 12px;
           border-radius: 6px;
           border: 1px solid #e2e8f0;
           background: #ffffff;
         }
 
         .sub-score-card.correct {
-          border-left: 4px solid #38a169;
+          border-left: 3px solid #38a169;
           background: #f0fff4;
         }
 
         .sub-score-card.wrong {
-          border-left: 4px solid #e53e3e;
+          border-left: 3px solid #e53e3e;
           background: #fff5f5;
         }
 
         .sub-score-card.left {
-          border-left: 4px solid #718096;
+          border-left: 3px solid #718096;
           background: #f7fafc;
         }
 
         .sub-score-card .lbl {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
           color: #4a5568;
         }
 
         .sub-score-card .val {
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 800;
           color: #2d3748;
         }
@@ -390,19 +390,19 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .sub-score-card.left .pts { color: #4a5568; }
 
         .responses-section h2 {
-          font-size: 13px;
-          margin: 0 0 10px 0;
+          font-size: 11px;
+          margin: 0 0 6px 0;
           color: #1a202c;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           border-bottom: 1px solid #edf2f7;
-          padding-bottom: 4px;
+          padding-bottom: 3px;
         }
 
         .responses-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
-          gap: 10px;
+          gap: 6px;
         }
 
         .resp-col {
@@ -416,8 +416,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           color: #ffffff;
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 4px 6px;
-          font-size: 9px;
+          padding: 2.5px 4px;
+          font-size: 8px;
           font-weight: bold;
           text-align: center;
         }
@@ -425,8 +425,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .resp-row {
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 3px 6px;
-          font-size: 10px;
+          padding: 1.5px 4px;
+          font-size: 9px;
           text-align: center;
           border-bottom: 0.5px solid #f7fafc;
         }
@@ -466,7 +466,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .report-footer {
-          margin-top: 25px;
+          margin-top: 12px;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 20px;
@@ -481,7 +481,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
 
         .sig-box .line {
           border-bottom: 1.2px dashed #cbd5e0;
-          height: 15px;
+          height: 12px;
         }
 
         .sig-box span {
@@ -495,6 +495,10 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           @page {
             size: A4;
             margin: 0 !important;
+          }
+          #root,
+          .admin-report-portal-modal {
+            display: none !important;
           }
           body {
             margin: 0 !important;

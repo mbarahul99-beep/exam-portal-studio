@@ -43,6 +43,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   // Scanned verification states
   const [activeResult, setActiveResult] = useState<any | null>(null);
   const [detectedStudentId, setDetectedStudentId] = useState<number | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const getMaxPotentialScore = () => {
     if (exam.sections && exam.sections.length > 0) {
       let maxScore = 0;
@@ -249,8 +250,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       let wrongCount = 0;
       let unansweredCount = 0;
 
-      const detectedSet = cvResult.bookletSet || 'A';
-      const correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+       const detectedSet = cvResult.bookletSet || 'A';
+       let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+       if (!correctKey || Object.keys(correctKey).length === 0) {
+         correctKey = exam.answerKey;
+       }
 
       if (exam.sections && exam.sections.length > 0) {
         exam.sections.forEach((sec: any) => {
@@ -386,6 +390,122 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     setActiveResult(updatedResult);
     
     // Update the row item in fileList as well
+    setFileList(prev => prev.map(f => {
+      if (f.id === selectedFileId) {
+        return {
+          ...f,
+          result: updatedResult
+        };
+      }
+      return f;
+    }));
+  };
+
+  const handleVerifyAnswerChange = (q: number, option: string) => {
+    if (!activeResult) return;
+
+    const updatedAnswers = { ...activeResult.answers, [q]: option };
+
+    // Recalculate score using the same section-wise / uniform marking logic
+    let score = 0;
+    let correctCount = 0;
+    let wrongCount = 0;
+    let unansweredCount = 0;
+
+    const detectedSet = activeResult.bookletSet || 'A';
+    let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+    if (!correctKey || Object.keys(correctKey).length === 0) {
+      correctKey = exam.answerKey;
+    }
+
+    if (exam.sections && exam.sections.length > 0) {
+      exam.sections.forEach((sec: any) => {
+        const start = sec.qStart;
+        const secCorrectMarks = sec.correctMarks ?? 4;
+        const secIncorrectMarks = sec.incorrectMarks ?? -1;
+        const secUnansweredMarks = 0;
+
+        const qNums = Array.from({ length: sec.qCount }, (_, i) => start + i);
+
+        if (sec.allowOptionalAttempts) {
+          const maxAttempts = sec.maxAttempts ?? sec.qCount;
+          let attemptsCount = 0;
+
+          qNums.forEach(currQ => {
+            const studentAns = updatedAnswers[currQ] || '';
+            const correctAns = correctKey[currQ] || 'A';
+
+            if (studentAns !== '') {
+              if (attemptsCount < maxAttempts) {
+                attemptsCount++;
+                if (studentAns === correctAns) {
+                  score += secCorrectMarks;
+                  correctCount++;
+                } else {
+                  score += secIncorrectMarks;
+                  wrongCount++;
+                }
+              } else {
+                score += secUnansweredMarks;
+                unansweredCount++;
+              }
+            } else {
+              score += secUnansweredMarks;
+              unansweredCount++;
+            }
+          });
+        } else {
+          qNums.forEach(currQ => {
+            const studentAns = updatedAnswers[currQ] || '';
+            const correctAns = correctKey[currQ] || 'A';
+
+            if (studentAns === '') {
+              score += secUnansweredMarks;
+              unansweredCount++;
+            } else if (studentAns === correctAns) {
+              score += secCorrectMarks;
+              correctCount++;
+            } else {
+              score += secIncorrectMarks;
+              wrongCount++;
+            }
+          });
+        }
+      });
+    } else {
+      const cMarks = exam.correctMarks ?? 4;
+      const iMarks = exam.incorrectMarks ?? -1;
+      const uMarks = exam.unansweredMarks ?? 0;
+
+      for (let currQ = 1; currQ <= exam.numQuestions; currQ++) {
+        const studentAns = updatedAnswers[currQ] || '';
+        const correctAns = correctKey[currQ] || 'A';
+
+        if (studentAns === '') {
+          score += uMarks;
+          unansweredCount++;
+        } else if (studentAns === correctAns) {
+          score += cMarks;
+          correctCount++;
+        } else {
+          score += iMarks;
+          wrongCount++;
+        }
+      }
+    }
+
+    const updatedResult = {
+      ...activeResult,
+      answers: updatedAnswers,
+      score,
+      correctCount,
+      wrongCount,
+      unansweredCount
+    };
+
+    setActiveResult(updatedResult);
+
+    // Also update the item in fileList so it isn't lost if they click save
     setFileList(prev => prev.map(f => {
       if (f.id === selectedFileId) {
         return {
@@ -677,6 +797,103 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <span style={{ opacity: 0.6 }}>➖ {activeResult.unansweredCount}</span>
                     </span>
                   </div>
+                </div>
+                
+                <div style={{ width: '100%', marginTop: '4px' }}>
+                  <button 
+                    className="btn-outlined" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '6px 12px', background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'inherit' }}
+                    onClick={() => setShowDetails(!showDetails)}
+                  >
+                    <span>{showDetails ? 'Hide Scanned Items Detail' : 'Show Scanned Items Detail'}</span>
+                    <span>{showDetails ? '▲' : '▼'}</span>
+                  </button>
+                  {showDetails && (
+                    <div style={{ marginTop: '8px', maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'rgba(255,255,255,0.01)', padding: '12px' }}>
+                      <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', opacity: 0.7 }}>Click any option bubble below to override or correct scanned answers:</p>
+                      <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                            <th style={{ padding: '6px 4px' }}>Q.No</th>
+                            <th style={{ padding: '6px 4px' }}>Scanned Bubble / Override</th>
+                            <th style={{ padding: '6px 4px' }}>Correct Key</th>
+                            <th style={{ padding: '6px 4px' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: exam.numQuestions }).map((_, idx) => {
+                            const q = idx + 1;
+                            const studentAns = activeResult.answers[q] || '';
+                            const detectedSet = activeResult.bookletSet || 'A';
+                            let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+                            if (!correctKey || Object.keys(correctKey).length === 0) {
+                              correctKey = exam.answerKey;
+                            }
+                            const correctAns = correctKey[q] || 'A';
+
+                            // Determine question options count
+                            const sec = exam.sections?.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
+                            const options = sec && sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+
+                            const isCorrect = studentAns === correctAns;
+                            return (
+                              <tr key={`diag-row-${q}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                                <td style={{ padding: '6px 4px', fontWeight: 'bold' }}>Q{q}</td>
+                                <td style={{ padding: '6px 4px' }}>
+                                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                    {options.map(opt => (
+                                      <button
+                                        key={`diag-opt-${q}-${opt}`}
+                                        onClick={() => handleVerifyAnswerChange(q, studentAns === opt ? '' : opt)}
+                                        style={{
+                                          width: '22px',
+                                          height: '22px',
+                                          borderRadius: '50%',
+                                          border: '1px solid var(--border-color)',
+                                          background: studentAns === opt ? 'var(--primary)' : 'none',
+                                          color: studentAns === opt ? '#fff' : 'inherit',
+                                          fontSize: '0.65rem',
+                                          fontWeight: 'bold',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                      >
+                                        {opt}
+                                      </button>
+                                    ))}
+                                    {studentAns !== '' && (
+                                      <button
+                                        onClick={() => handleVerifyAnswerChange(q, '')}
+                                        style={{
+                                          padding: '2px 6px',
+                                          borderRadius: '4px',
+                                          border: 'none',
+                                          background: 'rgba(229, 62, 62, 0.1)',
+                                          color: '#e53e3e',
+                                          fontSize: '0.6rem',
+                                          cursor: 'pointer',
+                                          marginLeft: '4px'
+                                        }}
+                                      >
+                                        Clear
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px 4px', fontWeight: '600', fontSize: '0.8rem' }}>{correctAns}</td>
+                                <td style={{ padding: '6px 4px', color: studentAns === '' ? 'var(--text-muted)' : isCorrect ? 'var(--success)' : 'var(--error)', fontWeight: 'bold' }}>
+                                  {studentAns === '' ? 'Unanswered' : isCorrect ? '✔ Correct' : '✘ Wrong'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
 

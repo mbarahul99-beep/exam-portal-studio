@@ -10,6 +10,20 @@ export interface Student {
   faceDescriptor?: number[]; // Vector embedding for facial biometrics
 }
 
+export interface BankQuestion {
+  id?: number;
+  source: 'NEET' | 'IIT JEE' | 'NCERT Science' | 'NCERT Math' | 'Custom';
+  subject: string;
+  chapter: string;
+  topic?: string;
+  questionText: string;
+  options: string[];
+  correctOptionIdx: number;
+  explanation?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  createdAt?: Date;
+}
+
 export interface ClassEntity {
   id?: number;
   name: string;
@@ -101,6 +115,7 @@ class AppDatabase extends Dexie {
   classes!: Table<ClassEntity>;
   questions!: Table<Question>;
   attendance!: Table<AttendanceRecord>;
+  questionBank!: Table<BankQuestion>;
 
   constructor() {
     super('OMRExamsDatabase');
@@ -115,6 +130,10 @@ class AppDatabase extends Dexie {
     // Version 7 adds the attendance table for daily tracking
     this.version(7).stores({
       attendance: '++id, date, studentId, className, [date+studentId]'
+    });
+    // Version 8 adds the questionBank table for educational library MCQs
+    this.version(8).stores({
+      questionBank: '++id, source, subject, chapter, difficulty'
     });
   }
 }

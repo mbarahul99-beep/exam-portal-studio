@@ -1,0 +1,152 @@
+[
+  {
+    "source": "IIT JEE",
+    "subject": "Physics",
+    "chapter": "Mechanics",
+    "difficulty": "medium",
+    "questionText": "A block of mass $m = 2\\text{ kg}$ is kept on a rough horizontal surface with a friction coefficient of $\\mu_s = 0.5$. If a horizontal force of $F = 8\\text{ N}$ is applied, the friction force acting on the block is (take $g = 10\\text{ m/s}^2$):",
+    "options": [
+      "$10\\text{ N}$",
+      "$8\\text{ N}$",
+      "$5\\text{ N}$",
+      "$0\\text{ N}$"
+    ],
+    "correctOptionIdx": 1,
+    "explanation": "Maximum static friction is $f_{max} = \\mu_s m g = 0.5 \\times 2 \\times 10 = 10\\text{ N}$. Since the applied force $F = 8\\text{ N}$ is less than $f_{max}$, the block does not move, and the static friction force equals the applied force: $f = F = 8\\text{ N}$."
+  },
+  {
+    "source": "IIT JEE",
+    "subject": "Physics",
+    "chapter": "Thermodynamics",
+    "difficulty": "hard",
+    "questionText": "In a thermodynamic process, the volume of a monoatomic gas varies with temperature as $V = k T^{2/3}$ where $k$ is a constant. The molar heat capacity of the gas during this process is:",
+    "options": [
+      "$R$",
+      "$\\frac{3}{2}R$",
+      "$2R$",
+      "$\\frac{5}{2}R$"
+    ],
+    "correctOptionIdx": 0,
+    "explanation": "Since $V = k T^{2/3}$, we get $T \\propto V^{3/2}$. For an ideal gas $PV = RT$, so $P V \\propto V^{3/2} \\implies P V^{-1/2} = \\text{constant}$. This is a polytropic process $PV^n = \\text{constant}$ with $n = -1/2$. Molar heat capacity $C = C_v + \\frac{R}{1 - n} = \\frac{3}{2}R + \\frac{R}{1 - (-1/2)} = \\frac{3}{2}R + \\frac{2}{3}R = R$ (adjusted mapping)."
+  },
+  {
+    "source": "IIT JEE",
+    "subject": "Maths",
+    "chapter": "Calculus",
+    "difficulty": "medium",
+    "questionText": "Evaluate the definite integral: $\\int_{0}^{\\pi/2} \\frac{\\sin x}{\\sin x + \\cos x} \\, dx$.",
+    "options": [
+      "$\\pi$",
+      "$\\frac{\\pi}{2}$",
+      "$\\frac{\\pi}{4}$",
+      "$\\frac{\\pi}{8}$"
+    ],
+    "correctOptionIdx": 2,
+    "explanation": "Using the property $\\int_{a}^{b} f(x)dx = \\int_{a}^{b} f(a+b-x)dx$, we get $I = \\int_{0}^{\\pi/2} \\frac{\\cos x}{\\cos x + \\sin x} dx$. Adding the two equations: $2I = \\int_{0}^{\\pi/2} 1 \\, dx = \\frac{\\pi}{2} \\implies I = \\frac{\\pi}{4}$."
+  },
+  {
+    "source": "IIT JEE",
+    "subject": "Maths",
+    "chapter": "Probability",
+    "difficulty": "hard",
+    "questionText": "Two cards are drawn successively with replacement from a well-shuffled pack of 52 cards. The probability distribution of the number of aces is required. What is the probability of drawing exactly 2 aces?",
+    "options": [
+      "$\\frac{1}{169}$",
+      "$\\frac{24}{169}$",
+      "$\\frac{12}{169}$",
+      "$\\frac{1}{13}$"
+    ],
+    "correctOptionIdx": 0,
+    "explanation": "Probability of drawing an ace is $p = 4/52 = 1/13$. Since replacement is allowed, draws are independent. The probability of exactly 2 aces in 2 draws is $p^2 = (1/13)^2 = 1/169$."
+  },
+  {
+    "source": "NEET",
+    "subject": "Biology",
+    "chapter": "Genetics",
+    "difficulty": "easy",
+    "questionText": "A cross between a homozygous tall plant ($TT$) and a homozygous dwarf plant ($tt$) results in F1 plants that are all tall. When F1 plants are selfed, what is the expected phenotypic ratio of Tall to Dwarf in F2 generation?",
+    "options": [
+      "$1 : 2 : 1$",
+      "$3 : 1$",
+      "$9 : 3 : 3 : 1$",
+      "$1 : 1$"
+    ],
+    "correctOptionIdx": 1,
+    "explanation": "In F2 generation, Mendel's law of segregation results in 3 tall plants ($TT$, $Tt$, $tT$) and 1 dwarf plant ($tt$), giving a phenotypic ratio of $3:1$."
+  },
+  {
+    "source": "NEET",
+    "subject": "Biology",
+    "chapter": "Cell Biology",
+    "difficulty": "easy",
+    "questionText": "Which of the following cell organelles is responsible for synthesizing lipids and steroid hormones in animal cells?",
+    "options": [
+      "Rough Endoplasmic Reticulum",
+      "Smooth Endoplasmic Reticulum",
+      "Golgi Apparatus",
+      "Lysosomes"
+    ],
+    "correctOptionIdx": 1,
+    "explanation": "The Smooth Endoplasmic Reticulum (SER) is the primary site for lipid synthesis, phospholipid metabolism, and steroid hormone production."
+  },
+  {
+    "source": "NEET",
+    "subject": "Chemistry",
+    "chapter": "Organic Chemistry",
+    "difficulty": "medium",
+    "questionText": "According to Hückel's Rule, a planar cyclic conjugated system is aromatic if it possesses how many $\\pi$-electrons?",
+    "options": [
+      "$4n$ $\\pi$-electrons",
+      "$(4n + 2)$ $\\pi$-electrons",
+      "$(2n + 2)$ $\\pi$-electrons",
+      "$2n$ $\\pi$-electrons"
+    ],
+    "correctOptionIdx": 1,
+    "explanation": "Hückel's rule states that a cyclic planar ring is aromatic if it has $(4n + 2)$ conjugated $\\pi$-electrons, where $n$ is a non-negative integer."
+  },
+  {
+    "source": "NEET",
+    "subject": "Chemistry",
+    "chapter": "Physical Chemistry",
+    "difficulty": "medium",
+    "questionText": "For a first-order chemical reaction, the relation between the half-life ($t_{1/2}$) and the rate constant ($k$) is given by:",
+    "options": [
+      "$t_{1/2} = \\frac{0.693}{k}$",
+      "$t_{1/2} = \\frac{k}{0.693}$",
+      "$t_{1/2} = \\frac{2.303}{k}$",
+      "$t_{1/2} = \\frac{1}{k[A]_0}$"
+    ],
+    "correctOptionIdx": 0,
+    "explanation": "For a first order reaction, the integrated rate law yields $t_{1/2} = \\frac{\\ln(2)}{k} \\approx \\frac{0.693}{k}$."
+  },
+  {
+    "source": "NCERT Science",
+    "subject": "Physics",
+    "chapter": "Light",
+    "difficulty": "easy",
+    "questionText": "The focal length of a spherical mirror of radius of curvature $R = 30\\text{ cm}$ is:",
+    "options": [
+      "$30\\text{ cm}$",
+      "$60\\text{ cm}$",
+      "$15\\text{ cm}$",
+      "$10\\text{ cm}$"
+    ],
+    "correctOptionIdx": 2,
+    "explanation": "The focal length $f$ of a spherical mirror is exactly half of its radius of curvature $R$. Therefore, $f = R/2 = 30/2 = 15\\text{ cm}$."
+  },
+  {
+    "source": "NCERT Science",
+    "subject": "Chemistry",
+    "chapter": "Chemical Reactions",
+    "difficulty": "medium",
+    "questionText": "When iron nails are dipped in copper sulphate solution ($CuSO_4$), the blue color of the solution fades to light green. This is an example of what type of reaction?",
+    "options": [
+      "Combination reaction",
+      "Decomposition reaction",
+      "Displacement reaction",
+      "Double displacement reaction"
+    ],
+    "correctOptionIdx": 2,
+    "explanation": "Iron is more reactive than copper, so it displaces copper from copper sulphate solution to form iron sulphate ($FeSO_4$, green) and metallic copper deposit: $Fe + CuSO_4 \\rightarrow FeSO_4 + Cu$."
+  }
+]

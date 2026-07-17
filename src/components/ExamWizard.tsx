@@ -56,8 +56,16 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   // Online Questions Composer States
   const [questionsState, setQuestionsState] = useState<any[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv'>('manual');
+  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library'>('manual');
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
+
+  // Library filters
+  const [libSourceFilter, setLibSourceFilter] = useState<string>('All');
+  const [libSubjectFilter, setLibSubjectFilter] = useState<string>('All');
+  const [libDifficultyFilter, setLibDifficultyFilter] = useState<string>('All');
+  const [libSearchQuery, setLibSearchQuery] = useState<string>('');
+  const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
+  const [libLoading, setLibLoading] = useState<boolean>(false);
 
   // Success link states
   const [createdExamId, setCreatedExamId] = useState<number | null>(null);
@@ -160,6 +168,58 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
     loadExamData();
   }, [examId]);
+
+  React.useEffect(() => {
+    if (questionSetupTab !== 'library') return;
+
+    const loadQuestionBank = async () => {
+      setLibLoading(true);
+      try {
+        const count = await db.questionBank.count();
+        if (count === 0) {
+          const response = await fetch('/neet_jee_bank.json');
+          if (response.ok) {
+            const data = await response.json();
+            const formatted = data.map((q: any) => ({
+              ...q,
+              createdAt: new Date()
+            }));
+            await db.questionBank.bulkAdd(formatted);
+          } else {
+            console.error("Failed to fetch public neet_jee_bank.json library:", response.statusText);
+          }
+        }
+
+        let results = await db.questionBank.toArray();
+
+        if (libSourceFilter !== 'All') {
+          results = results.filter((q: any) => q.source === libSourceFilter);
+        }
+        if (libSubjectFilter !== 'All') {
+          results = results.filter((q: any) => q.subject === libSubjectFilter);
+        }
+        if (libDifficultyFilter !== 'All') {
+          results = results.filter((q: any) => q.difficulty === libDifficultyFilter);
+        }
+        if (libSearchQuery.trim()) {
+          const lower = libSearchQuery.toLowerCase();
+          results = results.filter((q: any) => 
+            q.questionText.toLowerCase().includes(lower) || 
+            q.chapter.toLowerCase().includes(lower) ||
+            q.options.some((o: string) => o.toLowerCase().includes(lower))
+          );
+        }
+
+        setLibraryQuestions(results);
+      } catch (err) {
+        console.error("Error loading or indexing question bank:", err);
+      } finally {
+        setLibLoading(false);
+      }
+    };
+
+    loadQuestionBank();
+  }, [questionSetupTab, libSourceFilter, libSubjectFilter, libDifficultyFilter, libSearchQuery]);
 
   const renderStepCircle = (stepNum: number) => {
     if (step > stepNum) {
@@ -1056,6 +1116,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       >
                         Import CSV
                       </button>
+                      <button 
+                        className={`btn-seed ${questionSetupTab === 'library' ? 'active-tab' : ''}`} 
+                        onClick={() => setQuestionSetupTab('library')}
+                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'library' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'library' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      >
+                        Question Bank
+                      </button>
                     </div>
 
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -1283,7 +1350,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         );
                       })()}
                     </div>
-                  ) : (
+                  ) : questionSetupTab === 'csv' ? (
                     /* CSV Upload Drop-zone */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '24px', boxSizing: 'border-box' }}>
                       <div style={{ background: 'rgba(16,88,202,0.08)', padding: '16px', borderRadius: '50%', color: 'var(--primary)' }}>
@@ -1332,6 +1399,128 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                           {csvUploadSuccess}
                         </div>
                       )}
+                    </div>
+                  ) : (
+                    /* QUESTION BANK LIBRARY DISPLAY */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: 'calc(100% - 50px)', overflow: 'hidden' }}>
+                      {/* Filter Controls Row */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SOURCE</span>
+                          <select value={libSourceFilter} onChange={e => setLibSourceFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
+                            <option value="All">All Sources</option>
+                            <option value="NEET">NEET</option>
+                            <option value="IIT JEE">IIT JEE</option>
+                            <option value="NCERT Science">NCERT Science</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SUBJECT</span>
+                          <select value={libSubjectFilter} onChange={e => setLibSubjectFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
+                            <option value="All">All Subjects</option>
+                            <option value="Physics">Physics</option>
+                            <option value="Chemistry">Chemistry</option>
+                            <option value="Biology">Biology</option>
+                            <option value="Maths">Maths</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>DIFFICULTY</span>
+                          <select value={libDifficultyFilter} onChange={e => setLibDifficultyFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
+                            <option value="All">All Levels</option>
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: 'span 2' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SEARCH KEYWORDS</span>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. friction, Mendel, CO2..." 
+                            value={libSearchQuery} 
+                            onChange={e => setLibSearchQuery(e.target.value)} 
+                            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Main library questions feed */}
+                      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+                        {libLoading ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px 0', gap: '12px' }}>
+                            <div style={{ border: '3px solid #e2e8f0', borderTop: '3px solid var(--primary)', borderRadius: '50%', width: '28px', height: '28px', animation: 'spin 1s linear infinite' }} />
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Fetching & indexing question libraries...</span>
+                          </div>
+                        ) : libraryQuestions.length === 0 ? (
+                          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                            No questions found matching your filters.
+                          </div>
+                        ) : (
+                          libraryQuestions.map((qVal, index) => {
+                            const isAddedToActive = questionsState[activeQuestionIndex]?.questionText === qVal.questionText;
+                            return (
+                              <div key={index} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{qVal.source}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{qVal.subject}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{qVal.chapter}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
+                                    <MathRenderer text={qVal.questionText} />
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    {qVal.options.map((opt: string, oIdx: number) => (
+                                      <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
+                                        <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
+                                        <MathRenderer text={opt} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {qVal.explanation && (
+                                    <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
+                                      Explanation: <MathRenderer text={qVal.explanation} />
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQuestionsState(prev => {
+                                      const updated = [...prev];
+                                      updated[activeQuestionIndex] = {
+                                        ...updated[activeQuestionIndex],
+                                        questionText: qVal.questionText,
+                                        options: [...qVal.options],
+                                        correctOptionIdx: qVal.correctOptionIdx,
+                                        explanation: qVal.explanation || ''
+                                      };
+                                      return updated;
+                                    });
+                                  }}
+                                  disabled={isAddedToActive}
+                                  style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: isAddedToActive ? '#48bb78' : 'var(--primary)',
+                                    color: '#fff',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.75rem',
+                                    cursor: isAddedToActive ? 'default' : 'pointer',
+                                    flexShrink: 0,
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                                  }}
+                                >
+                                  {isAddedToActive ? 'Added ✔' : `Add to Q${questionsState[activeQuestionIndex]?.qNum || 1}`}
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   )}
 

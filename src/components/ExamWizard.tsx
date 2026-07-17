@@ -124,7 +124,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           setSubjectsList(exam.subjects);
         }
 
-        if (exam.sections) {
+        if (exam.sections && exam.sections.length > 0) {
           const mappedSecs: SectionState[] = exam.sections.map(sec => ({
             subjectName: sec.subjectName,
             sectionName: sec.sectionName,
@@ -137,6 +137,20 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
             maxAttempts: sec.maxAttempts || sec.qCount
           }));
           setSectionsList(mappedSecs);
+        } else {
+          // Synthesize default section matching the exam's numQuestions
+          const defaultSec: SectionState = {
+            subjectName: 'Subject 1',
+            sectionName: 'Section A',
+            qCount: exam.numQuestions || 10,
+            questionType: '4 option',
+            correctMarks: exam.correctMarks ?? 4,
+            incorrectMarks: exam.incorrectMarks ?? -1,
+            allowPartialMarks: false,
+            allowOptionalAttempts: false,
+            maxAttempts: exam.numQuestions || 10
+          };
+          setSectionsList([defaultSec]);
         }
 
         if (exam.answerKeys) {
@@ -915,7 +929,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                 value={sec.qCount} 
                                 onChange={(e) => updateSection({ qCount: Number(e.target.value) })}
                               >
-                                {Array.from({ length: 50 }).map((_, i) => (
+                                {Array.from({ length: 200 }).map((_, i) => (
                                   <option key={`sec-qc-${i + 1}`} value={i + 1}>{i + 1}</option>
                                 ))}
                               </select>

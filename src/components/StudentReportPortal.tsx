@@ -225,14 +225,14 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button 
                   onClick={() => setActiveAnalysisSub(null)}
-                  style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  style={{ background: 'transparent', border: '1px solid #2563eb', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <ChevronLeft size={16} /> Back to Dashboard
+                  {adminMode ? <TrendingUp size={16} /> : <ChevronLeft size={16} />} {adminMode ? 'Student Dashboard' : 'Back to Dashboard'}
                 </button>
                 {adminMode && (
                   <button 
                     onClick={onClose}
-                    style={{ background: 'transparent', border: '1px solid #ef4444', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
                     Close Analysis
                   </button>
@@ -241,7 +241,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
               <button 
                 onClick={() => window.print()}
-                style={{ background: '#2563eb', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)' }}
+                style={{ background: '#16a34a', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(22,163,74,0.2)' }}
               >
                 <Download size={16} /> Download PDF Report
               </button>
@@ -251,8 +251,12 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               <h2 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 900, color: '#0f172a' }}>
                 {activeAnalysisSub.exam.title}
               </h2>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-                Detailed Performance Diagnostic & Section-wise Evaluation
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>Candidate: <strong style={{ color: '#0f172a' }}>{student.name}</strong></span>
+                <span style={{ color: '#cbd5e1' }}>•</span>
+                <span>Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code></span>
+                <span style={{ color: '#cbd5e1' }}>•</span>
+                <span>Detailed Performance Diagnostic & Section-wise Evaluation</span>
               </p>
             </div>
 

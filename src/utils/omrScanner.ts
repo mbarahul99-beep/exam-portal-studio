@@ -280,7 +280,7 @@ export async function scanOMRSheet(
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -16; dy <= 16; dy += 1) {
+    for (let dy = -5; dy <= 5; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -319,7 +319,7 @@ export async function scanOMRSheet(
       const setIntensities: number[] = [];
       for (let idx = 0; idx < examSetsCount; idx++) {
         const x = 610 + idx * 45;
-        const y = 175 + bestDy;
+        const y = OMR_CONFIG.studentId.yStart + bestDy;
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
         setIntensities.push(avgGray);
       }

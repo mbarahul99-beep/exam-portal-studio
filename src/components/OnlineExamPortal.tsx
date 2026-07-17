@@ -172,7 +172,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           name: 'Aarav Sharma',
           className: exam.className,
           phone: '9876543210',
-          email: 'aarav@evalbee.in'
+          email: 'aarav@appexjind.in'
         };
         await db.students.add(defaultStudent);
         matched = await db.students.where('studentNum').equals('1000000001').first();
@@ -182,7 +182,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           name: 'Diya Patel',
           className: exam.className,
           phone: '9876543211',
-          email: 'diya@evalbee.in'
+          email: 'diya@appexjind.in'
         };
         await db.students.add(defaultStudent);
         matched = await db.students.where('studentNum').equals('1000000002').first();
@@ -421,7 +421,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                   <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Email Address *</label>
                   <input 
                     type="email" 
-                    placeholder="e.g. aarav@evalbee.in" 
+                    placeholder="e.g. aarav@appexjind.in" 
                     value={email} 
                     onChange={e => setEmail(e.target.value)}
                     style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}

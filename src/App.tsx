@@ -174,11 +174,11 @@ export default function App() {
 
       // 3. Add mock students
       const mockStudents: Student[] = [
-        { studentNum: '1000000001', name: 'Aarav Sharma', className: 'NEET', phone: '9876543210', email: 'aarav@evalbee.in' },
-        { studentNum: '1000000002', name: 'Diya Patel', className: 'NEET', phone: '9876543211', email: 'diya@evalbee.in' },
-        { studentNum: '1000000003', name: 'Kabir Mehta', className: 'NEET', phone: '9876543212', email: 'kabir@evalbee.in' },
-        { studentNum: '1000000004', name: 'Ananya Rao', className: 'NEET 1', phone: '9876543213', email: 'ananya@evalbee.in' },
-        { studentNum: '1000000005', name: 'Rohan Gupta', className: 'NEET 1', phone: '9876543214', email: 'rohan@evalbee.in' }
+        { studentNum: '1000000001', name: 'Aarav Sharma', className: 'NEET', phone: '9876543210', email: 'aarav@appexjind.in' },
+        { studentNum: '1000000002', name: 'Diya Patel', className: 'NEET', phone: '9876543211', email: 'diya@appexjind.in' },
+        { studentNum: '1000000003', name: 'Kabir Mehta', className: 'NEET', phone: '9876543212', email: 'kabir@appexjind.in' },
+        { studentNum: '1000000004', name: 'Ananya Rao', className: 'NEET 1', phone: '9876543213', email: 'ananya@appexjind.in' },
+        { studentNum: '1000000005', name: 'Rohan Gupta', className: 'NEET 1', phone: '9876543214', email: 'rohan@appexjind.in' }
       ];
       for (const s of mockStudents) {
         await db.students.add(s);

@@ -37,7 +37,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
           name: 'Aarav Sharma',
           className: 'NEET',
           phone: '9876543210',
-          email: 'aarav@evalbee.in'
+          email: 'aarav@appexjind.in'
         });
         matched = await db.students.where('studentNum').equals('1000000001').first();
       } else if (!matched && rollNo.trim() === '1000000002' && phone.trim() === '9876543211') {
@@ -46,7 +46,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
           name: 'Diya Patel',
           className: 'NEET',
           phone: '9876543211',
-          email: 'diya@evalbee.in'
+          email: 'diya@appexjind.in'
         });
         matched = await db.students.where('studentNum').equals('1000000002').first();
       }

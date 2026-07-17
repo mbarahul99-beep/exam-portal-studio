@@ -349,8 +349,8 @@ export default function App() {
     e.preventDefault();
     if (!selectedClassName || !drawerRollNo || !drawerName) return;
 
-    if (drawerRollNo.length !== 10 || isNaN(Number(drawerRollNo))) {
-      alert('Student Roll ID must be exactly a 10-digit number.');
+    if (drawerRollNo.length < 1 || drawerRollNo.length > 15 || isNaN(Number(drawerRollNo))) {
+      alert('Student Roll ID must be a numeric value up to 15 digits.');
       return;
     }
 
@@ -1749,15 +1749,7 @@ export default function App() {
             >
               <Award size={18} /> Reports
             </button>
-             <button 
-              className={`nav-item ${activeTab === 'scanner' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('scanner');
-                setMobileMenuOpen(false);
-              }}
-            >
-              <Camera size={18} /> OMR Scanner
-            </button>
+
             <button 
               className="nav-item"
               onClick={() => {
@@ -2971,14 +2963,14 @@ export default function App() {
                 <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Roll No *</label>
                 <input 
                   type="text" 
-                  maxLength={10}
+                  maxLength={15}
                   value={drawerRollNo}
                   onChange={(e) => setDrawerRollNo(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter 10-digit Roll ID"
+                  placeholder="Enter Student Roll ID"
                   required
                   style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
                 />
-                <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Must be a unique 10-digit number matching the bubbles on the OMR sheet.</small>
+                <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Must be a unique numeric ID matching the bubbles on the OMR sheet.</small>
               </div>
 
               <div className="form-group">

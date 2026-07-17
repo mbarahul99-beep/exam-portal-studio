@@ -234,8 +234,13 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? []
       );
 
-      // Match Student Roll No
-      const matchedStudent = students.find(s => s.studentNum === cvResult.studentNum);
+      // Match Student Roll No (robust against leading zero mismatches from dynamic digits configuration)
+      const stripLeadingZeros = (val: string) => {
+        const cleaned = val.replace(/^0+/, '');
+        return cleaned === '' ? '0' : cleaned;
+      };
+      const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
+      const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
       const studentId = matchedStudent ? matchedStudent.id : null;
 
       // Grade calculations using multiple sets and section configurations

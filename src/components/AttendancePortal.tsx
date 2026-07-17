@@ -145,7 +145,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const code = jsQR(imageData.data, imageData.width, imageData.height);
             if (code && code.data && !isCooldownRef.current) {
               const scannedNum = code.data.trim();
-              const matchedStudent = students.find(s => s.studentNum === scannedNum);
+              const stripLeadingZeros = (val: string) => {
+                const cleaned = val.replace(/^0+/, '');
+                return cleaned === '' ? '0' : cleaned;
+              };
+              const cvRollStripped = stripLeadingZeros(scannedNum);
+              const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
               
               if (matchedStudent) {
                 handleCentralSetStatus(matchedStudent.id!, matchedStudent.className, 'Present', 'QR');

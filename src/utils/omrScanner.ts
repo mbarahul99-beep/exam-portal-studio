@@ -274,13 +274,40 @@ export async function scanOMRSheet(
     const debugWarpedCanvas = document.createElement('canvas');
     cv.imshow(debugWarpedCanvas, warped);
 
+    // 5.2. Auto-Calibrate Vertical Scan Offset
+    // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
+    let bestDy = 0;
+    let minTotalIntensity = Infinity;
+    const sidConf = OMR_CONFIG.studentId;
+
+    for (let dy = -26; dy <= 26; dy += 2) {
+      let totalIntensity = 0;
+      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+        const x = sidConf.xStart + colIdx * sidConf.xStep;
+        let colMin = 256;
+        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+          const y = sidConf.yStart + rowIdx * sidConf.yStep + dy;
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
+          if (avgGray < colMin) {
+            colMin = avgGray;
+          }
+        }
+        totalIntensity += colMin;
+      }
+      if (totalIntensity < minTotalIntensity) {
+        minTotalIntensity = totalIntensity;
+        bestDy = dy;
+      }
+    }
+    console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
+
     // 5.5. Scan Booklet Code Set
     let bookletSet = 'A';
     if (examSetsCount > 1) {
       const setIntensities: number[] = [];
       for (let idx = 0; idx < examSetsCount; idx++) {
         const x = 610 + idx * 45;
-        const y = 175;
+        const y = 175 + bestDy;
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
         setIntensities.push(avgGray);
       }
@@ -304,7 +331,6 @@ export async function scanOMRSheet(
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
-    const sidConf = OMR_CONFIG.studentId;
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -312,7 +338,7 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = sidConf.yStart + rowIdx * sidConf.yStep;
+        const y = sidConf.yStart + rowIdx * sidConf.yStep + bestDy;
         // Inner radius 4.5px to cover the bubble interior
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
         intensities.push(avgGray);
@@ -366,7 +392,7 @@ export async function scanOMRSheet(
       const numOptions = is5Option ? 5 : 4;
 
       const qIndex = q - colConf.qStart;
-      const y = qConf.yStart + qIndex * qConf.yStep;
+      const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {

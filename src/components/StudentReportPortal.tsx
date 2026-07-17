@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -202,15 +203,16 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   return (
     <div style={{ minHeight: '100vh', width: '100%', background: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
-      {/* Print-only scorecard document */}
-      {activeAnalysisSub && (
+      {/* Print-only scorecard document (rendered outside the no-print modal overlay via React Portal) */}
+      {activeAnalysisSub && createPortal(
         <div className="print-only">
           <StudentReportPrint 
             exam={activeAnalysisSub.exam}
             student={student}
             submission={activeAnalysisSub}
           />
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Main Dashboard Screen (hidden on print) */}

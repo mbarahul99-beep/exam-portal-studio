@@ -31,15 +31,24 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
     else wrong++;
   }
 
-  // Sizing columns to fit 200 questions cleanly on A4
-  // 5 columns of 40 questions
-  const cols = [
-    Array.from({ length: 40 }, (_, i) => i + 1),
-    Array.from({ length: 40 }, (_, i) => i + 41),
-    Array.from({ length: 40 }, (_, i) => i + 81),
-    Array.from({ length: 40 }, (_, i) => i + 121),
-    Array.from({ length: 40 }, (_, i) => i + 161)
-  ];
+  // Dynamically calculate and balance columns to fit questions cleanly on A4
+  const totalQuestions = exam.numQuestions;
+  const maxPerCol = 40;
+  const numCols = Math.min(5, Math.ceil(totalQuestions / maxPerCol));
+  const qPerCol = Math.ceil(totalQuestions / numCols);
+  
+  const cols: number[][] = [];
+  for (let c = 0; c < numCols; c++) {
+    const colQuestions: number[] = [];
+    const startQ = c * qPerCol + 1;
+    const endQ = Math.min(totalQuestions, (c + 1) * qPerCol);
+    for (let q = startQ; q <= endQ; q++) {
+      colQuestions.push(q);
+    }
+    if (colQuestions.length > 0) {
+      cols.push(colQuestions);
+    }
+  }
 
   return (
     <div className="report-print-page">
@@ -115,7 +124,11 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
       {/* Answer Key Grid Responses */}
       <section className="report-section responses-section">
         <h2>Question Response Details</h2>
-        <div className="responses-grid">
+        <div className="responses-grid" style={{ 
+          gridTemplateColumns: `repeat(${cols.length}, 1fr)`,
+          maxWidth: cols.length === 1 ? '220px' : cols.length === 2 ? '440px' : '100%',
+          margin: cols.length < 5 ? '0 auto' : '0'
+        }}>
           {cols.map((colGroup, colIdx) => (
             <div key={`rep-col-${colIdx}`} className="resp-col">
               <div className="col-header-row">
@@ -169,11 +182,14 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .report-print-page {
           width: 210mm;
           height: 297mm;
-          padding: 15mm 15mm;
-          margin: 0 auto;
+          padding: 12mm 15mm;
+          margin: 20px auto;
           box-sizing: border-box;
           background: #ffffff;
           position: relative;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         }
 
         .report-header {
@@ -213,6 +229,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           font-weight: 800;
           color: #1a202c;
           letter-spacing: 0.5px;
+          word-break: break-word;
+          line-height: 1.25;
         }
 
         .header-titles .subtitle {
@@ -255,6 +273,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           font-size: 13px;
           font-weight: 600;
           color: #2d3748;
+          word-break: break-word;
+          white-space: normal;
         }
 
         .score-grid {
@@ -482,11 +502,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
             background: #fff !important;
           }
           .report-print-page {
-            border: none !important;
+            border: 1.5px solid #2b6cb0 !important;
+            border-radius: 4px !important;
             margin: 0 !important;
             width: 210mm !important;
             height: 297mm !important;
             position: relative !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

@@ -11,6 +11,7 @@ import { OnlineExamPortal } from './components/OnlineExamPortal';
 import { UnifiedLoginPortal } from './components/UnifiedLoginPortal';
 import { StudentReportPortal } from './components/StudentReportPortal';
 import { AttendancePortal } from './components/AttendancePortal';
+import { QuestionBankManager } from './components/QuestionBankManager';
 import { 
   Users, 
   FileText, 
@@ -42,7 +43,7 @@ export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank'>('dashboard');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -79,6 +80,30 @@ export default function App() {
     } else if (view === 'online-exam' && examIdStr) {
       setOnlineExamId(Number(examIdStr));
     }
+  }, []);
+
+  // Auto-seed question bank on mount
+  useEffect(() => {
+    const seedQuestionBank = async () => {
+      try {
+        const count = await db.questionBank.count();
+        if (count === 0) {
+          const response = await fetch('/neet_jee_bank.json');
+          if (response.ok) {
+            const data = await response.json();
+            const formatted = data.map((q: any) => ({
+              ...q,
+              createdAt: new Date()
+            }));
+            await db.questionBank.bulkAdd(formatted);
+            console.log("Central question bank successfully auto-seeded on mount!");
+          }
+        }
+      } catch (err) {
+        console.error("Auto-seeding error:", err);
+      }
+    };
+    seedQuestionBank();
   }, []);
 
   // Public Access Routing State
@@ -2011,8 +2036,11 @@ export default function App() {
               <Users size={18} /> Teachers
             </button>
             <button 
-              className="nav-item disabled-nav" 
-              onClick={() => alert('Question Banks Module is coming soon!')}
+              className={`nav-item ${activeTab === 'questions-bank' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('questions-bank');
+                setMobileMenuOpen(false);
+              }}
             >
               <BookOpen size={18} /> Question Banks
             </button>
@@ -3267,6 +3295,10 @@ export default function App() {
               classes={classes}
               students={students}
             />
+          )}
+
+          {activeTab === 'questions-bank' && (
+            <QuestionBankManager onBack={() => setActiveTab('dashboard')} />
           )}
         </main>
       </div>

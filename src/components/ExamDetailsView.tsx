@@ -13,7 +13,8 @@ import {
   Globe,
   Edit2,
   Send,
-  X
+  X,
+  Search
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -45,6 +46,9 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'result' | 'analysis' | 'questions'>('result');
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [csvInput, setCsvInput] = useState('');
+  const [bankSearch, setBankSearch] = useState('');
+  const [bankSectionSelection, setBankSectionSelection] = useState('');
+  const centralBank = useLiveQuery(() => db.questionBank.toArray()) || [];
 
   // WhatsApp Broadcast States
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -260,6 +264,47 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       setCsvInput('');
     } catch (err: any) {
       alert(`Import failed: ${err.message}`);
+    }
+  };
+
+  const handleAddQFromBank = async (bankQ: any) => {
+    try {
+      const optionLetters = ['A', 'B', 'C', 'D', 'E'];
+      const newQNum = exam.numQuestions + 1;
+
+      // Determine section name
+      const sectionName = bankSectionSelection || bankQ.subject || 'General';
+
+      // 1. Add question record
+      await db.questions.add({
+        examId: exam.id!,
+        sectionName,
+        questionText: bankQ.questionText,
+        options: [...bankQ.options],
+        correctOptionIdx: bankQ.correctOptionIdx,
+        explanation: bankQ.explanation || ''
+      });
+
+      // 2. Update Exam parameters (correct option mapping in answerKey)
+      const updatedKey = { ...exam.answerKey };
+      updatedKey[newQNum] = optionLetters[bankQ.correctOptionIdx] || 'A';
+
+      const updatedKeys = exam.answerKeys ? { ...exam.answerKeys } : {};
+      if (exam.answerKeys) {
+        Object.keys(updatedKeys).forEach(set => {
+          updatedKeys[set][newQNum] = set === 'A' ? (optionLetters[bankQ.correctOptionIdx] || 'A') : 'A';
+        });
+      }
+
+      await db.exams.update(exam.id!, {
+        numQuestions: newQNum,
+        answerKey: updatedKey,
+        answerKeys: Object.keys(updatedKeys).length > 0 ? updatedKeys : undefined
+      });
+
+      alert(`Successfully added "${bankQ.questionText.substring(0, 25)}..." as Q${newQNum}!`);
+    } catch (err: any) {
+      alert(`Failed to add question: ${err.message}`);
     }
   };
 
@@ -684,6 +729,86 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   >
                     Import Questions
                   </button>
+                </div>
+              </div>
+
+              {/* Central Question Bank search & import */}
+              <div className="glass-card" style={{ padding: '20px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <h3 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 'bold' }}>Add from Central Question Bank</h3>
+                <p className="subtitle" style={{ marginBottom: '8px' }}>Search and add reusable questions directly to this exam.</p>
+
+                {/* Section Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>TARGET EXAM SECTION</label>
+                  {exam.sections && exam.sections.length > 0 ? (
+                    <select 
+                      value={bankSectionSelection} 
+                      onChange={e => setBankSectionSelection(e.target.value)} 
+                      style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff', color: '#1e293b' }}
+                    >
+                      <option value="">-- Choose Section --</option>
+                      {exam.sections.map((sec, idx) => (
+                        <option key={idx} value={sec.sectionName}>{sec.subjectName} - {sec.sectionName}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={bankSectionSelection} 
+                      onChange={e => setBankSectionSelection(e.target.value)} 
+                      placeholder="e.g. Section A" 
+                      style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: 'rgba(255,255,255,0.02)', color: 'inherit' }} 
+                    />
+                  )}
+                </div>
+
+                {/* Search input */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={12} style={{ position: 'absolute', left: '8px', top: '9px', color: 'var(--text-muted)' }} />
+                  <input 
+                    type="text" 
+                    placeholder="Search central bank..." 
+                    value={bankSearch}
+                    onChange={e => setBankSearch(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px 6px 26px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.75rem', background: 'rgba(255,255,255,0.02)', color: 'inherit', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Results List */}
+                <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px', textAlign: 'left' }}>
+                  {centralBank.length === 0 ? (
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', margin: '10px 0' }}>Central Bank is empty.</p>
+                  ) : (() => {
+                    const filtered = centralBank.filter(q => {
+                      if (!bankSearch.trim()) return true;
+                      const lower = bankSearch.toLowerCase();
+                      return q.questionText.toLowerCase().includes(lower) || q.subject.toLowerCase().includes(lower) || q.chapter.toLowerCase().includes(lower);
+                    });
+
+                    if (filtered.length === 0) {
+                      return <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', margin: '10px 0' }}>No matching questions.</p>;
+                    }
+
+                    return filtered.map(q => {
+                      const isAlreadyAdded = dbQuestions.some(dbQ => dbQ.questionText === q.questionText);
+                      return (
+                        <div key={q.id} style={{ padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'rgba(255,255,255,0.01)', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
+                          <div style={{ flex: 1, fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 'bold', color: 'var(--primary)', marginRight: '6px' }}>[{q.subject}]</span>
+                            <MathRenderer text={q.questionText} />
+                          </div>
+                          <button 
+                            disabled={isAlreadyAdded}
+                            onClick={() => handleAddQFromBank(q)}
+                            className={isAlreadyAdded ? "btn-outlined" : "btn-filled"}
+                            style={{ padding: '4px 8px', fontSize: '0.65rem', borderRadius: '4px', cursor: isAlreadyAdded ? 'default' : 'pointer' }}
+                          >
+                            {isAlreadyAdded ? 'Added' : 'Add'}
+                          </button>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

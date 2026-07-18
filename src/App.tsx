@@ -80,6 +80,35 @@ export default function App() {
       setOnlineExamId(Number(examIdStr));
     }
   }, []);
+
+  // Public Access Routing State
+  const [publicReportToken, setPublicReportToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#/report-view/')) {
+        const token = hash.replace('#/report-view/', '');
+        setPublicReportToken(token);
+      } else {
+        setPublicReportToken(null);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Fetch the submission, student, and exam details for public view
+  const publicSubmissionData = useLiveQuery(async () => {
+    if (!publicReportToken) return null;
+    const sub = await db.submissions.where('accessToken').equals(publicReportToken).first();
+    if (!sub) return null;
+    const student = await db.students.get(sub.studentId);
+    const exam = await db.exams.get(sub.examId);
+    if (!student || !exam) return null;
+    return { sub, student, exam };
+  }, [publicReportToken]);
   
   // DB Live Queries
   const students = useLiveQuery(() => db.students.toArray()) || [];
@@ -1700,6 +1729,44 @@ export default function App() {
       return { ...s, rank: currentRank };
     });
   };
+
+  // 0. Public Access Route: Intercept rendering to bypass credentials validation
+  if (publicReportToken !== null) {
+    if (publicSubmissionData === undefined) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc', fontFamily: 'sans-serif' }}>
+          <div style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #2563eb', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }} />
+          <p style={{ marginTop: '16px', color: '#64748b', fontSize: '0.9rem' }}>Loading report card...</p>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      );
+    }
+
+    if (publicSubmissionData === null) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc', fontFamily: 'sans-serif', padding: '20px', textAlign: 'center' }}>
+          <span style={{ fontSize: '3rem', marginBottom: '16px' }}>⚠️</span>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a', margin: '0 0 8px 0' }}>Link Invalid or Expired</h2>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', maxWidth: '400px', margin: 0 }}>
+            This report card link is incorrect or the candidate records have been updated. Please contact the administrator.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <StudentReportPortal 
+        studentId={publicSubmissionData.student.id!}
+        preSelectedExamId={publicSubmissionData.exam.id!}
+        publicMode={true}
+      />
+    );
+  }
 
   if (onlineExamId !== null) {
     return (

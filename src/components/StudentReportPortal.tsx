@@ -11,6 +11,7 @@ interface StudentReportPortalProps {
   adminMode?: boolean;
   onClose?: () => void;
   preSelectedExamId?: number;
+  publicMode?: boolean;
 }
 
 export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ 
@@ -18,7 +19,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   onLogout,
   adminMode = false,
   onClose,
-  preSelectedExamId
+  preSelectedExamId,
+  publicMode = false
 }) => {
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
@@ -222,24 +224,40 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         {activeAnalysisSub && analysisDetails ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             
+            {/* Public Brand Header */}
+            {publicMode && (
+              <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>⚡</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: 950, color: '#0f172a', letterSpacing: '-0.05em' }}>Appex</span>
+                  <span style={{ fontSize: '0.75rem', background: '#f0fdf4', color: '#16a34a', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Official Scorecard</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>
+                  Student Performance Evaluation
+                </div>
+              </header>
+            )}
+
             {/* Analysis Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button 
-                  onClick={() => setActiveAnalysisSub(null)}
-                  style={{ background: 'transparent', border: '1px solid #2563eb', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  {adminMode ? <TrendingUp size={16} /> : <ChevronLeft size={16} />} {adminMode ? 'Student Dashboard' : 'Back to Dashboard'}
-                </button>
-                {adminMode && (
+              {!publicMode ? (
+                <div style={{ display: 'flex', gap: '12px' }}>
                   <button 
-                    onClick={onClose}
-                    style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => setActiveAnalysisSub(null)}
+                    style={{ background: 'transparent', border: '1px solid #2563eb', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    Close Analysis
+                    {adminMode ? <TrendingUp size={16} /> : <ChevronLeft size={16} />} {adminMode ? 'Student Dashboard' : 'Back to Dashboard'}
                   </button>
-                )}
-              </div>
+                  {adminMode && (
+                    <button 
+                      onClick={onClose}
+                      style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      Close Analysis
+                    </button>
+                  )}
+                </div>
+              ) : <div />}
 
               <button 
                 onClick={() => window.print()}

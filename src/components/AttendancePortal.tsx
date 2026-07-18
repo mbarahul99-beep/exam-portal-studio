@@ -203,10 +203,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const liveVar = liveDescriptor.reduce((sum, v) => sum + Math.pow(v - liveMean, 2), 0) / liveDescriptor.length;
             const liveStdDev = Math.sqrt(liveVar);
 
-            if (liveMean < -0.75 || liveStdDev < 0.08) {
+            if (liveMean < -0.75) {
               setTrackedFace({
                 ...trackingBox,
-                name: "Poor lighting - please brighten area",
+                name: "Poor Lighting - Please brighten area",
+                pct: undefined
+              });
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
+            if (liveStdDev < 0.08) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "Low Contrast - Adjust lighting or angle",
                 pct: undefined
               });
               requestRef.current = requestAnimationFrame(scanFrame);
@@ -214,6 +224,16 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
 
             const enrolledStudents = students.filter(s => s.faceDescriptor);
+            if (enrolledStudents.length === 0) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "No Enrolled Faces in Database",
+                pct: undefined
+              });
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
             let bestMatch: Student | null = null;
             let bestDistance = Infinity;
 
@@ -223,7 +243,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const sVar = sDesc.reduce((sum, v) => sum + Math.pow(v - sMean, 2), 0) / sDesc.length;
               const sStdDev = Math.sqrt(sVar);
 
-              // If the enrolled student template itself is low quality (e.g., registered in the dark)
+              // If the enrolled student template itself is low quality (e.g. registered in the dark)
               if (sMean < -0.75 || sStdDev < 0.08) {
                 continue;
               }
@@ -239,8 +259,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            if (bestMatch && bestDistance < 1.35) {
-              const matchPercentage = Math.round((1 - (bestDistance / 1.35) * 0.4) * 100);
+            if (bestMatch && bestDistance < 1.60) {
+              const matchPercentage = Math.round((1 - (bestDistance / 1.8) * 0.4) * 100);
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
               speakAttendance(bestMatch.name);
@@ -261,7 +281,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else {
               setTrackedFace({
                 ...trackingBox,
-                name: enrolledStudents.length > 0 ? "Analyzing face..." : "No Enrolled Faces",
+                name: "Face Not Registered / Matched",
                 pct: undefined
               });
             }

@@ -724,14 +724,6 @@ export default function App() {
     canvas.height = 150;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Black out the background outside the face circle
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, 150, 150);
-
-      ctx.beginPath();
-      ctx.arc(75, 75, 55, 0, Math.PI * 2);
-      ctx.clip();
-
       const videoWidth = video.videoWidth;
       const videoHeight = video.videoHeight;
       const size = Math.min(videoWidth, videoHeight) * 0.65;

@@ -192,15 +192,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           faceCanvas.height = 150;
           const faceCtx = faceCanvas.getContext('2d');
           if (faceCtx) {
-            // Fill background with black
-            faceCtx.fillStyle = '#000000';
-            faceCtx.fillRect(0, 0, 150, 150);
-
-            // Clip to center circle
-            faceCtx.beginPath();
-            faceCtx.arc(75, 75, 55, 0, Math.PI * 2);
-            faceCtx.clip();
-
             const size = Math.min(width, height) * 0.65;
             const x = (width - size) / 2;
             const y = (height - size) / 2;
@@ -252,8 +243,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            if (bestMatch && bestDistance < 0.55) {
-              const matchPercentage = Math.round(Math.max(0, Math.min(100, (1 - bestDistance / 0.65) * 40 + 60)));
+            if (bestMatch && bestDistance < 0.62) {
+              const matchPercentage = Math.round(Math.max(0, Math.min(100, (1 - bestDistance / 0.7) * 40 + 60)));
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
               speakAttendance(bestMatch.name);

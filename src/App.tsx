@@ -34,14 +34,15 @@ import {
   ChevronRight,
   LogOut,
   Menu,
-  CalendarCheck
+  CalendarCheck,
+  Settings
 } from 'lucide-react';
 
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings'>('dashboard');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -111,6 +112,42 @@ export default function App() {
   const [drawerName, setDrawerName] = useState('');
   const [drawerEmail, setDrawerEmail] = useState('');
   const [drawerPhone, setDrawerPhone] = useState('');
+  const [drawerWhatsApp, setDrawerWhatsApp] = useState('');
+
+  // WhatsApp API Configuration States
+  const [metaAccessToken, setMetaAccessToken] = useState('');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [templateName, setTemplateName] = useState('exam_report_notification');
+
+  // Load WhatsApp settings from IndexedDB
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const tokenSetting = await db.settings.where('key').equals('metaAccessToken').first();
+        const phoneSetting = await db.settings.where('key').equals('phoneNumberId').first();
+        const templateSetting = await db.settings.where('key').equals('templateName').first();
+
+        if (tokenSetting) setMetaAccessToken(tokenSetting.value);
+        if (phoneSetting) setPhoneNumberId(phoneSetting.value);
+        if (templateSetting) setTemplateName(templateSetting.value);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+    };
+    loadSettings();
+  }, [activeTab]);
+
+  const handleSaveWhatsAppSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await db.settings.where('key').equals('metaAccessToken').modify({ value: metaAccessToken.trim() });
+      await db.settings.where('key').equals('phoneNumberId').modify({ value: phoneNumberId.trim() });
+      await db.settings.where('key').equals('templateName').modify({ value: templateName.trim() });
+      alert('WhatsApp API Configuration saved successfully!');
+    } catch (err: any) {
+      alert(`Failed to save settings: ${err.message}`);
+    }
+  };
 
   // Sort State
   const [classSortField, setClassSortField] = useState<'name' | 'studentsCount'>('name');
@@ -331,10 +368,18 @@ export default function App() {
     autoSeed();
   }, []);
 
+  const cleanWhatsAppNumber = (num: string): string => {
+    let cleaned = num.replace(/[\s\-\(\)\+]/g, '');
+    if (cleaned.length === 10 && !isNaN(Number(cleaned))) {
+      cleaned = '91' + cleaned;
+    }
+    return cleaned;
+  };
 
+  const handleImportCsv = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!csvText.trim()) return;
 
-  const handleImportCsv = async () => {
-    if (!csvText) return;
     const lines = csvText.split('\n');
     let imported = 0;
     let failed = 0;
@@ -347,10 +392,16 @@ export default function App() {
         const num = parts[0].trim();
         const name = parts[1].trim();
         const cls = (parts[2] || selectedClassName || 'NEET').trim();
+        const waNum = (parts[3] || '').trim();
 
         if (num.length === 10 && !isNaN(Number(num))) {
           try {
-            await db.students.add({ studentNum: num, name, className: cls });
+            await db.students.add({ 
+              studentNum: num, 
+              name, 
+              className: cls,
+              whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined
+            });
             
             // Auto-register class if it doesn't exist
             const classExists = await db.classes.where('name').equalsIgnoreCase(cls).first();
@@ -416,12 +467,15 @@ export default function App() {
         return;
       }
 
+      const waClean = drawerWhatsApp.trim() ? cleanWhatsAppNumber(drawerWhatsApp) : undefined;
+
       if (editingStudentId) {
         await db.students.update(editingStudentId, {
           name: drawerName.trim(),
           studentNum: drawerRollNo,
           email: drawerEmail.trim() || undefined,
-          phone: drawerPhone.trim() || undefined
+          phone: drawerPhone.trim() || undefined,
+          whatsappNumber: waClean
         });
         setEditingStudentId(null);
       } else {
@@ -430,7 +484,8 @@ export default function App() {
           studentNum: drawerRollNo,
           className: selectedClassName,
           email: drawerEmail.trim() || undefined,
-          phone: drawerPhone.trim() || undefined
+          phone: drawerPhone.trim() || undefined,
+          whatsappNumber: waClean
         });
       }
 
@@ -438,6 +493,7 @@ export default function App() {
       setDrawerName('');
       setDrawerEmail('');
       setDrawerPhone('');
+      setDrawerWhatsApp('');
       setShowAddStudentDrawer(false);
     } catch (err: any) {
       alert(`Error saving student details: ${err.message}`);
@@ -1789,6 +1845,15 @@ export default function App() {
             >
               <Award size={18} /> Reports
             </button>
+            <button 
+              className={`nav-item ${activeTab === 'whatsapp-settings' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('whatsapp-settings');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Settings size={18} /> WhatsApp API
+            </button>
 
             <button 
               className="nav-item"
@@ -2202,32 +2267,34 @@ export default function App() {
                       <div className="glass-card mt-4" style={{ padding: '0px', overflow: 'hidden' }}>
                         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
                           <table className="app-table" style={{ minWidth: '600px' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
-                              <th>Roll ID</th>
-                              <th>Name</th>
-                              <th>Email</th>
-                              <th>Phone</th>
-                              <th style={{ textAlign: 'right' }}>Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredStudents.length === 0 ? (
+                            <thead>
                               <tr>
-                                <td colSpan={6} style={{ textAlign: 'center', padding: '16px', opacity: 0.6 }}>
-                                  No students match search filter.
-                                </td>
+                                <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
+                                <th>Roll ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>WhatsApp</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                               </tr>
-                            ) : (
-                              filteredStudents.map(s => (
-                                <tr key={`stud-row-${s.id}`} className="hover-row">
-                                  <td><input type="checkbox" readOnly /></td>
-                                  <td><code className="font-mono">{s.studentNum}</code></td>
-                                  <td><strong>{s.name}</strong></td>
-                                  <td>{s.email || <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                  <td>{s.phone || <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            </thead>
+                            <tbody>
+                              {filteredStudents.length === 0 ? (
+                                <tr>
+                                  <td colSpan={7} style={{ textAlign: 'center', padding: '16px', opacity: 0.6 }}>
+                                    No students match search filter.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredStudents.map(s => (
+                                  <tr key={`stud-row-${s.id}`} className="hover-row">
+                                    <td><input type="checkbox" readOnly /></td>
+                                    <td><code className="font-mono">{s.studentNum}</code></td>
+                                    <td><strong>{s.name}</strong></td>
+                                    <td>{s.email || <span style={{ opacity: 0.4 }}>-</span>}</td>
+                                    <td>{s.phone || <span style={{ opacity: 0.4 }}>-</span>}</td>
+                                    <td>{s.whatsappNumber ? <code className="font-mono">{s.whatsappNumber}</code> : <span style={{ opacity: 0.4 }}>-</span>}</td>
+                                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                     <button 
                                       className="action-icon-btn" 
                                       onClick={() => startFaceEnrollment(s)}
@@ -2252,6 +2319,7 @@ export default function App() {
                                         setDrawerName(s.name);
                                         setDrawerEmail(s.email || '');
                                         setDrawerPhone(s.phone || '');
+                                        setDrawerWhatsApp(s.whatsappNumber || '');
                                         setShowAddStudentDrawer(true);
                                       }}
                                       title="Edit Student"
@@ -2937,6 +3005,67 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'whatsapp-settings' && (
+            <div style={{ padding: '24px', maxWidth: '600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+              <div className="glass-card animate-scale-up" style={{ padding: '28px', borderRadius: '16px', background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+                  <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Settings size={24} />
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>WhatsApp API Credentials</h2>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Configure automated broadcast settings for Meta Cloud API</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveWhatsAppSettings} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Permanent Access Token *</label>
+                    <input 
+                      type="password" 
+                      value={metaAccessToken}
+                      onChange={(e) => setMetaAccessToken(e.target.value)}
+                      placeholder="EAAA..."
+                      required
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                    />
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Generated from Meta Business Suite (System User Admin Token).</small>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Phone Number ID *</label>
+                    <input 
+                      type="text" 
+                      value={phoneNumberId}
+                      onChange={(e) => setPhoneNumberId(e.target.value)}
+                      placeholder="e.g. 1029384756..."
+                      required
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Can be copied from Meta App Developer Dashboard under WhatsApp Setup.</small>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Approved Message Template Name *</label>
+                    <input 
+                      type="text" 
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="e.g. exam_report_notification"
+                      required
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Must match the approved template name in your WhatsApp template settings.</small>
+                  </div>
+
+                  <button type="submit" className="btn-primary" style={{ padding: '12px', borderRadius: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+                    Save Configuration
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'attendance' && (
             <AttendancePortal 
               classes={classes}
@@ -2979,11 +3108,11 @@ export default function App() {
 
       {/* ADD STUDENT SLIDE-OUT DRAWER (Screenshot 2) */}
       {showAddStudentDrawer && (
-        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>
+        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
           <div className="drawer-panel animate-slide-left" onClick={(e) => e.stopPropagation()} style={{ width: '450px', background: '#ffffff', height: '100%', position: 'fixed', right: 0, top: 0, zIndex: 1002, boxShadow: '-5px 0 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
             <header style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>{editingStudentId ? 'Edit student' : 'Add student'}</h3>
-              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>
+              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
                 <X size={20} />
               </button>
             </header>
@@ -3047,9 +3176,21 @@ export default function App() {
                 />
               </div>
 
+              <div className="form-group">
+                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>WhatsApp No (for Reports)</label>
+                <input 
+                  type="text" 
+                  value={drawerWhatsApp}
+                  onChange={(e) => setDrawerWhatsApp(e.target.value)}
+                  placeholder="e.g. 919876543210 (with country code)"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
+                />
+                <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Registered phone number to receive WhatsApp report link alerts.</small>
+              </div>
+
               {/* Drawer actions at bottom */}
               <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); }}>Cancel</button>
+                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>Cancel</button>
                 <button type="submit" className="btn-primary" style={{ padding: '10px 20px', borderRadius: '6px' }}>Save</button>
               </div>
             </form>

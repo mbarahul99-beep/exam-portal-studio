@@ -737,6 +737,7 @@ export default function App() {
     const rollNoDigits = exam.rollNoDigits || 10;
     const examSetsCount = exam.examSetsCount || 1;
     const rollNoWidth = 275 - (10 - rollNoDigits) * 25;
+    const bookletShift = rollNoWidth - 275;
 
     // Background white page
     ctx.fillStyle = '#ffffff';
@@ -747,26 +748,38 @@ export default function App() {
     ctx.lineWidth = 4;
     ctx.strokeRect(70, 70, 860, 1300);
 
-    // 4 black square corner anchors
+    // 4 black square corner anchors (sized 48x48 to match 10mm x 10mm print anchors)
     ctx.fillStyle = '#000000';
     // TL
-    ctx.fillRect(30 - 10, 30 - 10, 20, 20);
+    ctx.fillRect(30 - 24, 30 - 24, 48, 48);
     // TR
-    ctx.fillRect(970 - 10, 30 - 10, 20, 20);
+    ctx.fillRect(970 - 24, 30 - 24, 48, 48);
     // BL
-    ctx.fillRect(30 - 10, 1384 - 10, 20, 20);
+    ctx.fillRect(30 - 24, 1384 - 24, 48, 48);
     // BR
-    ctx.fillRect(970 - 10, 1384 - 10, 20, 20);
+    ctx.fillRect(970 - 24, 1384 - 24, 48, 48);
 
     // Title banner text
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(exam.title.toUpperCase(), 500, 85);
-    ctx.font = 'bold 11px Arial';
-    ctx.fillText(`OMR ANSWER SHEET - ${exam.numQuestions} QUESTIONS`, 500, 108);
+    ctx.fillText(exam.title.toUpperCase(), 500, 100);
 
-    const bookletShift = rollNoWidth - 275;
+    // Draw Subtitle pill capsule background
+    ctx.fillStyle = '#dc0045';
+    const pillWidth = 280;
+    const pillHeight = 24;
+    const pillX = 500 - pillWidth / 2;
+    const pillY = 112;
+    
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 12);
+    ctx.fill();
+    
+    // Draw Subtitle text inside pill
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`OMR ANSWER SHEET - ${exam.numQuestions} QUESTIONS`, 500, pillY + 16);
 
     // Draw background borders for Roll No, Test Booklet, Booklet Code
     ctx.strokeStyle = '#dc0045';
@@ -828,18 +841,20 @@ export default function App() {
       }
     }
 
-    // Booklet Code (Sets) bubbles
+    // Booklet Code (Sets) bubbles (matching code-bubble radius 12, y=216)
     if (examSetsCount > 0) {
       for (let col = 0; col < examSetsCount; col++) {
         const x = 610 + col * 45 + bookletShift;
-        const y = 175;
+        const y = OMR_CONFIG.studentId.yStart;
+        ctx.strokeStyle = '#dc0045';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(x, y, 7, 0, 2 * Math.PI);
+        ctx.arc(x, y, 12, 0, 2 * Math.PI);
         ctx.stroke();
-        ctx.font = 'bold 8px Arial';
+        ctx.font = 'bold 12px Arial';
         ctx.fillStyle = '#ffdbe3';
         const code = String.fromCharCode(65 + col);
-        ctx.fillText(code, x, y + 3);
+        ctx.fillText(code, x, y + 4);
       }
     }
 
@@ -884,13 +899,14 @@ export default function App() {
     };
 
     const getQuestionLabel = (qNum: number): string => {
+      const pad = qNum.toString().padStart(2, '0');
       if (!exam.sections || exam.sections.length === 0) {
-        return qNum.toString();
+        return pad;
       }
       const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
-      if (!sec) return qNum.toString();
+      if (!sec) return pad;
       const subCode = sec.subjectName.substring(0, 3).toUpperCase();
-      return `${qNum} ${subCode}`;
+      return `${pad} ${subCode}`;
     };
     
     for (const col of qConf.columns) {
@@ -920,14 +936,14 @@ export default function App() {
         const qIdx = q - qStart;
         const y = qConf.yStart + qIdx * qConf.yStep;
 
-        // Draw Q Number with subject code
+        // Draw Q Number with padded digits and subject code
         ctx.fillStyle = '#dc0045';
         ctx.font = 'bold 8px Arial';
         ctx.fillText(getQuestionLabel(q), col.xLabel, y + 3);
 
         const qOptions = getQuestionOptions(q);
 
-        // Draw bubbles
+        // Draw bubbles (matching bubble size of 3.6mm to fit vertical grid spacing)
         qOptions.forEach((opt, optIdx) => {
           const x = optIdx === 4 ? col.xOptions[3] + 25 : col.xOptions[optIdx];
           ctx.strokeStyle = '#dc0045';
@@ -943,7 +959,7 @@ export default function App() {
       }
     }
 
-    // Bottom signatures
+    // Bottom signatures boxes
     ctx.strokeStyle = '#dc0045';
     ctx.lineWidth = 1;
     ctx.strokeRect(70, 1315, 275, 45); // Left box
@@ -952,9 +968,14 @@ export default function App() {
 
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 8px Arial';
-    ctx.fillText("Candidate Signature", 207, 1350);
-    ctx.fillText("Invigilator Signature", 492, 1350);
-    ctx.fillText("Centre Superintendent Stamp", 777, 1350);
+    ctx.fillText("CANDIDATE'S LEFT HAND THUMB IMPRESSION", 207, 1350);
+    ctx.fillText("SIGNATURE OF CANDIDATE (WITH TIME)", 492, 1350);
+    ctx.fillText("SIGNATURE OF INVIGILATOR (WITH TIME)", 777, 1350);
+
+    // Disclaimer banner text at bottom
+    ctx.fillStyle = '#dc0045';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText("★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. NEET ORIGINAL ANSWER COPY - ROSE SCHEME ★", 500, 1390);
 
     // Download action
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
@@ -973,6 +994,11 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const rollNoDigits = exam.rollNoDigits || 10;
+    const examSetsCount = exam.examSetsCount || 1;
+    const rollNoWidth = 275 - (10 - rollNoDigits) * 25;
+    const bookletShift = rollNoWidth - 275;
+
     // Background white page
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 1000, 1414);
@@ -982,41 +1008,55 @@ export default function App() {
     ctx.lineWidth = 4;
     ctx.strokeRect(70, 70, 860, 1300);
 
-    // 4 black square corner anchors
+    // 4 black square corner anchors (sized 48x48 to match 10mm x 10mm print anchors)
     ctx.fillStyle = '#000000';
     // TL
-    ctx.fillRect(30 - 10, 30 - 10, 20, 20);
+    ctx.fillRect(30 - 24, 30 - 24, 48, 48);
     // TR
-    ctx.fillRect(970 - 10, 30 - 10, 20, 20);
+    ctx.fillRect(970 - 24, 30 - 24, 48, 48);
     // BL
-    ctx.fillRect(30 - 10, 1384 - 10, 20, 20);
+    ctx.fillRect(30 - 24, 1384 - 24, 48, 48);
     // BR
-    ctx.fillRect(970 - 10, 1384 - 10, 20, 20);
+    ctx.fillRect(970 - 24, 1384 - 24, 48, 48);
 
     // Title banner text
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(exam.title.toUpperCase(), 500, 90);
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText(`OMR ANSWER BUBBLE SHEET - ${exam.numQuestions} QUESTIONS`, 500, 115);
+    ctx.fillText(exam.title.toUpperCase(), 500, 100);
+
+    // Draw Subtitle pill capsule background
+    ctx.fillStyle = '#dc0045';
+    const pillWidth = 280;
+    const pillHeight = 24;
+    const pillX = 500 - pillWidth / 2;
+    const pillY = 112;
+    
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 12);
+    ctx.fill();
+    
+    // Draw Subtitle text inside pill
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`OMR ANSWER BUBBLE SHEET - ${exam.numQuestions} QUESTIONS`, 500, pillY + 16);
 
     // Draw background borders for Roll No, Test Booklet, Booklet Code
     ctx.strokeStyle = '#dc0045';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(70, 130, 275, 283); // Roll No Box
-    ctx.strokeRect(345, 130, 200, 283); // Test Booklet Box
-    ctx.strokeRect(545, 130, 385, 283); // Booklet Code Box
+    ctx.strokeRect(70, 150, rollNoWidth, 260); // Roll No Box
+    ctx.strokeRect(70 + rollNoWidth, 150, 200, 260); // Test Booklet Box
+    ctx.strokeRect(70 + rollNoWidth + 200, 150, 660 - rollNoWidth, 260); // Booklet Code Box
 
     // Section Titles
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 10px Arial';
-    ctx.fillText("ROLL NO. / अनुक्रमांक", 207, 145);
-    ctx.fillText("TEST BOOKLET NO.", 445, 145);
-    ctx.fillText("BOOKLET CODE / पुस्तिका कोड", 737, 145);
+    ctx.fillText("ROLL NO. / अनुक्रमांक", 70 + rollNoWidth / 2, 165);
+    ctx.fillText("TEST BOOKLET NO.", 70 + rollNoWidth + 100, 165);
+    ctx.fillText("BOOKLET CODE / पुस्तिका कोड", 70 + rollNoWidth + 200 + (660 - rollNoWidth) / 2, 165);
 
-    // Roll No details: mock student number "1000000002" (Diya Patel)
-    const mockRoll = "1000000002";
+    // Roll No details: mock student number (padded/sliced)
+    const mockRoll = "1000000002".substring(0, rollNoDigits).padStart(rollNoDigits, '0');
     const DIGIT_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
     const xRollStart = OMR_CONFIG.studentId.xStart;
     const xRollStep = OMR_CONFIG.studentId.xStep;
@@ -1025,7 +1065,7 @@ export default function App() {
     ctx.lineWidth = 1.0;
 
     // Draw grid headers with digits
-    for (let col = 0; col < 10; col++) {
+    for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
       ctx.strokeRect(x - 10, yRollStart - 28, 20, 20);
       ctx.fillStyle = '#2d3748';
@@ -1034,7 +1074,7 @@ export default function App() {
     }
 
     // Draw grid bubbles and fill selected
-    for (let col = 0; col < 10; col++) {
+    for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
       const activeDigit = Number(mockRoll[col]);
       for (let row = 0; row < 10; row++) {
@@ -1065,14 +1105,14 @@ export default function App() {
     const xBkStep = OMR_CONFIG.bookletNo.xStep;
     const yBkStart = OMR_CONFIG.bookletNo.yStart;
     for (let col = 0; col < 7; col++) {
-      const x = xBkStart + col * xBkStep;
+      const x = xBkStart + col * xBkStep + bookletShift;
       ctx.strokeRect(x - 10, yBkStart - 28, 20, 20);
       ctx.fillStyle = '#2d3748';
       ctx.font = 'bold 12px Arial';
       ctx.fillText(mockBooklet[col], x, yBkStart - 14);
     }
     for (let col = 0; col < 7; col++) {
-      const x = xBkStart + col * xBkStep;
+      const x = xBkStart + col * xBkStep + bookletShift;
       const activeDigit = Number(mockBooklet[col]);
       for (let row = 0; row < 10; row++) {
         const y = yRollStart + row * yRollStep;
@@ -1094,65 +1134,118 @@ export default function App() {
       }
     }
 
-    // Booklet Code grid: fill Code 'A' (row index 0)
-    const bcOptions = ['A', 'B', 'C', 'D'];
-    for (let col = 0; col < 4; col++) {
-      const x = 580 + col * 35;
-      ctx.strokeRect(x - 10, 162, 20, 20);
-      ctx.fillStyle = '#2d3748';
-      ctx.font = 'bold 12px Arial';
-      if (col === 0) {
-        ctx.fillText('A', x, 176);
-      }
-    }
-    for (let col = 0; col < 4; col++) {
-      const x = 580 + col * 35;
-      for (let row = 0; row < 4; row++) {
-        const y = 205 + row * 21;
+    // Booklet Code (Sets) bubbles - filled mock Set A (idx=0)
+    if (examSetsCount > 0) {
+      for (let col = 0; col < examSetsCount; col++) {
+        const x = 610 + col * 45 + bookletShift;
+        const y = OMR_CONFIG.studentId.yStart;
+        const code = String.fromCharCode(65 + col);
+        
         ctx.strokeStyle = '#dc0045';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(x, y, 7, 0, 2 * Math.PI);
+        ctx.arc(x, y, 12, 0, 2 * Math.PI);
         ctx.stroke();
 
-        if (col === 0 && row === 0) {
-          // Fill A bubble
+        if (col === 0) {
+          // Fill Set A bubble
           ctx.fillStyle = '#2d3748';
           ctx.beginPath();
-          ctx.arc(x, y, 6.5, 0, 2 * Math.PI);
+          ctx.arc(x, y, 12, 0, 2 * Math.PI);
           ctx.fill();
+          ctx.font = 'bold 12px Arial';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(code, x, y + 4);
         } else {
-          ctx.font = 'bold 8px Arial';
+          ctx.font = 'bold 12px Arial';
           ctx.fillStyle = '#ffdbe3';
-          ctx.fillText(bcOptions[row], x, y + 3);
+          ctx.fillText(code, x, y + 4);
         }
       }
     }
 
+    // Draw Candidate Info line fields on canvas
+    ctx.fillStyle = '#dc0045';
+    ctx.font = 'bold 8px Arial';
+    ctx.textAlign = 'left';
+    const infoLeft = 575 + bookletShift;
+    const infoWidth = 335 - bookletShift;
+
+    ctx.fillText("CANDIDATE'S NAME (IN CAPITAL LETTERS)", infoLeft, 270);
+    ctx.strokeStyle = '#dc0045';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 290);
+    ctx.lineTo(infoLeft + infoWidth, 290);
+    ctx.stroke();
+
+    ctx.fillStyle = '#dc0045';
+    ctx.fillText("MOTHER'S NAME (IN CAPITAL LETTERS)", infoLeft, 315);
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 335);
+    ctx.lineTo(infoLeft + infoWidth, 335);
+    ctx.stroke();
+
+    ctx.fillStyle = '#dc0045';
+    ctx.fillText("FATHER'S NAME (IN CAPITAL LETTERS)", infoLeft, 360);
+    ctx.beginPath();
+    ctx.moveTo(infoLeft, 380);
+    ctx.lineTo(infoLeft + infoWidth, 380);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+
     // Draw Questions and Fill correct answers (mostly correct, some empty/wrong)
-    const OPTIONS = ['A', 'B', 'C', 'D'];
     const qConf = OMR_CONFIG.questions;
+
+    const getQuestionOptions = (qNum: number): string[] => {
+      if (!exam.sections) return ['A', 'B', 'C', 'D'];
+      const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+      return sec && sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+    };
+
+    const getQuestionLabel = (qNum: number): string => {
+      const pad = qNum.toString().padStart(2, '0');
+      if (!exam.sections || exam.sections.length === 0) {
+        return pad;
+      }
+      const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+      if (!sec) return pad;
+      const subCode = sec.subjectName.substring(0, 3).toUpperCase();
+      return `${pad} ${subCode}`;
+    };
     
     for (const col of qConf.columns) {
       const qStart = col.qStart;
       const qEnd = Math.min(col.qEnd, exam.numQuestions);
       if (qStart > exam.numQuestions) continue;
 
+      const colHas5Option = Array.from({ length: qEnd - qStart + 1 }, (_, i) => qStart + i)
+        .some(qNum => {
+          const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+          return sec && sec.questionType === '5 option';
+        });
+
       // Draw Column Header
       ctx.fillStyle = '#dc0045';
       ctx.font = 'bold 9px Arial';
       ctx.fillText("Q.No.", col.xLabel, qConf.yStart - 18);
-      for (let i = 0; i < 4; i++) {
-        ctx.fillText(OPTIONS[i], col.xOptions[i], qConf.yStart - 18);
+      ctx.fillText("A", col.xOptions[0], qConf.yStart - 18);
+      ctx.fillText("B", col.xOptions[1], qConf.yStart - 18);
+      ctx.fillText("C", col.xOptions[2], qConf.yStart - 18);
+      ctx.fillText("D", col.xOptions[3], qConf.yStart - 18);
+      if (colHas5Option) {
+        ctx.fillText("E", col.xOptions[3] + 25, qConf.yStart - 18);
       }
 
       for (let q = qStart; q <= qEnd; q++) {
         const qIdx = q - qStart;
         const y = qConf.yStart + qIdx * qConf.yStep;
 
-        // Draw Q Number
+        // Draw Q Number with padded digits and subject code
         ctx.fillStyle = '#dc0045';
-        ctx.font = 'bold 9px Arial';
-        ctx.fillText(q.toString(), col.xLabel, y + 3);
+        ctx.font = 'bold 8px Arial';
+        ctx.fillText(getQuestionLabel(q), col.xLabel, y + 3);
 
         const correctOpt = exam.answerKey[q] || 'A';
         // Fill answers: Aarav/Diya style (95% correct, 5% wrong or empty)
@@ -1165,16 +1258,18 @@ export default function App() {
           fillOption = correctOpt === 'A' ? 'B' : 'A';
         }
 
+        const qOptions = getQuestionOptions(q);
+
         // Draw bubbles
-        for (let opt = 0; opt < 4; opt++) {
-          const x = col.xOptions[opt];
+        qOptions.forEach((optStr, optIdx) => {
+          const x = optIdx === 4 ? col.xOptions[3] + 25 : col.xOptions[optIdx];
           ctx.strokeStyle = '#dc0045';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(x, y, qConf.bubbleRadius, 0, 2 * Math.PI);
           ctx.stroke();
 
-          if (OPTIONS[opt] === fillOption) {
+          if (optStr === fillOption) {
             // Fill bubble
             ctx.fillStyle = '#2d3748';
             ctx.beginPath();
@@ -1184,13 +1279,13 @@ export default function App() {
             // Light bubble letter
             ctx.font = '8px Arial';
             ctx.fillStyle = '#ffdbe3';
-            ctx.fillText(OPTIONS[opt], x, y + 3);
+            ctx.fillText(optStr, x, y + 3);
           }
-        }
+        });
       }
     }
 
-    // Bottom signatures
+    // Bottom signatures boxes
     ctx.strokeStyle = '#dc0045';
     ctx.lineWidth = 1;
     ctx.strokeRect(70, 1315, 275, 45); // Left box
@@ -1199,15 +1294,20 @@ export default function App() {
 
     ctx.fillStyle = '#dc0045';
     ctx.font = 'bold 8px Arial';
-    ctx.fillText("Candidate Signature", 207, 1350);
-    ctx.fillText("Invigilator Signature", 492, 1350);
-    ctx.fillText("Centre Superintendent Stamp", 777, 1350);
+    ctx.fillText("CANDIDATE'S LEFT HAND THUMB IMPRESSION", 207, 1350);
+    ctx.fillText("SIGNATURE OF CANDIDATE (WITH TIME)", 492, 1350);
+    ctx.fillText("SIGNATURE OF INVIGILATOR (WITH TIME)", 777, 1350);
 
     // Mock handwriting-like signatures in the signatures boxes
     ctx.strokeStyle = '#1a365d';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(120, 1335); ctx.quadraticCurveTo(150, 1320, 180, 1340); ctx.stroke(); // Candidate signature mockup
+
+    // Disclaimer banner text at bottom
+    ctx.fillStyle = '#dc0045';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText("★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. NEET ORIGINAL ANSWER COPY - ROSE SCHEME ★", 500, 1390);
 
     // Download action
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);

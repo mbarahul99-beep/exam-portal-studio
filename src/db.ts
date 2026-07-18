@@ -7,6 +7,7 @@ export interface Student {
   className: string;
   email?: string;
   phone?: string;
+  whatsappNumber?: string; // e.g. "919876543210"
   faceDescriptor?: number[]; // Vector embedding for facial biometrics
 }
 
@@ -95,6 +96,13 @@ export interface ExamSubmission {
   timeTakenSeconds?: number;
   attemptType?: 'OMR' | 'Online';
   bookletSet?: string;
+  accessToken?: string; // Cryptographic unguessable access key for public report sharing
+}
+
+export interface SystemSetting {
+  id?: number;
+  key: string;
+  value: string;
 }
 
 export interface AttendanceRecord {
@@ -116,6 +124,7 @@ class AppDatabase extends Dexie {
   questions!: Table<Question>;
   attendance!: Table<AttendanceRecord>;
   questionBank!: Table<BankQuestion>;
+  settings!: Table<SystemSetting>;
 
   constructor() {
     super('OMRExamsDatabase');
@@ -135,10 +144,37 @@ class AppDatabase extends Dexie {
     this.version(8).stores({
       questionBank: '++id, source, subject, chapter, difficulty'
     });
+    // Version 9 adds settings table and index for accessToken in submissions
+    this.version(9).stores({
+      submissions: '++id, examId, studentId, scannedAt, accessToken, [examId+studentId]',
+      settings: '++id, &key'
+    });
   }
 }
 
 export const db = new AppDatabase();
+
+// Auto-generate unguessable random accessToken for every new exam submission
+db.submissions.hook('creating', (_, obj) => {
+  if (!obj.accessToken) {
+    obj.accessToken = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+  }
+});
+
+// Seed default system settings
+db.on('ready', () => {
+  return db.settings.count().then((count) => {
+    if (count === 0) {
+      return db.settings.bulkAdd([
+        { key: 'metaAccessToken', value: '' },
+        { key: 'phoneNumberId', value: '' },
+        { key: 'templateName', value: 'exam_report_notification' }
+      ]);
+    }
+  }).catch((err) => {
+    console.error("Failed to seed default settings database table:", err);
+  });
+});
 
 // Handle upgrade errors by deleting and recreating DB
 db.open().catch(async (err) => {

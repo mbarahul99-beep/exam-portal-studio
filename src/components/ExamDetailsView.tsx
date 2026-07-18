@@ -143,6 +143,53 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     setIsBroadcasting(false);
   };
 
+  const sendIndividualWhatsApp = async (sub: any) => {
+    // 1. Fetch credentials
+    const config = await getWhatsAppConfig();
+    if (!config.metaAccessToken || !config.phoneNumberId) {
+      alert("WhatsApp API credentials are not configured. Go to the 'WhatsApp API' settings tab first.");
+      return;
+    }
+
+    const student = students.find(s => s.id === sub.studentId);
+    if (!student) {
+      alert("Student not found in database.");
+      return;
+    }
+
+    if (!student.whatsappNumber) {
+      alert(`WhatsApp number is missing in roster profile for ${student.name}. Please edit the student to add a number first.`);
+      return;
+    }
+
+    if (!sub.accessToken) {
+      alert("Submission accessToken is missing. Cannot send link.");
+      return;
+    }
+
+    if (!confirm(`Send private report card link to ${student.name}'s WhatsApp (${student.whatsappNumber})?`)) {
+      return;
+    }
+
+    // Generate link
+    const reportUrl = `${window.location.origin}/#/report-view/${sub.accessToken}`;
+
+    // Call API
+    const result = await sendWhatsAppTemplateMessage({
+      recipientPhone: student.whatsappNumber,
+      studentName: student.name,
+      examTitle: exam.title,
+      reportUrl,
+      accessToken: sub.accessToken
+    }, config);
+
+    if (result.success) {
+      alert(`Message successfully sent to ${student.name}!`);
+    } else {
+      alert(`Failed to send: ${result.error}`);
+    }
+  };
+
   const dbQuestions = useLiveQuery(
     () => db.questions.where('examId').equals(exam.id!).toArray(),
     [exam.id]
@@ -497,7 +544,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                               {pct}%
                             </span>
                           </td>
-                          <td style={{ textAlign: 'right' }}>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                             <button 
                               className="btn-link" 
                               style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px', textDecoration: 'underline', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
@@ -510,6 +557,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                               title="View Detailed Student Report & Section Analysis"
                             >
                               View Analysis
+                            </button>
+                            <button 
+                              className="btn-link" 
+                              style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px', textDecoration: 'none', color: '#16a34a', background: 'transparent', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '12px' }}
+                              onClick={() => sendIndividualWhatsApp(sub)}
+                              title="Send report card to this student's WhatsApp"
+                            >
+                              <Send size={12} /> WhatsApp
                             </button>
                           </td>
                         </tr>

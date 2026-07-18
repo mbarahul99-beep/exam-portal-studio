@@ -11,12 +11,15 @@ import {
   Download,
   Share2,
   Globe,
-  Edit2
+  Edit2,
+  Send,
+  X
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ScanImagesView } from './ScanImagesView';
 import { MathRenderer } from './MathRenderer';
+import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
 
 interface ExamDetailsViewProps {
   exam: Exam;
@@ -42,6 +45,102 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'result' | 'analysis' | 'questions'>('result');
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [csvInput, setCsvInput] = useState('');
+
+  // WhatsApp Broadcast States
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [broadcastProgress, setBroadcastProgress] = useState(0);
+  const [broadcastTotal, setBroadcastTotal] = useState(0);
+  const [broadcastLog, setBroadcastLog] = useState<{ name: string; status: 'success' | 'warning' | 'error'; details: string }[]>([]);
+  const [isCancelRequested, setIsCancelRequested] = useState(false);
+
+  const startWhatsAppBroadcast = async () => {
+    // 1. Fetch credentials
+    const config = await getWhatsAppConfig();
+    if (!config.metaAccessToken || !config.phoneNumberId) {
+      alert("WhatsApp API credentials are not configured. Go to the 'WhatsApp API' settings tab first.");
+      return;
+    }
+
+    // 2. Filter students that actually have submissions for this exam
+    const submissionsToSend = submissions.filter(s => s.examId === exam.id);
+    if (submissionsToSend.length === 0) {
+      alert("No student submissions found for this exam to broadcast.");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to broadcast private report card links to ${submissionsToSend.length} parents via WhatsApp?`)) {
+      return;
+    }
+
+    setIsBroadcasting(true);
+    setBroadcastProgress(0);
+    setBroadcastTotal(submissionsToSend.length);
+    setBroadcastLog([]);
+    setIsCancelRequested(false);
+
+    let progressCount = 0;
+    const logAccumulator: typeof broadcastLog = [];
+
+    for (const sub of submissionsToSend) {
+      // Check if user requested to cancel
+      if (isCancelRequested) {
+        logAccumulator.push({ name: 'System', status: 'warning', details: 'Broadcast canceled by user.' });
+        setBroadcastLog([...logAccumulator]);
+        break;
+      }
+
+      const student = students.find(s => s.id === sub.studentId);
+      if (!student) {
+        logAccumulator.push({ name: `Submission ID: ${sub.id}`, status: 'error', details: 'Student not found in database.' });
+        setBroadcastLog([...logAccumulator]);
+        progressCount++;
+        setBroadcastProgress(progressCount);
+        continue;
+      }
+
+      if (!student.whatsappNumber) {
+        logAccumulator.push({ name: student.name, status: 'warning', details: 'WhatsApp number is missing in roster profile.' });
+        setBroadcastLog([...logAccumulator]);
+        progressCount++;
+        setBroadcastProgress(progressCount);
+        continue;
+      }
+
+      if (!sub.accessToken) {
+        logAccumulator.push({ name: student.name, status: 'error', details: 'Submission accessToken is missing. Cannot send link.' });
+        setBroadcastLog([...logAccumulator]);
+        progressCount++;
+        setBroadcastProgress(progressCount);
+        continue;
+      }
+
+      // Generate the private URL
+      const reportUrl = `${window.location.origin}/#/report-view/${sub.accessToken}`;
+
+      // Call API
+      const result = await sendWhatsAppTemplateMessage({
+        recipientPhone: student.whatsappNumber,
+        studentName: student.name,
+        examTitle: exam.title,
+        reportUrl
+      }, config);
+
+      if (result.success) {
+        logAccumulator.push({ name: student.name, status: 'success', details: `Sent successfully! (ID: ${result.messageId})` });
+      } else {
+        logAccumulator.push({ name: student.name, status: 'error', details: result.error || 'Failed to send template.' });
+      }
+
+      setBroadcastLog([...logAccumulator]);
+      progressCount++;
+      setBroadcastProgress(progressCount);
+
+      // Wait 100ms between calls to avoid hitting rate limits too harshly in developer accounts
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    setIsBroadcasting(false);
+  };
 
   const dbQuestions = useLiveQuery(
     () => db.questions.where('examId').equals(exam.id!).toArray(),
@@ -244,6 +343,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               style={{ opacity: exam.status !== 'public' ? 0.4 : 1, cursor: exam.status !== 'public' ? 'not-allowed' : 'pointer' }}
             >
               <Share2 size={18} />
+            </button>
+            <button 
+              className="action-icon-btn" 
+              onClick={startWhatsAppBroadcast}
+              title="Broadcast Private Report Links to Parents via WhatsApp"
+              style={{ color: '#16a34a' }}
+            >
+              <Send size={18} />
             </button>
             <button 
               className="action-icon-btn" 
@@ -626,6 +733,72 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+     {/* WhatsApp Broadcast Progress Modal */}
+      {(isBroadcasting || (broadcastTotal > 0 && broadcastProgress === broadcastTotal)) && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="glass-card animate-scale-up" style={{ background: '#ffffff', width: '90%', maxWidth: '500px', padding: '24px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>WhatsApp Broadcast Status</h3>
+              {broadcastProgress === broadcastTotal && (
+                <button onClick={() => { setIsBroadcasting(false); setBroadcastTotal(0); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}>
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                <span style={{ color: 'var(--text-primary)' }}>{broadcastProgress === broadcastTotal ? 'Broadcast Completed!' : 'Sending report cards...'}</span>
+                <span style={{ color: 'var(--text-primary)' }}>{broadcastProgress} / {broadcastTotal}</span>
+              </div>
+              <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(broadcastProgress / broadcastTotal) * 100}%`, background: '#16a34a', transition: 'width 0.2s ease', borderRadius: '4px' }} />
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', background: '#f8fafc', maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {broadcastLog.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' }}>Initializing broadcast queue...</p>
+              ) : (
+                [...broadcastLog].reverse().map((log, logIdx) => (
+                  <div key={`log-${logIdx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', borderBottom: '0.5px solid #edf2f7', paddingBottom: '4px' }}>
+                    <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{log.name}</span>
+                    <span style={{ 
+                      color: log.status === 'success' ? '#16a34a' : log.status === 'warning' ? '#d97706' : '#ef4444', 
+                      fontWeight: 'bold', 
+                      textAlign: 'right' 
+                    }}>
+                      {log.details}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '4px' }}>
+              {broadcastProgress < broadcastTotal && !isCancelRequested && (
+                <button 
+                  onClick={() => setIsCancelRequested(true)}
+                  className="btn-secondary"
+                  style={{ padding: '8px 16px', borderRadius: '8px', color: '#ef4444', border: '1px solid #ef4444', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  Cancel Sending
+                </button>
+              )}
+              {broadcastProgress === broadcastTotal && (
+                <button 
+                  onClick={() => { setIsBroadcasting(false); setBroadcastTotal(0); }}
+                  className="btn-primary"
+                  style={{ padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  Done
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [trackedFace, setTrackedFace] = useState<{ x: number, y: number, w: number, h: number, name?: string, pct?: number } | null>(null);
   const requestRef = useRef<number | null>(null);
   const isCooldownRef = useRef<boolean>(false);
+  const facePresenceStartRef = useRef<number | null>(null);
 
   // Play a browser native synth barcode beep
   const playBeep = () => {
@@ -204,6 +205,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const liveStdDev = Math.sqrt(liveVar);
 
             if (liveMean < -0.75) {
+              facePresenceStartRef.current = null;
               setTrackedFace({
                 ...trackingBox,
                 name: "Poor Lighting - Please brighten area",
@@ -214,6 +216,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
 
             if (liveStdDev < 0.08) {
+              facePresenceStartRef.current = null;
               setTrackedFace({
                 ...trackingBox,
                 name: "Low Contrast - Adjust lighting or angle",
@@ -225,6 +228,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
             const enrolledStudents = students.filter(s => s.faceDescriptor);
             if (enrolledStudents.length === 0) {
+              facePresenceStartRef.current = null;
               setTrackedFace({
                 ...trackingBox,
                 name: "No Enrolled Faces in Database",
@@ -233,6 +237,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               requestRef.current = requestAnimationFrame(scanFrame);
               return;
             }
+
+            // Track continuous scanning time
+            if (!facePresenceStartRef.current) {
+              facePresenceStartRef.current = Date.now();
+            }
+            const elapsed = Date.now() - facePresenceStartRef.current;
 
             let bestMatch: Student | null = null;
             let bestDistance = Infinity;
@@ -243,12 +253,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const sVar = sDesc.reduce((sum, v) => sum + Math.pow(v - sMean, 2), 0) / sDesc.length;
               const sStdDev = Math.sqrt(sVar);
 
-              // If the enrolled student template itself is low quality (e.g. registered in the dark)
+              // If the enrolled student template itself is low quality
               if (sMean < -0.75 || sStdDev < 0.08) {
                 continue;
               }
 
-              // Compute standard Euclidean distance for alignment-tolerant facial matching
+              // Compute standard Euclidean distance
               const dist = Math.sqrt(
                 sDesc.reduce((sum, val, idx) => sum + Math.pow(val - liveDescriptor[idx], 2), 0)
               );
@@ -260,6 +270,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
 
             if (bestMatch && bestDistance < 1.60) {
+              // Immediately match if a good match is found
+              facePresenceStartRef.current = null;
               const matchPercentage = Math.round((1 - (bestDistance / 1.8) * 0.4) * 100);
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
@@ -279,9 +291,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 setTrackedFace(null);
               }, 2500);
             } else {
+              // No match found on this frame.
+              // Show "Analyzing face..." during the first 1.2 seconds, then transition to "Face Not Registered"
               setTrackedFace({
                 ...trackingBox,
-                name: "Face Not Registered / Matched",
+                name: elapsed < 1200 ? "Analyzing face..." : "Face Not Registered / Matched",
                 pct: undefined
               });
             }
@@ -348,6 +362,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   };
 
   const stopScanner = () => {
+    facePresenceStartRef.current = null;
     if (scanStream) {
       scanStream.getTracks().forEach(track => track.stop());
       setScanStream(null);
@@ -727,7 +742,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             {/* Mode Select Tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '4px' }}>
               <button 
-                onClick={() => { setScanMode('QR'); setScannedFeedback(null); setTrackedFace(null); }}
+                onClick={() => { setScanMode('QR'); setScannedFeedback(null); setTrackedFace(null); facePresenceStartRef.current = null; }}
                 style={{
                   flex: 1,
                   padding: '10px',
@@ -744,7 +759,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 QR ID Card Scanner
               </button>
               <button 
-                onClick={() => { setScanMode('Face'); setScannedFeedback(null); setTrackedFace(null); }}
+                onClick={() => { setScanMode('Face'); setScannedFeedback(null); setTrackedFace(null); facePresenceStartRef.current = null; }}
                 style={{
                   flex: 1,
                   padding: '10px',

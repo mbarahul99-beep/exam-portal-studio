@@ -53,6 +53,14 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [pubLoading, setPubLoading] = useState(false);
   const [pubFeedback, setPubFeedback] = useState<string | null>(null);
 
+  // Fetch from URL states
+  const [fetchUrl, setFetchUrl] = useState('');
+  const [fetchLoading, setFetchLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchedCount, setFetchedCount] = useState<number | null>(null);
+  const [fetchedQList, setFetchedQList] = useState<any[]>([]);
+  const [fetchSuccessMsg, setFetchSuccessMsg] = useState<string | null>(null);
+
   // Add to exam popup states
   const [selectedBankQ, setSelectedBankQ] = useState<BankQuestion | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | string>('');
@@ -310,6 +318,125 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       alert(`Imported ${added} questions to "${selectedBank.name}"!`);
     } catch (err: any) {
       alert(`Error bulk importing: ${err.message}`);
+    }
+  };
+
+  // Fetch questions from an external URL dynamically in the browser
+  const handleFetchFromUrl = async (urlToFetch: string) => {
+    if (!urlToFetch) {
+      alert("Please enter a valid URL first.");
+      return;
+    }
+    setFetchLoading(true);
+    setFetchError(null);
+    setFetchedCount(null);
+    setFetchedQList([]);
+
+    try {
+      // Use AllOrigins as a reliable CORS proxy
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToFetch.trim())}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch from URL: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      let questionsArray: any[] = [];
+
+      if (Array.isArray(data)) {
+        questionsArray = data;
+      } else if (data.questions && Array.isArray(data.questions)) {
+        questionsArray = data.questions;
+      } else {
+        // Look for any array in the object properties
+        const arrayKey = Object.keys(data).find(k => Array.isArray(data[k]));
+        if (arrayKey) {
+          questionsArray = data[arrayKey];
+        }
+      }
+
+      if (questionsArray.length === 0) {
+        throw new Error("No questions array found in the fetched JSON payload. Ensure it is a JSON array or contains a 'questions' array.");
+      }
+
+      // Standardize the fetched questions to BankQuestion structure
+      const standardized = questionsArray.map((q: any, idx: number) => {
+        const questionText = q.questionText || q.question_text || q.question || q.text || `Question ${idx + 1}`;
+        
+        let options: string[] = [];
+        if (Array.isArray(q.options)) {
+          options = q.options.map((o: any) => typeof o === 'object' ? (o.text || o.value || '') : String(o));
+        } else if (q.options && typeof q.options === 'object') {
+          options = Object.values(q.options).map(String);
+        }
+
+        let correctOptionIdx = 0;
+        const rawCorrect = q.correctOptionIdx !== undefined ? q.correctOptionIdx : (q.correct_answer || q.answer);
+        if (typeof rawCorrect === 'number') {
+          correctOptionIdx = rawCorrect;
+        } else if (typeof rawCorrect === 'string') {
+          const letters = ['A', 'B', 'C', 'D', 'E'];
+          const idxLetter = letters.indexOf(rawCorrect.toUpperCase().trim());
+          if (idxLetter !== -1) {
+            correctOptionIdx = idxLetter;
+          } else {
+            const num = parseInt(rawCorrect, 10);
+            if (!isNaN(num)) correctOptionIdx = num - 1; // 1-based to 0-based
+          }
+        }
+
+        return {
+          questionText: String(questionText),
+          options: options.length > 0 ? options : ['Option A', 'Option B', 'Option C', 'Option D'],
+          correctOptionIdx: correctOptionIdx >= 0 && correctOptionIdx < 5 ? correctOptionIdx : 0,
+          difficulty: q.difficulty || 'medium',
+          explanation: q.explanation || q.solution || ''
+        };
+      });
+
+      setFetchedQList(standardized);
+      setFetchedCount(standardized.length);
+    } catch (err: any) {
+      setFetchError(err.message || "An unknown error occurred while fetching.");
+    } finally {
+      setFetchLoading(false);
+    }
+  };
+
+  // Import the fetched questions into the active selected bank
+  const handleImportFetchedQuestions = async () => {
+    if (!selectedBank || fetchedQList.length === 0) return;
+
+    try {
+      const activeBankQuestions = allBankQuestions.filter(q => q.bankId === selectedBank.id);
+      let added = 0;
+
+      const importPromises = fetchedQList.map(async (q) => {
+        const exists = activeBankQuestions.some(cq => cq.questionText === q.questionText);
+        if (!exists) {
+          await db.questionBank.add({
+            bankId: selectedBank.id!,
+            questionText: q.questionText,
+            options: [...q.options],
+            correctOptionIdx: q.correctOptionIdx,
+            difficulty: q.difficulty || 'medium',
+            explanation: q.explanation || undefined,
+            createdAt: new Date()
+          });
+          added++;
+        }
+      });
+
+      await Promise.all(importPromises);
+
+      setFetchSuccessMsg(`Successfully imported ${added} new questions into "${selectedBank.name}"!`);
+      setFetchedQList([]);
+      setFetchedCount(null);
+      setFetchUrl('');
+      
+      setTimeout(() => setFetchSuccessMsg(null), 3000);
+    } catch (err: any) {
+      alert(`Import failed: ${err.message}`);
     }
   };
 
@@ -735,7 +862,108 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
           {/* SUB-TAB 4: PUBLIC LIBRARY AUTOFILTERED BY ACTIVE BANK'S SUBJECT */}
           {subTab === 'public' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* FETCH FROM EXTERNAL URL INTERACTION PANEL */}
+              <div className="glass-card animate-fade-in" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Database className="text-indigo" size={18} /> Fetch Open Question Banks from Web
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Enter any public raw JSON questions URL (e.g. raw GitHub URLs or HuggingFace API JSONs) to download and import them directly into your database.
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input 
+                    type="text" 
+                    placeholder="https://raw.githubusercontent.com/.../questions.json"
+                    value={fetchUrl}
+                    onChange={e => setFetchUrl(e.target.value)}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}
+                  />
+                  <button 
+                    onClick={() => handleFetchFromUrl(fetchUrl)}
+                    disabled={fetchLoading}
+                    className="btn-primary"
+                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {fetchLoading ? 'Fetching...' : 'Fetch & Preview'}
+                  </button>
+                </div>
+
+                {/* Pre-configured public sources links */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>QUICK SOURCE SAMPLES:</span>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const url = 'https://raw.githubusercontent.com/mbarahul99-beep/exam-portal/main/public/neet_jee_bank.json';
+                      setFetchUrl(url);
+                      handleFetchFromUrl(url);
+                    }} 
+                    className="btn-outlined" 
+                    style={{ padding: '4px 8px', fontSize: '0.65rem', borderRadius: '4px' }}
+                  >
+                    NEET/JEE Sample (15 Qs)
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const url = 'https://raw.githubusercontent.com/AdithSuresh2004/exam-questions/main/nimcet/physics.json';
+                      setFetchUrl(url);
+                      handleFetchFromUrl(url);
+                    }} 
+                    className="btn-outlined" 
+                    style={{ padding: '4px 8px', fontSize: '0.65rem', borderRadius: '4px' }}
+                  >
+                    AdithSuresh Physics (200+ Qs)
+                  </button>
+                </div>
+
+                {fetchError && (
+                  <div style={{ background: '#fed7d7', border: '1px solid #e53e3e', color: '#9b2c2c', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem' }}>
+                    {fetchError}
+                  </div>
+                )}
+
+                {fetchSuccessMsg && (
+                  <div style={{ background: '#e6fffa', border: '1px solid #319795', color: '#234e52', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem' }}>
+                    {fetchSuccessMsg}
+                  </div>
+                )}
+
+                {fetchedCount !== null && fetchedQList.length > 0 && (
+                  <div className="animate-scale-up" style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(49, 151, 149, 0.05)', padding: '14px', border: '1px dashed #319795', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#234e52', fontWeight: 'bold' }}>
+                        ✓ Successfully scanned! Found {fetchedCount} compatible questions.
+                      </span>
+                      <button 
+                        onClick={handleImportFetchedQuestions}
+                        className="btn-filled"
+                        style={{ background: '#319795', padding: '6px 14px', fontSize: '0.75rem', borderRadius: '6px' }}
+                      >
+                        Import All {fetchedCount} to "{selectedBank.name}"
+                      </button>
+                    </div>
+                    {/* Tiny preview list */}
+                    <div style={{ maxHeight: '100px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', background: '#fff', padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {fetchedQList.slice(0, 5).map((q, idx) => (
+                        <div key={idx} style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          Q{idx+1}: {q.questionText}
+                        </div>
+                      ))}
+                      {fetchedCount > 5 && (
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'left' }}>
+                          ...and {fetchedCount - 5} more questions.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CURATED LOCAL QUESTIONS LIST */}
               <div className="glass-card" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', textAlign: 'left' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>

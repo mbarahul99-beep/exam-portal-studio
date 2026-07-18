@@ -739,7 +739,7 @@ export default function App() {
       const variance = descriptor.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / descriptor.length;
       const stdDev = Math.sqrt(variance);
 
-      if (mean < -0.55 || stdDev < 0.12) {
+      if (mean < -0.75 || stdDev < 0.08) {
         setEnrollMessage('Lighting too dark or poor contrast. Please move to a well-lit area and try again.');
         setEnrollCountdown(null);
         return;

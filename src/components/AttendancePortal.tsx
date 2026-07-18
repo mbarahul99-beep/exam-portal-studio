@@ -203,7 +203,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const liveVar = liveDescriptor.reduce((sum, v) => sum + Math.pow(v - liveMean, 2), 0) / liveDescriptor.length;
             const liveStdDev = Math.sqrt(liveVar);
 
-            if (liveMean < -0.55 || liveStdDev < 0.12) {
+            if (liveMean < -0.75 || liveStdDev < 0.08) {
               setTrackedFace({
                 ...trackingBox,
                 name: "Poor lighting - please brighten area",
@@ -216,7 +216,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const enrolledStudents = students.filter(s => s.faceDescriptor);
             let bestMatch: Student | null = null;
             let bestDistance = Infinity;
-            let templateQualityWarning = false;
 
             for (const student of enrolledStudents) {
               const sDesc = student.faceDescriptor!;
@@ -225,8 +224,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const sStdDev = Math.sqrt(sVar);
 
               // If the enrolled student template itself is low quality (e.g., registered in the dark)
-              if (sMean < -0.55 || sStdDev < 0.12) {
-                templateQualityWarning = true;
+              if (sMean < -0.75 || sStdDev < 0.08) {
                 continue;
               }
 
@@ -265,9 +263,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else {
               setTrackedFace({
                 ...trackingBox,
-                name: templateQualityWarning 
-                  ? "Template quality poor - please re-enroll" 
-                  : (enrolledStudents.length > 0 ? "Analyzing face..." : "No Enrolled Faces"),
+                name: enrolledStudents.length > 0 ? "Analyzing face..." : "No Enrolled Faces",
                 pct: undefined
               });
             }

@@ -741,6 +741,17 @@ export default function App() {
       
       playShutterSound();
       const descriptor = generateFaceDescriptor(canvas);
+
+      // Perform strict lighting and contrast analysis on the descriptor
+      const mean = descriptor.reduce((sum, v) => sum + v, 0) / descriptor.length;
+      const variance = descriptor.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / descriptor.length;
+      const stdDev = Math.sqrt(variance);
+
+      if (mean < -0.55 || stdDev < 0.12) {
+        setEnrollMessage('Lighting too dark or poor contrast. Please move to a well-lit area and try again.');
+        setEnrollCountdown(null);
+        return;
+      }
       
       try {
         await db.students.update(enrollingFaceStudent.id!, { faceDescriptor: descriptor });

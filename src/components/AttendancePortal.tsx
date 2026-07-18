@@ -207,22 +207,53 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             faceCtx.drawImage(video, x, y, size, size, 0, 0, 150, 150);
             const liveDescriptor = generateFaceDescriptor(faceCanvas);
 
+            // Analyze live face brightness and contrast to prevent false positives in poor lighting
+            const liveMean = liveDescriptor.reduce((sum, v) => sum + v, 0) / liveDescriptor.length;
+            const liveVar = liveDescriptor.reduce((sum, v) => sum + Math.pow(v - liveMean, 2), 0) / liveDescriptor.length;
+            const liveStdDev = Math.sqrt(liveVar);
+
+            if (liveMean < -0.55 || liveStdDev < 0.12) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "Poor lighting - please brighten area",
+                pct: undefined
+              });
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
             const enrolledStudents = students.filter(s => s.faceDescriptor);
             let bestMatch: Student | null = null;
             let bestDistance = Infinity;
+            let templateQualityWarning = false;
 
             for (const student of enrolledStudents) {
-              const dist = Math.sqrt(
-                student.faceDescriptor!.reduce((sum, val, idx) => sum + Math.pow(val - liveDescriptor[idx], 2), 0)
-              );
+              const sDesc = student.faceDescriptor!;
+              const sMean = sDesc.reduce((sum, v) => sum + v, 0) / sDesc.length;
+              const sVar = sDesc.reduce((sum, v) => sum + Math.pow(v - sMean, 2), 0) / sDesc.length;
+              const sStdDev = Math.sqrt(sVar);
+
+              // If the enrolled student template itself is low quality (e.g., registered in the dark)
+              if (sMean < -0.55 || sStdDev < 0.12) {
+                templateQualityWarning = true;
+                continue;
+              }
+
+              // Compute mean-centered Euclidean distance to eliminate base lighting variations
+              let sumSq = 0;
+              for (let i = 0; i < 128; i++) {
+                sumSq += Math.pow((liveDescriptor[i] - liveMean) - (sDesc[i] - sMean), 2);
+              }
+              const dist = Math.sqrt(sumSq);
+
               if (dist < bestDistance) {
                 bestDistance = dist;
                 bestMatch = student;
               }
             }
 
-            if (bestMatch && bestDistance < 1.8) {
-              const matchPercentage = Math.round((1 - (bestDistance / 1.8) * 0.4) * 100);
+            if (bestMatch && bestDistance < 0.55) {
+              const matchPercentage = Math.round(Math.max(0, Math.min(100, (1 - bestDistance / 0.65) * 40 + 60)));
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
               speakAttendance(bestMatch.name);
@@ -243,7 +274,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else {
               setTrackedFace({
                 ...trackingBox,
-                name: enrolledStudents.length > 0 ? "Analyzing face..." : "No Enrolled Faces",
+                name: templateQualityWarning 
+                  ? "Template quality poor - please re-enroll" 
+                  : (enrolledStudents.length > 0 ? "Analyzing face..." : "No Enrolled Faces"),
                 pct: undefined
               });
             }

@@ -228,12 +228,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 continue;
               }
 
-              // Compute mean-centered Euclidean distance to eliminate base lighting variations
-              let sumSq = 0;
-              for (let i = 0; i < 128; i++) {
-                sumSq += Math.pow((liveDescriptor[i] - liveMean) - (sDesc[i] - sMean), 2);
-              }
-              const dist = Math.sqrt(sumSq);
+              // Compute standard Euclidean distance for alignment-tolerant facial matching
+              const dist = Math.sqrt(
+                sDesc.reduce((sum, val, idx) => sum + Math.pow(val - liveDescriptor[idx], 2), 0)
+              );
 
               if (dist < bestDistance) {
                 bestDistance = dist;
@@ -241,8 +239,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            if (bestMatch && bestDistance < 0.62) {
-              const matchPercentage = Math.round(Math.max(0, Math.min(100, (1 - bestDistance / 0.7) * 40 + 60)));
+            if (bestMatch && bestDistance < 1.35) {
+              const matchPercentage = Math.round((1 - (bestDistance / 1.35) * 0.4) * 100);
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
               speakAttendance(bestMatch.name);

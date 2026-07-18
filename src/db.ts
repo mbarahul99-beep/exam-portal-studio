@@ -168,7 +168,8 @@ db.on('ready', () => {
       return db.settings.bulkAdd([
         { key: 'metaAccessToken', value: '' },
         { key: 'phoneNumberId', value: '' },
-        { key: 'templateName', value: 'exam_report_notification' }
+        { key: 'templateName', value: 'exam_report_notification' },
+        { key: 'templateType', value: 'body_link' }
       ]);
     }
   });

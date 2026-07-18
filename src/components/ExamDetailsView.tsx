@@ -122,7 +122,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         recipientPhone: student.whatsappNumber,
         studentName: student.name,
         examTitle: exam.title,
-        reportUrl
+        reportUrl,
+        accessToken: sub.accessToken
       }, config);
 
       if (result.success) {

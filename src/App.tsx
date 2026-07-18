@@ -147,6 +147,7 @@ export default function App() {
   const [metaAccessToken, setMetaAccessToken] = useState('');
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [templateName, setTemplateName] = useState('exam_report_notification');
+  const [templateType, setTemplateType] = useState<'body_link' | 'button_link'>('body_link');
 
   // Load WhatsApp settings from IndexedDB
   useEffect(() => {
@@ -155,10 +156,12 @@ export default function App() {
         const tokenSetting = await db.settings.where('key').equals('metaAccessToken').first();
         const phoneSetting = await db.settings.where('key').equals('phoneNumberId').first();
         const templateSetting = await db.settings.where('key').equals('templateName').first();
+        const typeSetting = await db.settings.where('key').equals('templateType').first();
 
         if (tokenSetting) setMetaAccessToken(tokenSetting.value);
         if (phoneSetting) setPhoneNumberId(phoneSetting.value);
         if (templateSetting) setTemplateName(templateSetting.value);
+        if (typeSetting) setTemplateType(typeSetting.value as any);
       } catch (err) {
         console.error("Failed to load settings:", err);
       }
@@ -169,9 +172,19 @@ export default function App() {
   const handleSaveWhatsAppSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await db.settings.where('key').equals('metaAccessToken').modify({ value: metaAccessToken.trim() });
-      await db.settings.where('key').equals('phoneNumberId').modify({ value: phoneNumberId.trim() });
-      await db.settings.where('key').equals('templateName').modify({ value: templateName.trim() });
+      const keys = ['metaAccessToken', 'phoneNumberId', 'templateName', 'templateType'];
+      const values = [metaAccessToken.trim(), phoneNumberId.trim(), templateName.trim(), templateType];
+      
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const val = values[i];
+        const record = await db.settings.where('key').equals(key).first();
+        if (record) {
+          await db.settings.update(record.id!, { value: val });
+        } else {
+          await db.settings.add({ key, value: val });
+        }
+      }
       alert('WhatsApp API Configuration saved successfully!');
     } catch (err: any) {
       alert(`Failed to save settings: ${err.message}`);
@@ -3123,6 +3136,22 @@ export default function App() {
                       style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', boxSizing: 'border-box' }}
                     />
                     <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Must match the approved template name in your WhatsApp template settings.</small>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Link Presentation Style</label>
+                    <select
+                      value={templateType}
+                      onChange={(e) => setTemplateType(e.target.value as any)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                    >
+                      <option value="body_link">Standard text link inside message body</option>
+                      <option value="button_link">Interactive Call to Action button (URL parameter)</option>
+                    </select>
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>
+                      <strong>Text Link</strong> needs 3 variables (Name, Exam, URL). 
+                      <strong>Button Link</strong> needs 2 body variables (Name, Exam) and 1 button variable (Token).
+                    </small>
                   </div>
 
                   <button type="submit" className="btn-primary" style={{ padding: '12px', borderRadius: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>

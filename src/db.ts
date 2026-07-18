@@ -161,9 +161,9 @@ db.submissions.hook('creating', (_, obj) => {
   }
 });
 
-// Seed default system settings
+// Seed default system settings & migrate legacy submissions
 db.on('ready', () => {
-  return db.settings.count().then((count) => {
+  const p1 = db.settings.count().then((count) => {
     if (count === 0) {
       return db.settings.bulkAdd([
         { key: 'metaAccessToken', value: '' },
@@ -171,8 +171,22 @@ db.on('ready', () => {
         { key: 'templateName', value: 'exam_report_notification' }
       ]);
     }
-  }).catch((err) => {
-    console.error("Failed to seed default settings database table:", err);
+  });
+
+  const p2 = db.submissions.toArray().then(async (subs) => {
+    const missing = subs.filter(s => !s.accessToken);
+    if (missing.length > 0) {
+      console.log(`Migrating database: Generating accessTokens for ${missing.length} existing submissions...`);
+      for (const sub of missing) {
+        const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+        await db.submissions.update(sub.id!, { accessToken: token });
+      }
+      console.log("Database token backfill migration complete.");
+    }
+  });
+
+  return Promise.all([p1, p2]).catch((err) => {
+    console.error("Failed to seed/migrate settings database table:", err);
   });
 });
 

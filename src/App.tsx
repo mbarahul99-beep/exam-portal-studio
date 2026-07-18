@@ -804,7 +804,7 @@ export default function App() {
     ctx.lineWidth = 1.0;
     for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
-      ctx.strokeRect(x - 10, yRollStart - 28, 20, 20);
+      ctx.strokeRect(x - 10, yRollStart - 40, 20, 20);
     }
     // Draw grid bubbles for Roll No
     for (let col = 0; col < rollNoDigits; col++) {
@@ -826,7 +826,7 @@ export default function App() {
     const yBkStart = OMR_CONFIG.bookletNo.yStart;
     for (let col = 0; col < 7; col++) {
       const x = xBkStart + col * xBkStep + bookletShift;
-      ctx.strokeRect(x - 10, yBkStart - 28, 20, 20);
+      ctx.strokeRect(x - 10, yBkStart - 40, 20, 20);
     }
     for (let col = 0; col < 7; col++) {
       const x = xBkStart + col * xBkStep + bookletShift;
@@ -1067,10 +1067,10 @@ export default function App() {
     // Draw grid headers with digits
     for (let col = 0; col < rollNoDigits; col++) {
       const x = xRollStart + col * xRollStep;
-      ctx.strokeRect(x - 10, yRollStart - 28, 20, 20);
+      ctx.strokeRect(x - 10, yRollStart - 40, 20, 20);
       ctx.fillStyle = '#2d3748';
       ctx.font = 'bold 12px Arial';
-      ctx.fillText(mockRoll[col], x, yRollStart - 14);
+      ctx.fillText(mockRoll[col], x, yRollStart - 26);
     }
 
     // Draw grid bubbles and fill selected
@@ -1106,10 +1106,10 @@ export default function App() {
     const yBkStart = OMR_CONFIG.bookletNo.yStart;
     for (let col = 0; col < 7; col++) {
       const x = xBkStart + col * xBkStep + bookletShift;
-      ctx.strokeRect(x - 10, yBkStart - 28, 20, 20);
+      ctx.strokeRect(x - 10, yBkStart - 40, 20, 20);
       ctx.fillStyle = '#2d3748';
       ctx.font = 'bold 12px Arial';
-      ctx.fillText(mockBooklet[col], x, yBkStart - 14);
+      ctx.fillText(mockBooklet[col], x, yBkStart - 26);
     }
     for (let col = 0; col < 7; col++) {
       const x = xBkStart + col * xBkStep + bookletShift;

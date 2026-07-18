@@ -48,7 +48,9 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [csvInput, setCsvInput] = useState('');
   const [bankSearch, setBankSearch] = useState('');
   const [bankSectionSelection, setBankSectionSelection] = useState('');
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
   const centralBank = useLiveQuery(() => db.questionBank.toArray()) || [];
+  const questionBanks = useLiveQuery(() => db.questionBanks.toArray()) || [];
 
   // WhatsApp Broadcast States
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -762,6 +764,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   )}
                 </div>
 
+                {/* Question Bank Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT QUESTION BANK</label>
+                  <select 
+                    value={selectedBankId} 
+                    onChange={e => setSelectedBankId(e.target.value)} 
+                    style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff', color: '#1e293b' }}
+                  >
+                    <option value="">All Question Banks</option>
+                    {questionBanks.map(bank => (
+                      <option key={bank.id} value={bank.id}>{bank.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Search input */}
                 <div style={{ position: 'relative' }}>
                   <Search size={12} style={{ position: 'absolute', left: '8px', top: '9px', color: 'var(--text-muted)' }} />
@@ -780,9 +797,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                     <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', margin: '10px 0' }}>Central Bank is empty.</p>
                   ) : (() => {
                     const filtered = centralBank.filter(q => {
+                      if (selectedBankId && q.bankId !== Number(selectedBankId)) return false;
                       if (!bankSearch.trim()) return true;
                       const lower = bankSearch.toLowerCase();
-                      return q.questionText.toLowerCase().includes(lower) || q.subject.toLowerCase().includes(lower) || q.chapter.toLowerCase().includes(lower);
+                      return q.questionText.toLowerCase().includes(lower);
                     });
 
                     if (filtered.length === 0) {
@@ -791,10 +809,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
                     return filtered.map(q => {
                       const isAlreadyAdded = dbQuestions.some(dbQ => dbQ.questionText === q.questionText);
+                      const parentBank = questionBanks.find(b => b.id === q.bankId);
                       return (
                         <div key={q.id} style={{ padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'rgba(255,255,255,0.01)', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
                           <div style={{ flex: 1, fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontWeight: 'bold', color: 'var(--primary)', marginRight: '6px' }}>[{q.subject}]</span>
+                            <span style={{ fontWeight: 'bold', color: 'var(--primary)', marginRight: '6px' }}>[{parentBank?.subject || 'General'}]</span>
                             <MathRenderer text={q.questionText} />
                           </div>
                           <button 

@@ -86,17 +86,32 @@ export default function App() {
   useEffect(() => {
     const seedQuestionBank = async () => {
       try {
-        const count = await db.questionBank.count();
-        if (count === 0) {
+        const bankCount = await db.questionBanks.count();
+        if (bankCount === 0) {
+          // 1. Create a default library question bank
+          const defaultBankId = await db.questionBanks.add({
+            name: "NEET / JEE - Core Library: Mixed Topics",
+            targetExam: "NEET/JEE",
+            subject: "Mixed",
+            topic: "Core Syllabus",
+            createdAt: new Date()
+          });
+
+          // 2. Fetch and seed questions linked to this default bank
           const response = await fetch('/neet_jee_bank.json');
           if (response.ok) {
             const data = await response.json();
             const formatted = data.map((q: any) => ({
-              ...q,
+              bankId: defaultBankId,
+              questionText: q.questionText,
+              options: [...q.options],
+              correctOptionIdx: q.correctOptionIdx,
+              difficulty: q.difficulty || 'medium',
+              explanation: q.explanation || '',
               createdAt: new Date()
             }));
             await db.questionBank.bulkAdd(formatted);
-            console.log("Central question bank successfully auto-seeded on mount!");
+            console.log("Central question bank successfully auto-seeded with default bank on mount!");
           }
         }
       } catch (err) {

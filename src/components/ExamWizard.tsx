@@ -60,12 +60,12 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
 
   // Library filters
-  const [libSourceFilter, setLibSourceFilter] = useState<string>('All');
-  const [libSubjectFilter, setLibSubjectFilter] = useState<string>('All');
+  const [selectedLibBankId, setSelectedLibBankId] = useState<string>('All');
   const [libDifficultyFilter, setLibDifficultyFilter] = useState<string>('All');
   const [libSearchQuery, setLibSearchQuery] = useState<string>('');
   const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
   const [libLoading, setLibLoading] = useState<boolean>(false);
+  const [banksList, setBanksList] = useState<any[]>([]);
 
   // Success link states
   const [createdExamId, setCreatedExamId] = useState<number | null>(null);
@@ -189,29 +189,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     const loadQuestionBank = async () => {
       setLibLoading(true);
       try {
-        const count = await db.questionBank.count();
-        if (count === 0) {
-          const response = await fetch('/neet_jee_bank.json');
-          if (response.ok) {
-            const data = await response.json();
-            const formatted = data.map((q: any) => ({
-              ...q,
-              createdAt: new Date()
-            }));
-            await db.questionBank.bulkAdd(formatted);
-          } else {
-            console.error("Failed to fetch public neet_jee_bank.json library:", response.statusText);
-          }
+        let results = [];
+        if (selectedLibBankId === 'All') {
+          results = await db.questionBank.toArray();
+        } else {
+          results = await db.questionBank.where('bankId').equals(Number(selectedLibBankId)).toArray();
         }
 
-        let results = await db.questionBank.toArray();
-
-        if (libSourceFilter !== 'All') {
-          results = results.filter((q: any) => q.source === libSourceFilter);
-        }
-        if (libSubjectFilter !== 'All') {
-          results = results.filter((q: any) => q.subject === libSubjectFilter);
-        }
         if (libDifficultyFilter !== 'All') {
           results = results.filter((q: any) => q.difficulty === libDifficultyFilter);
         }
@@ -219,7 +203,6 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           const lower = libSearchQuery.toLowerCase();
           results = results.filter((q: any) => 
             q.questionText.toLowerCase().includes(lower) || 
-            q.chapter.toLowerCase().includes(lower) ||
             q.options.some((o: string) => o.toLowerCase().includes(lower))
           );
         }
@@ -233,7 +216,12 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     };
 
     loadQuestionBank();
-  }, [questionSetupTab, libSourceFilter, libSubjectFilter, libDifficultyFilter, libSearchQuery]);
+  }, [questionSetupTab, selectedLibBankId, libDifficultyFilter, libSearchQuery]);
+
+  React.useEffect(() => {
+    if (questionSetupTab !== 'library') return;
+    db.questionBanks.toArray().then(setBanksList);
+  }, [questionSetupTab]);
 
   const renderStepCircle = (stepNum: number) => {
     if (step > stepNum) {
@@ -1418,24 +1406,14 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                     /* QUESTION BANK LIBRARY DISPLAY */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: 'calc(100% - 50px)', overflow: 'hidden' }}>
                       {/* Filter Controls Row */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SOURCE</span>
-                          <select value={libSourceFilter} onChange={e => setLibSourceFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
-                            <option value="All">All Sources</option>
-                            <option value="NEET">NEET</option>
-                            <option value="IIT JEE">IIT JEE</option>
-                            <option value="NCERT Science">NCERT Science</option>
-                          </select>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SUBJECT</span>
-                          <select value={libSubjectFilter} onChange={e => setLibSubjectFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
-                            <option value="All">All Subjects</option>
-                            <option value="Physics">Physics</option>
-                            <option value="Chemistry">Chemistry</option>
-                            <option value="Biology">Biology</option>
-                            <option value="Maths">Maths</option>
+                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: 'span 2' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION BANK</span>
+                          <select value={selectedLibBankId} onChange={e => setSelectedLibBankId(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff', color: '#1e293b' }}>
+                            <option value="All">All Banks</option>
+                            {banksList.map(bank => (
+                              <option key={bank.id} value={bank.id}>{bank.name}</option>
+                            ))}
                           </select>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1451,7 +1429,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                           <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SEARCH KEYWORDS</span>
                           <input 
                             type="text" 
-                            placeholder="e.g. friction, Mendel, CO2..." 
+                            placeholder="Search questions..." 
                             value={libSearchQuery} 
                             onChange={e => setLibSearchQuery(e.target.value)} 
                             style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}
@@ -1473,13 +1451,14 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         ) : (
                           libraryQuestions.map((qVal, index) => {
                             const isAddedToActive = questionsState[activeQuestionIndex]?.questionText === qVal.questionText;
+                            const parentBank = banksList.find(b => b.id === qVal.bankId);
                             return (
                               <div key={index} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{qVal.source}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{qVal.subject}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{qVal.chapter}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
                                     <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
                                   </div>
                                   <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>

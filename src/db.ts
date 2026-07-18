@@ -11,17 +11,23 @@ export interface Student {
   faceDescriptor?: number[]; // Vector embedding for facial biometrics
 }
 
+export interface QuestionBank {
+  id?: number;
+  name: string;
+  targetExam: string;
+  subject: string;
+  topic: string;
+  createdAt: Date;
+}
+
 export interface BankQuestion {
   id?: number;
-  source: 'NEET' | 'IIT JEE' | 'NCERT Science' | 'NCERT Math' | 'Custom';
-  subject: string;
-  chapter: string;
-  topic?: string;
+  bankId: number; // Links to QuestionBank
   questionText: string;
   options: string[];
   correctOptionIdx: number;
+  difficulty: 'easy' | 'medium' | 'hard';
   explanation?: string;
-  difficulty?: 'easy' | 'medium' | 'hard';
   createdAt?: Date;
 }
 
@@ -124,6 +130,7 @@ class AppDatabase extends Dexie {
   questions!: Table<Question>;
   attendance!: Table<AttendanceRecord>;
   questionBank!: Table<BankQuestion>;
+  questionBanks!: Table<QuestionBank>;
   settings!: Table<SystemSetting>;
 
   constructor() {
@@ -148,6 +155,11 @@ class AppDatabase extends Dexie {
     this.version(9).stores({
       submissions: '++id, examId, studentId, scannedAt, accessToken, [examId+studentId]',
       settings: '++id, &key'
+    });
+    // Version 10 adds questionBanks and updates questionBank indexes
+    this.version(10).stores({
+      questionBanks: '++id, targetExam, subject, topic',
+      questionBank: '++id, bankId, difficulty'
     });
   }
 }

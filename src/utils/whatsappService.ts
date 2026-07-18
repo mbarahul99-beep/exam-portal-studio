@@ -51,7 +51,9 @@ export async function sendWhatsAppTemplateMessage(
     return { success: false, error: 'Invalid recipient phone number format.' };
   }
 
+  const isHelloWorld = templateName.toLowerCase() === 'hello_world';
   const endpoint = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+  
   const payload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -60,9 +62,9 @@ export async function sendWhatsAppTemplateMessage(
     template: {
       name: templateName,
       language: {
-        code: 'en' // Matches approved template language
+        code: isHelloWorld ? 'en_US' : 'en'
       },
-      components: [
+      components: isHelloWorld ? [] : [
         {
           type: 'body',
           parameters: [

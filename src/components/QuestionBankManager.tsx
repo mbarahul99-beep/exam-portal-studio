@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db, type BankQuestion, type QuestionBank } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MathRenderer } from './MathRenderer';
@@ -30,7 +30,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [topic, setTopic] = useState('');
 
   // Selected Bank management sub-tab states
-  const [subTab, setSubTab] = useState<'browse' | 'add' | 'csv' | 'public'>('browse');
+  const [subTab, setSubTab] = useState<'browse' | 'add' | 'csv'>('browse');
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,19 +48,6 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [csvInput, setCsvInput] = useState('');
   const [csvFeedback, setCsvFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Public library states
-  const [publicQuestions, setPublicQuestions] = useState<any[]>([]);
-  const [pubLoading, setPubLoading] = useState(false);
-  const [pubFeedback, setPubFeedback] = useState<string | null>(null);
-
-  // Fetch from URL states
-  const [fetchUrl, setFetchUrl] = useState('');
-  const [fetchLoading, setFetchLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [fetchedCount, setFetchedCount] = useState<number | null>(null);
-  const [fetchedQList, setFetchedQList] = useState<any[]>([]);
-  const [fetchSuccessMsg, setFetchSuccessMsg] = useState<string | null>(null);
-
   // Add to exam popup states
   const [selectedBankQ, setSelectedBankQ] = useState<BankQuestion | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | string>('');
@@ -71,27 +58,6 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const questionBanks = useLiveQuery(() => db.questionBanks.toArray()) || [];
   const allBankQuestions = useLiveQuery(() => db.questionBank.toArray()) || [];
   const examsList = useLiveQuery(() => db.exams.toArray()) || [];
-
-  // Filter public library questions based on the active bank's subject/topic when public tab is loaded
-  useEffect(() => {
-    if (subTab === 'public' && publicQuestions.length === 0) {
-      const fetchPublicLibrary = async () => {
-        setPubLoading(true);
-        try {
-          const response = await fetch('/neet_jee_bank.json');
-          if (response.ok) {
-            const data = await response.json();
-            setPublicQuestions(data);
-          }
-        } catch (err) {
-          console.error("Error fetching public library:", err);
-        } finally {
-          setPubLoading(false);
-        }
-      };
-      fetchPublicLibrary();
-    }
-  }, [subTab, publicQuestions.length]);
 
   // Handle creating a new Question Bank
   const handleCreateBank = async (e: React.FormEvent) => {
@@ -267,178 +233,6 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
     }
   };
 
-  // Import single question from Public Library into active bank
-  const importPublicQuestion = async (pubQ: any) => {
-    if (!selectedBank) return;
-    try {
-      const activeBankQuestions = allBankQuestions.filter(q => q.bankId === selectedBank.id);
-      const exists = activeBankQuestions.some(q => q.questionText === pubQ.questionText);
-      if (exists) {
-        alert("This question is already in this bank.");
-        return;
-      }
-
-      await db.questionBank.add({
-        bankId: selectedBank.id!,
-        questionText: pubQ.questionText,
-        options: [...pubQ.options],
-        correctOptionIdx: pubQ.correctOptionIdx,
-        difficulty: pubQ.difficulty || 'medium',
-        explanation: pubQ.explanation || undefined,
-        createdAt: new Date()
-      });
-      setPubFeedback(`Successfully saved question to "${selectedBank.name}"!`);
-      setTimeout(() => setPubFeedback(null), 2500);
-    } catch (err: any) {
-      alert(`Failed to save question: ${err.message}`);
-    }
-  };
-
-  // Import all filtered library questions to active bank
-  const importAllLibrary = async (filteredPub: any[]) => {
-    if (!selectedBank || filteredPub.length === 0) return;
-    try {
-      const activeBankQuestions = allBankQuestions.filter(q => q.bankId === selectedBank.id);
-      let added = 0;
-      for (const q of filteredPub) {
-        const exists = activeBankQuestions.some(cq => cq.questionText === q.questionText);
-        if (!exists) {
-          await db.questionBank.add({
-            bankId: selectedBank.id!,
-            questionText: q.questionText,
-            options: [...q.options],
-            correctOptionIdx: q.correctOptionIdx,
-            difficulty: q.difficulty || 'medium',
-            explanation: q.explanation || undefined,
-            createdAt: new Date()
-          });
-          added++;
-        }
-      }
-      alert(`Imported ${added} questions to "${selectedBank.name}"!`);
-    } catch (err: any) {
-      alert(`Error bulk importing: ${err.message}`);
-    }
-  };
-
-  // Fetch questions from an external URL dynamically in the browser
-  const handleFetchFromUrl = async (urlToFetch: string) => {
-    if (!urlToFetch) {
-      alert("Please enter a valid URL first.");
-      return;
-    }
-    setFetchLoading(true);
-    setFetchError(null);
-    setFetchedCount(null);
-    setFetchedQList([]);
-
-    try {
-      // Use AllOrigins as a reliable CORS proxy
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToFetch.trim())}`;
-      const response = await fetch(proxyUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch from URL: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      let questionsArray: any[] = [];
-
-      if (Array.isArray(data)) {
-        questionsArray = data;
-      } else if (data.questions && Array.isArray(data.questions)) {
-        questionsArray = data.questions;
-      } else {
-        // Look for any array in the object properties
-        const arrayKey = Object.keys(data).find(k => Array.isArray(data[k]));
-        if (arrayKey) {
-          questionsArray = data[arrayKey];
-        }
-      }
-
-      if (questionsArray.length === 0) {
-        throw new Error("No questions array found in the fetched JSON payload. Ensure it is a JSON array or contains a 'questions' array.");
-      }
-
-      // Standardize the fetched questions to BankQuestion structure
-      const standardized = questionsArray.map((q: any, idx: number) => {
-        const questionText = q.questionText || q.question_text || q.question || q.text || `Question ${idx + 1}`;
-        
-        let options: string[] = [];
-        if (Array.isArray(q.options)) {
-          options = q.options.map((o: any) => typeof o === 'object' ? (o.text || o.value || '') : String(o));
-        } else if (q.options && typeof q.options === 'object') {
-          options = Object.values(q.options).map(String);
-        }
-
-        let correctOptionIdx = 0;
-        const rawCorrect = q.correctOptionIdx !== undefined ? q.correctOptionIdx : (q.correct_answer || q.answer);
-        if (typeof rawCorrect === 'number') {
-          correctOptionIdx = rawCorrect;
-        } else if (typeof rawCorrect === 'string') {
-          const letters = ['A', 'B', 'C', 'D', 'E'];
-          const idxLetter = letters.indexOf(rawCorrect.toUpperCase().trim());
-          if (idxLetter !== -1) {
-            correctOptionIdx = idxLetter;
-          } else {
-            const num = parseInt(rawCorrect, 10);
-            if (!isNaN(num)) correctOptionIdx = num - 1; // 1-based to 0-based
-          }
-        }
-
-        return {
-          questionText: String(questionText),
-          options: options.length > 0 ? options : ['Option A', 'Option B', 'Option C', 'Option D'],
-          correctOptionIdx: correctOptionIdx >= 0 && correctOptionIdx < 5 ? correctOptionIdx : 0,
-          difficulty: q.difficulty || 'medium',
-          explanation: q.explanation || q.solution || ''
-        };
-      });
-
-      setFetchedQList(standardized);
-      setFetchedCount(standardized.length);
-    } catch (err: any) {
-      setFetchError(err.message || "An unknown error occurred while fetching.");
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
-  // Import the fetched questions into the active selected bank
-  const handleImportFetchedQuestions = async () => {
-    if (!selectedBank || fetchedQList.length === 0) return;
-
-    try {
-      const activeBankQuestions = allBankQuestions.filter(q => q.bankId === selectedBank.id);
-      let added = 0;
-
-      const importPromises = fetchedQList.map(async (q) => {
-        const exists = activeBankQuestions.some(cq => cq.questionText === q.questionText);
-        if (!exists) {
-          await db.questionBank.add({
-            bankId: selectedBank.id!,
-            questionText: q.questionText,
-            options: [...q.options],
-            correctOptionIdx: q.correctOptionIdx,
-            difficulty: q.difficulty || 'medium',
-            explanation: q.explanation || undefined,
-            createdAt: new Date()
-          });
-          added++;
-        }
-      });
-
-      await Promise.all(importPromises);
-
-      setFetchSuccessMsg(`Successfully imported ${added} new questions into "${selectedBank.name}"!`);
-      setFetchedQList([]);
-      setFetchedCount(null);
-      setFetchUrl('');
-      
-      setTimeout(() => setFetchSuccessMsg(null), 3000);
-    } catch (err: any) {
-      alert(`Import failed: ${err.message}`);
-    }
-  };
 
   // Add question from bank to exam
   const handleAddQuestionToExam = async () => {
@@ -514,14 +308,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
     return true;
   });
 
-  // Filter public library questions based on active bank's subject/topic
-  const filteredPublicQuestions = publicQuestions.filter(q => {
-    if (!selectedBank) return false;
-    // Match subject loosely
-    const bankSub = selectedBank.subject.toLowerCase();
-    const pubSub = q.subject.toLowerCase();
-    return pubSub.includes(bankSub) || bankSub.includes(pubSub);
-  });
+
 
   const targetExamObj = selectedExamId ? examsList.find(e => e.id === Number(selectedExamId)) : null;
   const targetExamSections = targetExamObj?.sections || [];
@@ -655,12 +442,6 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                 style={{ padding: '6px 14px', border: 'none', background: subTab === 'csv' ? 'var(--primary)' : 'transparent', color: subTab === 'csv' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 Import CSV
-              </button>
-              <button 
-                onClick={() => setSubTab('public')}
-                style={{ padding: '6px 14px', border: 'none', background: subTab === 'public' ? 'var(--primary)' : 'transparent', color: subTab === 'public' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                Public Library
               </button>
             </div>
           </div>
@@ -860,186 +641,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
             </div>
           )}
 
-          {/* SUB-TAB 4: PUBLIC LIBRARY AUTOFILTERED BY ACTIVE BANK'S SUBJECT */}
-          {subTab === 'public' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              {/* FETCH FROM EXTERNAL URL INTERACTION PANEL */}
-              <div className="glass-card animate-fade-in" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Database className="text-indigo" size={18} /> Fetch Open Question Banks from Web
-                </h4>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Enter any public raw JSON questions URL (e.g. raw GitHub URLs or HuggingFace API JSONs) to download and import them directly into your database.
-                </p>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input 
-                    type="text" 
-                    placeholder="https://raw.githubusercontent.com/.../questions.json"
-                    value={fetchUrl}
-                    onChange={e => setFetchUrl(e.target.value)}
-                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}
-                  />
-                  <button 
-                    onClick={() => handleFetchFromUrl(fetchUrl)}
-                    disabled={fetchLoading}
-                    className="btn-primary"
-                    style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold' }}
-                  >
-                    {fetchLoading ? 'Fetching...' : 'Fetch & Preview'}
-                  </button>
-                </div>
-
-                {/* Pre-configured public sources links */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>QUICK SOURCE SAMPLES:</span>
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      const url = 'https://raw.githubusercontent.com/mbarahul99-beep/exam-portal/main/public/neet_jee_bank.json';
-                      setFetchUrl(url);
-                      handleFetchFromUrl(url);
-                    }} 
-                    className="btn-outlined" 
-                    style={{ padding: '4px 8px', fontSize: '0.65rem', borderRadius: '4px' }}
-                  >
-                    NEET/JEE Sample (15 Qs)
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      const url = 'https://raw.githubusercontent.com/AdithSuresh2004/exam-questions/main/nimcet/physics.json';
-                      setFetchUrl(url);
-                      handleFetchFromUrl(url);
-                    }} 
-                    className="btn-outlined" 
-                    style={{ padding: '4px 8px', fontSize: '0.65rem', borderRadius: '4px' }}
-                  >
-                    AdithSuresh Physics (200+ Qs)
-                  </button>
-                </div>
-
-                {fetchError && (
-                  <div style={{ background: '#fed7d7', border: '1px solid #e53e3e', color: '#9b2c2c', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem' }}>
-                    {fetchError}
-                  </div>
-                )}
-
-                {fetchSuccessMsg && (
-                  <div style={{ background: '#e6fffa', border: '1px solid #319795', color: '#234e52', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem' }}>
-                    {fetchSuccessMsg}
-                  </div>
-                )}
-
-                {fetchedCount !== null && fetchedQList.length > 0 && (
-                  <div className="animate-scale-up" style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(49, 151, 149, 0.05)', padding: '14px', border: '1px dashed #319795', borderRadius: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#234e52', fontWeight: 'bold' }}>
-                        ✓ Successfully scanned! Found {fetchedCount} compatible questions.
-                      </span>
-                      <button 
-                        onClick={handleImportFetchedQuestions}
-                        className="btn-filled"
-                        style={{ background: '#319795', padding: '6px 14px', fontSize: '0.75rem', borderRadius: '6px' }}
-                      >
-                        Import All {fetchedCount} to "{selectedBank.name}"
-                      </button>
-                    </div>
-                    {/* Tiny preview list */}
-                    <div style={{ maxHeight: '100px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', background: '#fff', padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {fetchedQList.slice(0, 5).map((q, idx) => (
-                        <div key={idx} style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                          Q{idx+1}: {q.questionText}
-                        </div>
-                      ))}
-                      {fetchedCount > 5 && (
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'left' }}>
-                          ...and {fetchedCount - 5} more questions.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* CURATED LOCAL QUESTIONS LIST */}
-              <div className="glass-card" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', textAlign: 'left' }}>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>
-                    Curated Public Library for: <span style={{ color: 'var(--primary)' }}>{selectedBank.subject}</span>
-                  </h4>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Auto-filtered collections containing high-quality questions matching your question bank's subject.
-                  </p>
-                </div>
-                {filteredPublicQuestions.length > 0 && (
-                  <button 
-                    onClick={() => importAllLibrary(filteredPublicQuestions)}
-                    className="btn-primary" 
-                    style={{ padding: '8px 16px', borderRadius: '8px', background: '#319795', border: 'none' }}
-                  >
-                    Import All ({filteredPublicQuestions.length}) to This Bank
-                  </button>
-                )}
-              </div>
-
-              {pubFeedback && (
-                <div style={{ background: '#e6fffa', border: '1px solid #319795', color: '#234e52', padding: '10px 14px', borderRadius: '6px', fontSize: '0.85rem', textAlign: 'left' }}>
-                  {pubFeedback}
-                </div>
-              )}
-
-              {pubLoading ? (
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '80px 0', gap: '12px' }}>
-                  <div style={{ border: '3px solid #e2e8f0', borderTop: '3px solid var(--primary)', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite' }} />
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Filtering public library...</span>
-                </div>
-              ) : filteredPublicQuestions.length === 0 ? (
-                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No public library questions match the subject "{selectedBank.subject}".
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {filteredPublicQuestions.map((q, index) => {
-                    const isImported = activeQuestions.some(cq => cq.questionText === q.questionText);
-                    return (
-                      <div key={index} className="glass-card animate-fade-in" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', gap: '20px', alignItems: 'flex-start' }}>
-                        <div style={{ flex: 1, textAlign: 'left' }}>
-                          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{q.source}</span>
-                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{q.subject}</span>
-                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{q.chapter}</span>
-                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: q.difficulty === 'easy' ? '#e6fffa' : q.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: q.difficulty === 'easy' ? '#234e52' : q.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{q.difficulty.toUpperCase()}</span>
-                          </div>
-                          <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
-                            <MathRenderer text={q.questionText} />
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                            {q.options.map((opt: string, oIdx: number) => (
-                              <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
-                                <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
-                                <MathRenderer text={opt} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <button 
-                          onClick={() => importPublicQuestion(q)}
-                          disabled={isImported}
-                          className={isImported ? "btn-secondary" : "btn-primary"} 
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '130px', flexShrink: 0 }}
-                        >
-                          {isImported ? "Imported ✓" : "Import to Bank"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

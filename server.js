@@ -15,9 +15,9 @@ const PORT = process.env.PORT || 3000;
 
 // Hostinger MySQL Connection Configuration
 const dbHost = process.env.DB_HOST || '127.0.0.1';
-const dbUser = process.env.DB_USER || 'u874290068_usr';
+const dbUser = process.env.DB_USER || 'u874290068_u874290068_usr';
 const dbPass = process.env.DB_PASSWORD || process.env.DB_PASS || '2026@Apex';
-const dbName = process.env.DB_NAME || 'u874290068_app';
+const dbName = process.env.DB_NAME || 'u874290068_u874290068_app';
 
 const dbConfig = {
   host: dbHost,

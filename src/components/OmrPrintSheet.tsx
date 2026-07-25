@@ -56,9 +56,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
            }} 
       />
 
-      {/* Header section (Shifted higher to 72 to prevent overlap with title cards) */}
-      <div className="omr-header-section" style={{ top: toY(72) }}>
-        <h1 className="omr-title">{examTitle.toUpperCase()}</h1>
+      {/* Header section with APEX INSTITUTE, JIND */}
+      <div className="omr-header-section" style={{ top: toY(65) }}>
+        <h1 className="omr-institute-title">APEX INSTITUTE, JIND</h1>
+        <div className="omr-exam-title">{examTitle.toUpperCase()}</div>
         <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
       </div>
 
@@ -196,12 +197,14 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               <div className="info-line" />
             </div>
             <div className="info-row">
-              <span className="info-label">MOTHER'S NAME (IN CAPITAL LETTERS)</span>
+              <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
               <div className="info-line" />
             </div>
             <div className="info-row">
-              <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
-              <div className="info-line" />
+              <span className="info-label">EXAM NAME</span>
+              <div className="info-line" style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: '#000', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                {examTitle}
+              </div>
             </div>
           </div>
         );
@@ -285,23 +288,23 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         );
       })}
 
-      {/* Footer boxes: Signatures & Thumb Impression */}
+      {/* Footer boxes: Only Two Signature Boxes (Student & Invigilator) */}
       <div className="sheet-footer-section" 
            style={{
              left: toX(70),
              bottom: '16mm',
              width: toX(860),
-             height: '18mm'
+             height: '18mm',
+             display: 'grid',
+             gridTemplateColumns: '1fr 1fr',
+             gap: '20px'
            }}
       >
         <div className="footer-box">
-          <div className="footer-box-label">CANDIDATE'S LEFT HAND THUMB IMPRESSION</div>
+          <div className="footer-box-label">STUDENT'S SIGNATURE</div>
         </div>
         <div className="footer-box">
-          <div className="footer-box-label">SIGNATURE OF CANDIDATE (WITH TIME)</div>
-        </div>
-        <div className="footer-box">
-          <div className="footer-box-label">SIGNATURE OF INVIGILATOR (WITH TIME)</div>
+          <div className="footer-box-label">INVIGILATOR'S SIGNATURE</div>
         </div>
       </div>
 
@@ -350,13 +353,22 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           text-align: center;
         }
 
-        .omr-title {
-          font-size: 19px;
+        .omr-institute-title {
+          font-size: 20px;
           font-weight: 900;
           color: #dc0045 !important;
-          margin: 0 0 1px 0 !important;
+          margin: 0 0 2px 0 !important;
           line-height: 1 !important;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.8px;
+        }
+
+        .omr-exam-title {
+          font-size: 13px;
+          font-weight: 800;
+          color: #0f172a !important;
+          margin: 0 0 4px 0 !important;
+          line-height: 1.1 !important;
+          letter-spacing: 0.3px;
         }
 
         .omr-subtitle {

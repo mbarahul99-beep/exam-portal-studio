@@ -833,7 +833,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 <div className="counter-picker">
                   <label>ROLL NO. DIGITS</label>
                   <div className="counter-controls">
-                    <button type="button" className="btn-count-dec" onClick={() => setRollNoDigits(prev => Math.max(4, prev - 1))}>-</button>
+                    <button type="button" className="btn-count-dec" onClick={() => setRollNoDigits(prev => Math.max(2, prev - 1))}>-</button>
                     <span className="counter-val">{rollNoDigits}</span>
                     <button type="button" className="btn-count-inc" onClick={() => setRollNoDigits(prev => Math.min(15, prev + 1))}>+</button>
                   </div>

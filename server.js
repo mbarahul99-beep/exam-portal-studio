@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'u874290068_usr',
-  password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
+  password: process.env.DB_PASSWORD || process.env.DB_PASS || '2026@Apex',
   database: process.env.DB_NAME || 'u874290068_app',
   waitForConnections: true,
   connectionLimit: 10,

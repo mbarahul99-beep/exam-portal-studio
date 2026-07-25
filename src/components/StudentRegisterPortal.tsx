@@ -18,6 +18,8 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
   const [studentNum, setStudentNum] = useState('');
   const [className, setClassName] = useState(initialClassName || '');
   const [phone, setPhone] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [isSameWhatsApp, setIsSameWhatsApp] = useState(true);
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,7 +39,8 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
     try {
       // Auto-generate Roll No if blank
       const rollNo = studentNum.trim() || String(Math.floor(10000 + Math.random() * 90000));
-      const cleanPhone = phone.trim() ? (phone.startsWith('91') ? phone.trim() : `91${phone.trim()}`) : '';
+      const rawWa = isSameWhatsApp ? phone : whatsappNumber;
+      const cleanWa = rawWa.trim() ? (rawWa.startsWith('91') ? rawWa.trim() : `91${rawWa.trim()}`) : '';
 
       // Check if student is already in roster
       const existing = await db.students.where('studentNum').equals(rollNo).first();
@@ -54,7 +57,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
         studentNum: rollNo,
         className,
         phone: phone.trim(),
-        whatsappNumber: cleanPhone,
+        whatsappNumber: cleanWa,
         email: email.trim(),
         createdAt: new Date(),
         status: 'pending'
@@ -70,12 +73,12 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
             studentNum: rollNo,
             className,
             phone: phone.trim(),
-            whatsappNumber: cleanPhone,
+            whatsappNumber: cleanWa,
             email: email.trim()
           })
         });
-      } catch (err) {
-        console.warn("MySQL sync optional fallback:", err);
+      } catch (e) {
+        console.warn("Server sync warning:", e);
       }
 
       setSubmitted(true);
@@ -252,13 +255,18 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
             {/* Mobile / WhatsApp Number */}
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-                WHATSAPP / MOBILE NUMBER (OPTIONAL)
+                MOBILE NUMBER *
               </label>
               <input
                 type="tel"
+                required
                 placeholder="e.g. 9876543210"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPhone(val);
+                  if (isSameWhatsApp) setWhatsappNumber(val);
+                }}
                 style={{
                   width: '100%',
                   padding: '12px 14px',
@@ -268,7 +276,40 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                   boxSizing: 'border-box'
                 }}
               />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={isSameWhatsApp}
+                  onChange={(e) => {
+                    setIsSameWhatsApp(e.target.checked);
+                    if (e.target.checked) setWhatsappNumber(phone);
+                  }}
+                />
+                Is the above number your WhatsApp number?
+              </label>
             </div>
+
+            {!isSameWhatsApp && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                  WHATSAPP NUMBER
+                </label>
+                <input
+                  type="tel"
+                  placeholder="e.g. 9876543210"
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            )}
 
             {/* Email Address */}
             <div>

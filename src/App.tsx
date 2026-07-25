@@ -32,12 +32,10 @@ import {
   RefreshCw, 
   TrendingUp,
   Link,
-  Download,
   Trash2,
   Edit2,
   QrCode,
   X,
-  ChevronRight,
   LogOut,
   Menu,
   CalendarCheck,
@@ -48,7 +46,12 @@ import {
   Lock,
   HelpCircle,
   Scan,
-  MoreHorizontal
+  MoreHorizontal,
+  FileSpreadsheet,
+  ListOrdered,
+  Phone,
+  ArrowLeft,
+  MoreVertical
 } from 'lucide-react';
 
 export default function App() {
@@ -217,6 +220,8 @@ export default function App() {
   const [drawerEmail, setDrawerEmail] = useState('');
   const [drawerPhone, setDrawerPhone] = useState('');
   const [drawerWhatsApp, setDrawerWhatsApp] = useState('');
+  const [isDrawerSameWhatsApp, setIsDrawerSameWhatsApp] = useState(true);
+  const [studentMenuOpenId, setStudentMenuOpenId] = useState<number | null>(null);
 
   // WhatsApp API Configuration States
   const [metaAccessToken, setMetaAccessToken] = useState('');
@@ -265,10 +270,6 @@ export default function App() {
       alert(`Failed to save settings: ${err.message}`);
     }
   };
-
-  // Sort State
-  const [classSortField, setClassSortField] = useState<'name' | 'studentsCount'>('name');
-  const [classSortOrder, setClassSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Form States
   const [csvText, setCsvText] = useState('');
@@ -586,6 +587,7 @@ export default function App() {
 
       const waClean = drawerWhatsApp.trim() ? cleanWhatsAppNumber(drawerWhatsApp) : undefined;
 
+      let savedStudentId = editingStudentId;
       if (editingStudentId) {
         await db.students.update(editingStudentId, {
           name: drawerName.trim(),
@@ -596,7 +598,7 @@ export default function App() {
         });
         setEditingStudentId(null);
       } else {
-        await db.students.add({
+        savedStudentId = await db.students.add({
           name: drawerName.trim(),
           studentNum: drawerRollNo,
           className: selectedClassName,
@@ -604,6 +606,22 @@ export default function App() {
           phone: drawerPhone.trim() || undefined,
           whatsappNumber: waClean
         });
+      }
+
+      // Sync student to Hostinger MySQL
+      if (savedStudentId) {
+        const savedSt = await db.students.get(savedStudentId);
+        if (savedSt) {
+          try {
+            await fetch('/api/students', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(savedSt)
+            });
+          } catch (err) {
+            console.warn("MySQL student sync warning:", err);
+          }
+        }
       }
 
       setDrawerRollNo('');
@@ -2264,151 +2282,26 @@ export default function App() {
 
           {/* TAB 2: CLASSES & STUDENTS PANEL */}
           {activeTab === 'students' && (
-            <div className="tab-pane animate-fade-in">
+            <div className="tab-pane animate-fade-in" style={{ padding: '0', background: '#ffffff', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
               {selectedClassName === null ? (
-                /* CLASS LISTING VIEW (Screenshot 1) */
-                <div className="classes-portal">
-                  <header className="pane-header">
-                    <div>
-                      <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }}>Classes</h2>
-                    </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <button 
-                        className="btn-secondary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                        onClick={() => alert('Manage Invite Links module is coming soon!')}
-                      >
-                        <Link size={16} /> Manage invite links
-                      </button>
-                      <button 
-                        className="btn-primary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                        onClick={() => setShowAddClassModal(true)}
-                      >
-                        <Plus size={16} /> Add class
-                      </button>
-                    </div>
-                  </header>
+                /* CLASS LISTING VIEW (Screenshot 2: media__1784980659124.png) */
+                <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                  
+                  {/* Top Header Bar */}
+                  <div style={{
+                    padding: '16px 20px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid #f1f5f9',
+                    background: '#ffffff'
+                  }}>
+                    <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
+                      Classes
+                    </h2>
 
-                  <div className="glass-card mt-4">
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <table className="app-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
-                            <th>
-                              <button 
-                                style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
-                                onClick={() => {
-                                  setClassSortField('name');
-                                  setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-                                }}
-                              >
-                                Class Name {classSortField === 'name' && (classSortOrder === 'asc' ? '↓' : '↑')}
-                              </button>
-                            </th>
-                            <th>
-                              <button 
-                                style={{ background: 'transparent', border: 'none', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}
-                                onClick={() => {
-                                  setClassSortField('studentsCount');
-                                  setClassSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-                                }}
-                              >
-                                No. Of Students {classSortField === 'studentsCount' && (classSortOrder === 'asc' ? '↓' : '↑')}
-                              </button>
-                            </th>
-                            <th>State</th>
-                            <th style={{ textAlign: 'right' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            const classList = [...classes];
-                            classList.sort((a, b) => {
-                              if (classSortField === 'name') {
-                                return classSortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-                              } else {
-                                const countA = students.filter(s => s.className === a.name).length;
-                                const countB = students.filter(s => s.className === b.name).length;
-                                return classSortOrder === 'asc' ? countA - countB : countB - countA;
-                              }
-                            });
-
-                            if (classList.length === 0) {
-                              return (
-                                <tr>
-                                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', opacity: 0.6 }}>
-                                    No classes created yet. Click "+ Add class" to start.
-                                  </td>
-                                </tr>
-                              );
-                            }
-
-                            return classList.map(cls => {
-                              const count = students.filter(s => s.className === cls.name).length;
-                              return (
-                                <tr key={`cls-row-${cls.id}`} className="hover-row">
-                                  <td><input type="checkbox" readOnly /></td>
-                                  <td>
-                                    <span 
-                                      style={{ color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
-                                      onClick={() => setSelectedClassName(cls.name)}
-                                    >
-                                      {cls.name}
-                                    </span>
-                                  </td>
-                                  <td>{count}</td>
-                                  <td>
-                                    <span className="status-badge success" style={{ textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Check size={12} /> {cls.state}
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'right' }}>
-                                    <button 
-                                      className="action-icon-btn text-error" 
-                                      onClick={async () => {
-                                        if (confirm(`Are you sure you want to delete class "${cls.name}" and all its registered students?`)) {
-                                          await db.classes.delete(cls.id!);
-                                          const related = students.filter(s => s.className === cls.name);
-                                          for (const s of related) {
-                                            await db.students.delete(s.id!);
-                                            await db.submissions.where('studentId').equals(s.id!).delete();
-                                          }
-                                        }
-                                      }}
-                                      title="Delete Class"
-                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)' }}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Classes Listing Footer Actions */}
-                    <div style={{ display: 'flex', gap: '20px', marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                      <button 
-                        className="btn-link" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--primary)', background: 'transparent', border: 'none', padding: 0 }}
-                        onClick={() => {
-                          const bulkInput = prompt("Enter student list CSV:\nFormat: RollNo,Name,ClassName\n(One student per line)");
-                          if (bulkInput) {
-                            setCsvText(bulkInput);
-                            setTimeout(() => handleImportCsv(), 200);
-                          }
-                        }}
-                      >
-                        <Upload size={14} /> Import csv/excel
-                      </button>
-                      <button 
-                        className="btn-link" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--primary)', background: 'transparent', border: 'none', padding: 0 }}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <button
                         onClick={() => {
                           if (classes.length === 0) return alert('No classes to export.');
                           const csvRows = ['Class Name,No. Of Students,State'];
@@ -2424,236 +2317,461 @@ export default function App() {
                           a.click();
                           URL.revokeObjectURL(url);
                         }}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                        title="Export Classes Report"
                       >
-                        <Download size={14} /> Export csv
+                        <FileSpreadsheet size={22} color="#2563eb" />
+                      </button>
+
+                      <button
+                        onClick={() => setShowAddClassModal(true)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#2563eb',
+                          fontSize: '1.05rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        + Add Class
                       </button>
                     </div>
+                  </div>
+
+                  {/* Classes Vertical List matching Screenshot 2 */}
+                  <div style={{ flex: 1 }}>
+                    {classes.length === 0 ? (
+                      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                        No classes created yet. Click "+ Add Class" to start.
+                      </div>
+                    ) : (
+                      classes.map(cls => {
+                        const count = students.filter(s => s.className === cls.name).length;
+                        return (
+                          <div
+                            key={`cls-item-${cls.id}`}
+                            onClick={() => setSelectedClassName(cls.name)}
+                            style={{
+                              padding: '18px 20px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              borderBottom: '1px solid #f1f5f9',
+                              cursor: 'pointer',
+                              background: '#ffffff'
+                            }}
+                          >
+                            {/* Left Side: Class Name & Student Count */}
+                            <div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                                {cls.name}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#64748b' }}>
+                                <Users size={16} color="#64748b" />
+                                <span>{count}</span>
+                              </div>
+                            </div>
+
+                            {/* Right Side: View Students Link & Green Checkmark Badge */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                              <span style={{ color: '#2563eb', fontWeight: 700, fontSize: '0.95rem' }}>
+                                View Students
+                              </span>
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '50%',
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}>
+                                <Check size={12} strokeWidth={3} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               ) : (
-                /* STUDENTS DRILL DOWN VIEW (Screenshot 3) */
-                <div className="students-portal animate-fade-in">
-                  {/* Breadcrumb row */}
-                  <div className="breadcrumb-nav mb-3" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', opacity: 0.7 }}>
-                    <span 
-                      style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }}
-                      onClick={() => setSelectedClassName(null)}
+                /* STUDENTS LIST VIEW (Screenshot 1: media__1784980659121.png) */
+                <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                  
+                  {/* Top Mobile & Desktop Header Bar */}
+                  <div style={{
+                    padding: '16px 20px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid #f1f5f9',
+                    background: '#ffffff'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button
+                        onClick={() => setSelectedClassName(null)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                      >
+                        <ArrowLeft size={22} color="#0f172a" />
+                      </button>
+                      <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                        {selectedClassName}
+                      </h2>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingStudentId(null);
+                        setDrawerRollNo('');
+                        setDrawerName('');
+                        setDrawerEmail('');
+                        setDrawerPhone('');
+                        setDrawerWhatsApp('');
+                        setShowAddStudentDrawer(true);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
                     >
-                      Classes
-                    </span>
-                    <ChevronRight size={14} />
-                    <span style={{ fontWeight: 'bold' }}>{selectedClassName}</span>
+                      + Add Student
+                    </button>
                   </div>
 
-                  <header className="pane-header">
-                    <div>
-                      <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }}>Students</h2>
-                    </div>
-                    
-                    {/* Top action header options */}
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <select 
-                        value={selectedClassName}
-                        onChange={(e) => setSelectedClassName(e.target.value)}
-                        style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#ffffff', fontSize: '0.9rem' }}
-                      >
-                        {classes.map(c => (
-                          <option key={`sel-cls-${c.id}`} value={c.name}>{c.name}</option>
-                        ))}
-                      </select>
-
-                      <div className="search-bar" style={{ margin: 0, padding: '4px 10px', height: '38px', width: '200px' }}>
-                        <Search size={16} />
-                        <input 
-                          type="text" 
-                          placeholder="Search..." 
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                      </div>
-
-                      <button 
-                        className="btn-secondary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                        onClick={() => setShowInviteModal(true)}
-                      >
-                        <Link size={16} /> Create invite link
-                      </button>
-
-                      <button 
-                        className="btn-secondary" 
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '10px 16px',
-                          borderRadius: '6px',
-                          background: pendingCount > 0 ? '#fef3c7' : '#ffffff',
-                          borderColor: pendingCount > 0 ? '#f59e0b' : 'var(--border-color)',
-                          color: pendingCount > 0 ? '#b45309' : 'inherit',
-                          fontWeight: 'bold'
-                        }}
-                        onClick={() => setShowPendingApprovalsModal(true)}
-                      >
-                        <UserCheck size={16} /> Pending Approvals {pendingCount > 0 && <span style={{ background: '#d97706', color: '#fff', borderRadius: '10px', padding: '2px 8px', fontSize: '0.75rem' }}>{pendingCount}</span>}
-                      </button>
-                      
-                      <button 
-                        className="btn-primary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                        onClick={() => setShowAddStudentDrawer(true)}
-                      >
-                        <Plus size={16} /> Add student
-                      </button>
-                    </div>
-                  </header>
-
+                  {/* Sub-Header: Students Count & Actions */}
                   {(() => {
                     const classStudents = students.filter(s => s.className === selectedClassName);
-                    const filteredStudents = classStudents.filter(s => 
+                    const filteredStudents = classStudents.filter(s =>
                       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                       s.studentNum.includes(searchQuery)
                     );
 
-                    if (classStudents.length === 0) {
-                      /* Empty state matching Screenshot 3 */
-                      return (
-                        <div className="glass-card mt-4" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '64px 24px', textAlign: 'center' }}>
-                          {/* Beautiful Open Box Custom SVG */}
-                          <div style={{ width: '120px', height: '120px', marginBottom: '20px', position: 'relative' }}>
-                            <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-                              {/* Open Box Path lines */}
-                              <polygon points="50,22 85,38 50,54 15,38" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.2 }} />
-                              <polygon points="50,54 85,38 85,68 50,84" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }} />
-                              <polygon points="50,54 15,38 15,68 50,84" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }} />
-                              
-                              {/* Left & Right Flaps */}
-                              <polygon points="15,38 35,28 35,48 15,58" fill="rgba(16, 88, 202, 0.12)" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" />
-                              <polygon points="85,38 65,28 65,48 85,58" fill="rgba(16, 88, 202, 0.12)" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" />
-                              
-                              {/* Front Flap */}
-                              <polygon points="50,54 50,84 15,68 15,38" fill="rgba(16, 88, 202, 0.05)" />
-                              
-                              {/* Dashed Loop trail with plane */}
-                              <path d="M50,45 C50,25 35,30 42,12" fill="none" stroke="var(--primary)" strokeWidth="2" strokeDasharray="3,3" strokeLinecap="round" style={{ opacity: 0.7 }} />
-                              <polygon points="42,12 36,15 39,18" fill="var(--primary)" />
-                            </svg>
-                          </div>
-                          
-                          <h3 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>No students added</h3>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', margin: '0 0 24px 0' }}>Start adding students</p>
-                          
-                          <div style={{ display: 'flex', gap: '12px' }}>
-                            <button 
-                              className="btn-secondary" 
-                              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
+                    return (
+                      <>
+                        <div style={{
+                          padding: '14px 20px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          background: '#ffffff'
+                        }}>
+                          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                            Students ({classStudents.length})
+                          </h3>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <button
+                              onClick={() => setShowInviteModal(true)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                              title="Create Invite Link"
+                            >
+                              <Link size={20} color="#2563eb" />
+                            </button>
+
+                            <button
+                              onClick={() => setShowPendingApprovalsModal(true)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', position: 'relative' }}
+                              title="Pending Registration Approvals"
+                            >
+                              <UserCheck size={20} color={pendingCount > 0 ? "#d97706" : "#2563eb"} />
+                              {pendingCount > 0 && (
+                                <span style={{ position: 'absolute', top: '-4px', right: '-6px', background: '#d97706', color: '#fff', borderRadius: '10px', width: '14px', height: '14px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {pendingCount}
+                                </span>
+                              )}
+                            </button>
+
+                            <button
                               onClick={() => {
-                                const csvInput = prompt("Enter student CSV format:\nRollNo,Name\n(Will be added to class " + selectedClassName + ")");
+                                const csvInput = prompt("Enter student list CSV:\nFormat: RollNo,Name,ClassName");
                                 if (csvInput) {
                                   setCsvText(csvInput);
                                   setTimeout(() => handleImportCsv(), 200);
                                 }
                               }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                              title="Import CSV"
                             >
-                              <Upload size={16} /> Import csv
+                              <Upload size={20} color="#2563eb" />
                             </button>
-                            <button 
-                              className="btn-primary" 
-                              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                              onClick={() => setShowAddStudentDrawer(true)}
+
+                            <button
+                              onClick={() => {
+                                const q = prompt("Filter students by name or roll number:", searchQuery);
+                                if (q !== null) setSearchQuery(q);
+                              }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                              title="Filter Students"
                             >
-                              <Plus size={16} /> Add student
+                              <Filter size={20} color="#2563eb" />
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (classStudents.length === 0) return alert('No students to export.');
+                                const csvRows = ['Roll No,Name,Class,Phone,WhatsApp,Email'];
+                                classStudents.forEach(st => {
+                                  csvRows.push(`"${st.studentNum}","${st.name}","${st.className}","${st.phone || ''}","${st.whatsappNumber || ''}","${st.email || ''}"`);
+                                });
+                                const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `students_${selectedClassName}_${new Date().toISOString().slice(0, 10)}.csv`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                              title="Export CSV"
+                            >
+                              <FileSpreadsheet size={20} color="#2563eb" />
                             </button>
                           </div>
                         </div>
-                      );
-                    }
 
-                    return (
-                      <div className="glass-card mt-4" style={{ padding: '0px', overflow: 'hidden' }}>
-                        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                          <table className="app-table" style={{ minWidth: '600px' }}>
-                            <thead>
-                              <tr>
-                                <th style={{ width: '40px' }}><input type="checkbox" readOnly /></th>
-                                <th>Roll ID</th>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Phone</th>
-                                <th>WhatsApp</th>
-                                <th style={{ textAlign: 'right' }}>Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredStudents.length === 0 ? (
-                                <tr>
-                                  <td colSpan={7} style={{ textAlign: 'center', padding: '16px', opacity: 0.6 }}>
-                                    No students match search filter.
-                                  </td>
-                                </tr>
-                              ) : (
-                                filteredStudents.map(s => (
-                                  <tr key={`stud-row-${s.id}`} className="hover-row">
-                                    <td><input type="checkbox" readOnly /></td>
-                                    <td><code className="font-mono">{s.studentNum}</code></td>
-                                    <td><strong>{s.name}</strong></td>
-                                    <td>{s.email || <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                    <td>{s.phone || <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                    <td>{s.whatsappNumber ? <code className="font-mono">{s.whatsappNumber}</code> : <span style={{ opacity: 0.4 }}>-</span>}</td>
-                                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                    <button 
-                                      className="action-icon-btn" 
-                                      onClick={() => startFaceEnrollment(s)}
-                                      title={s.faceDescriptor ? "Edit Face Biometrics (Enrolled)" : "Enroll Face Biometrics"}
-                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: s.faceDescriptor ? '#48bb78' : '#718096', marginRight: '12px' }}
-                                    >
-                                      <Camera size={16} />
-                                    </button>
-                                    <button 
-                                      className="action-icon-btn text-primary" 
-                                      onClick={() => setViewingQrStudent(s)}
-                                      title="View QR Code"
-                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', marginRight: '12px' }}
-                                    >
-                                      <QrCode size={16} />
-                                    </button>
-                                    <button 
-                                      className="action-icon-btn text-primary" 
-                                      onClick={() => {
-                                        setEditingStudentId(s.id!);
-                                        setDrawerRollNo(s.studentNum);
-                                        setDrawerName(s.name);
-                                        setDrawerEmail(s.email || '');
-                                        setDrawerPhone(s.phone || '');
-                                        setDrawerWhatsApp(s.whatsappNumber || '');
-                                        setShowAddStudentDrawer(true);
-                                      }}
-                                      title="Edit Student"
-                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', marginRight: '12px' }}
-                                    >
-                                      <Edit2 size={16} />
-                                    </button>
-                                    <button 
-                                      className="action-icon-btn text-error" 
-                                      onClick={async () => {
-                                        if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
-                                          await db.students.delete(s.id!);
-                                          await db.submissions.where('studentId').equals(s.id!).delete();
-                                        }
-                                      }}
-                                      title="Delete Student"
-                                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)' }}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                        {/* Students List matching Screenshot 1 */}
+                        <div style={{ flex: 1 }}>
+                          {filteredStudents.length === 0 ? (
+                            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                              No students found in {selectedClassName}. Click "+ Add Student" to start.
+                            </div>
+                          ) : (
+                            filteredStudents.map((s) => {
+                              const initial = s.name.trim().charAt(0).toUpperCase() || 'S';
+                              const isMenuOpen = studentMenuOpenId === s.id;
+
+                              return (
+                                <div
+                                  key={`stud-card-${s.id}`}
+                                  style={{
+                                    padding: '14px 20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    background: '#ffffff',
+                                    position: 'relative'
+                                  }}
+                                >
+                                  {/* Tapping this area opens Student Profile Update Details */}
+                                  <div
+                                    onClick={() => {
+                                      setEditingStudentId(s.id!);
+                                      setDrawerRollNo(s.studentNum);
+                                      setDrawerName(s.name);
+                                      setDrawerEmail(s.email || '');
+                                      setDrawerPhone(s.phone || '');
+                                      setDrawerWhatsApp(s.whatsappNumber || '');
+                                      setShowAddStudentDrawer(true);
+                                    }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, cursor: 'pointer' }}
+                                  >
+                                    {/* Light Blue Initial Avatar */}
+                                    <div style={{
+                                      width: '44px',
+                                      height: '44px',
+                                      borderRadius: '50%',
+                                      background: '#e0f2fe',
+                                      color: '#0284c7',
+                                      fontSize: '1.1rem',
+                                      fontWeight: 700,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      {initial}
+                                    </div>
+
+                                    {/* Middle Details: Name, Roll No, Phone */}
+                                    <div>
+                                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                                        {s.name}
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', color: '#475569' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <ListOrdered size={14} color="#64748b" />
+                                          <span>{s.studentNum}</span>
+                                        </div>
+
+                                        <div style={{ width: '1px', height: '12px', background: '#cbd5e1' }} />
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <Phone size={14} color="#64748b" />
+                                          <span>{s.phone || 'No phone'}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Right Side: Three Dots Menu & Green Checkmark Badge */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px', marginLeft: '12px' }}>
+                                    
+                                    {/* Three-Dots Menu Button */}
+                                    <div style={{ position: 'relative' }}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setStudentMenuOpenId(isMenuOpen ? null : s.id!);
+                                        }}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                                      >
+                                        <MoreVertical size={20} color="#2563eb" />
+                                      </button>
+
+                                      {/* Dropdown Popover Menu for Edit and Delete */}
+                                      {isMenuOpen && (
+                                        <div
+                                          onClick={(e) => e.stopPropagation()}
+                                          style={{
+                                            position: 'absolute',
+                                            right: 0,
+                                            top: '28px',
+                                            background: '#ffffff',
+                                            borderRadius: '10px',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                            border: '1px solid #e2e8f0',
+                                            zIndex: 999,
+                                            minWidth: '160px',
+                                            overflow: 'hidden',
+                                            padding: '4px 0'
+                                          }}
+                                        >
+                                          <button
+                                            onClick={() => {
+                                              setStudentMenuOpenId(null);
+                                              setEditingStudentId(s.id!);
+                                              setDrawerRollNo(s.studentNum);
+                                              setDrawerName(s.name);
+                                              setDrawerEmail(s.email || '');
+                                              setDrawerPhone(s.phone || '');
+                                              setDrawerWhatsApp(s.whatsappNumber || '');
+                                              setShowAddStudentDrawer(true);
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 16px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              textAlign: 'left',
+                                              cursor: 'pointer',
+                                              fontSize: '0.88rem',
+                                              fontWeight: 600,
+                                              color: '#0f172a',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px'
+                                            }}
+                                          >
+                                            <Edit2 size={16} color="#2563eb" /> Edit Student
+                                          </button>
+
+                                          <button
+                                            onClick={async () => {
+                                              setStudentMenuOpenId(null);
+                                              if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
+                                                await db.students.delete(s.id!);
+                                                await db.submissions.where('studentId').equals(s.id!).delete();
+                                              }
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 16px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              textAlign: 'left',
+                                              cursor: 'pointer',
+                                              fontSize: '0.88rem',
+                                              fontWeight: 600,
+                                              color: '#dc2626',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px'
+                                            }}
+                                          >
+                                            <Trash2 size={16} color="#dc2626" /> Delete Student
+                                          </button>
+
+                                          <button
+                                            onClick={() => {
+                                              setStudentMenuOpenId(null);
+                                              startFaceEnrollment(s);
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 16px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              textAlign: 'left',
+                                              cursor: 'pointer',
+                                              fontSize: '0.88rem',
+                                              fontWeight: 600,
+                                              color: '#0f172a',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px'
+                                            }}
+                                          >
+                                            <Camera size={16} color="#16a34a" /> Face Biometrics
+                                          </button>
+
+                                          <button
+                                            onClick={() => {
+                                              setStudentMenuOpenId(null);
+                                              setViewingQrStudent(s);
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 16px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              textAlign: 'left',
+                                              cursor: 'pointer',
+                                              fontSize: '0.88rem',
+                                              fontWeight: 600,
+                                              color: '#0f172a',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px'
+                                            }}
+                                          >
+                                            <QrCode size={16} color="#0284c7" /> View QR Code
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Green Circle Checkmark Badge */}
+                                    <div style={{
+                                      width: '20px',
+                                      height: '20px',
+                                      borderRadius: '50%',
+                                      background: '#16a34a',
+                                      color: '#ffffff',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      <Check size={12} strokeWidth={3} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </>
                     );
                   })()}
                 </div>
@@ -3618,23 +3736,40 @@ export default function App() {
                 <input 
                   type="text" 
                   value={drawerPhone}
-                  onChange={(e) => setDrawerPhone(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDrawerPhone(val);
+                    if (isDrawerSameWhatsApp) setDrawerWhatsApp(val);
+                  }}
                   placeholder="Enter phone number"
                   style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
                 />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={isDrawerSameWhatsApp}
+                    onChange={(e) => {
+                      setIsDrawerSameWhatsApp(e.target.checked);
+                      if (e.target.checked) setDrawerWhatsApp(drawerPhone);
+                    }}
+                  />
+                  <span>Is the above number your WhatsApp number?</span>
+                </label>
               </div>
 
-              <div className="form-group">
-                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>WhatsApp No (for Reports)</label>
-                <input 
-                  type="text" 
-                  value={drawerWhatsApp}
-                  onChange={(e) => setDrawerWhatsApp(e.target.value)}
-                  placeholder="e.g. 919876543210 (with country code)"
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
-                />
-                <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Registered phone number to receive WhatsApp report link alerts.</small>
-              </div>
+              {!isDrawerSameWhatsApp && (
+                <div className="form-group">
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>WhatsApp No (for Reports)</label>
+                  <input 
+                    type="text" 
+                    value={drawerWhatsApp}
+                    onChange={(e) => setDrawerWhatsApp(e.target.value)}
+                    placeholder="e.g. 919876543210 (with country code)"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
+                  />
+                  <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Registered phone number to receive WhatsApp report link alerts.</small>
+                </div>
+              )}
 
               {/* Drawer actions at bottom */}
               <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>

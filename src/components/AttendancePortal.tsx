@@ -969,72 +969,84 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     borderRadius: '50%'
                   }} />
 
-                  {trackedFace && videoRef.current && (
-                    <>
-                      {/* Bounding box */}
-                      <div style={{
-                        position: 'absolute',
-                        border: '3px solid #48bb78',
-                        borderRadius: '8px',
-                        left: `${(trackedFace.x / videoRef.current.videoWidth) * 100}%`,
-                        top: `${(trackedFace.y / videoRef.current.videoHeight) * 100}%`,
-                        width: `${(trackedFace.w / videoRef.current.videoWidth) * 100}%`,
-                        height: `${(trackedFace.h / videoRef.current.videoHeight) * 100}%`,
-                        boxShadow: '0 0 15px rgba(72,187,120,0.4)',
-                        boxSizing: 'border-box',
-                        transition: 'all 0.1s linear'
-                      }}>
-                        {/* Name Match Tag */}
-                        <div style={{
-                          position: 'absolute',
-                          top: '-28px',
-                          left: '0',
-                          background: '#48bb78',
-                          color: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          whiteSpace: 'nowrap',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                        }}>
-                          👤 {trackedFace.name}
-                        </div>
-                      </div>
+                  {trackedFace && (
+                    (() => {
+                      const vW = (videoRef.current && videoRef.current.videoWidth > 0) ? videoRef.current.videoWidth : 640;
+                      const vH = (videoRef.current && videoRef.current.videoHeight > 0) ? videoRef.current.videoHeight : 480;
 
-                      {/* 8 Landmark mesh nodes */}
-                      {(() => {
-                        const fx = (trackedFace.x / videoRef.current!.videoWidth) * 100;
-                        const fy = (trackedFace.y / videoRef.current!.videoHeight) * 100;
-                        const fw = (trackedFace.w / videoRef.current!.videoWidth) * 100;
-                        const fh = (trackedFace.h / videoRef.current!.videoHeight) * 100;
-                        
-                        const nodes = [
-                          { left: fx + fw * 0.25, top: fy + fh * 0.3 },
-                          { left: fx + fw * 0.75, top: fy + fh * 0.3 },
-                          { left: fx + fw * 0.5, top: fy + fh * 0.5 },
-                          { left: fx + fw * 0.3, top: fy + fh * 0.7 },
-                          { left: fx + fw * 0.7, top: fy + fh * 0.7 },
-                          { left: fx + fw * 0.5, top: fy + fh * 0.85 },
-                          { left: fx + fw * 0.15, top: fy + fh * 0.45 },
-                          { left: fx + fw * 0.85, top: fy + fh * 0.45 }
-                        ];
-                        
-                        return nodes.map((n, i) => (
-                          <div key={`dot-${i}`} style={{
+                      const leftPct = (trackedFace.x / vW) * 100;
+                      const topPct = (trackedFace.y / vH) * 100;
+                      const widthPct = (trackedFace.w / vW) * 100;
+                      const heightPct = (trackedFace.h / vH) * 100;
+
+                      const fx = leftPct;
+                      const fy = topPct;
+                      const fw = widthPct;
+                      const fh = heightPct;
+
+                      const isMatched = trackedFace.name?.includes('Match');
+
+                      const nodes = [
+                        { left: fx + fw * 0.25, top: fy + fh * 0.3 },
+                        { left: fx + fw * 0.75, top: fy + fh * 0.3 },
+                        { left: fx + fw * 0.5, top: fy + fh * 0.5 },
+                        { left: fx + fw * 0.3, top: fy + fh * 0.7 },
+                        { left: fx + fw * 0.7, top: fy + fh * 0.7 },
+                        { left: fx + fw * 0.5, top: fy + fh * 0.85 },
+                        { left: fx + fw * 0.15, top: fy + fh * 0.45 },
+                        { left: fx + fw * 0.85, top: fy + fh * 0.45 }
+                      ];
+
+                      return (
+                        <>
+                          {/* Live Biometric Bounding Box */}
+                          <div style={{
                             position: 'absolute',
-                            left: `${n.left}%`,
-                            top: `${n.top}%`,
-                            width: '6px',
-                            height: '6px',
-                            background: '#48bb78',
-                            borderRadius: '50%',
-                            boxShadow: '0 0 4px #48bb78',
+                            border: isMatched ? '3px solid #16a34a' : '2px dashed #f59e0b',
+                            borderRadius: '12px',
+                            left: `${leftPct}%`,
+                            top: `${topPct}%`,
+                            width: `${widthPct}%`,
+                            height: `${heightPct}%`,
+                            boxShadow: isMatched ? '0 0 20px rgba(22,163,74,0.5)' : '0 0 10px rgba(245,158,11,0.3)',
+                            boxSizing: 'border-box',
                             transition: 'all 0.1s linear'
-                          }} />
-                        ));
-                      })()}
-                    </>
+                          }}>
+                            {/* Live Name / Status Tag */}
+                            <div style={{
+                              position: 'absolute',
+                              top: '-32px',
+                              left: '0',
+                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              color: '#ffffff',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 4px 6px rgba(0,0,0,0.15)'
+                            }}>
+                              {trackedFace.name}
+                            </div>
+                          </div>
+
+                          {/* 8 Landmark mesh nodes */}
+                          {nodes.map((n, i) => (
+                            <div key={`dot-${i}`} style={{
+                              position: 'absolute',
+                              left: `${n.left}%`,
+                              top: `${n.top}%`,
+                              width: '6px',
+                              height: '6px',
+                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              borderRadius: '50%',
+                              boxShadow: isMatched ? '0 0 6px #16a34a' : '0 0 4px #f59e0b',
+                              transition: 'all 0.1s linear'
+                            }} />
+                          ))}
+                        </>
+                      );
+                    })()
                   )}
                 </div>
               )}
@@ -1045,22 +1057,22 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   bottom: '12px',
                   left: '12px',
                   right: '12px',
-                  background: '#48bb78',
+                  background: '#16a34a',
                   color: '#ffffff',
                   padding: '10px 14px',
-                  borderRadius: '6px',
-                  fontSize: '0.85rem',
-                  fontWeight: 'bold',
+                  borderRadius: '8px',
+                  fontSize: '0.88rem',
+                  fontWeight: 800,
                   textAlign: 'center',
-                  boxShadow: '0 4px 12px rgba(72,187,120,0.3)',
+                  boxShadow: '0 4px 15px rgba(22,163,74,0.4)',
                   zIndex: 20
                 }}>
-                  ✅ {scannedFeedback}
+                  {scannedFeedback}
                 </div>
               )}
             </div>
 
-            {/* Camera Select dropdown for multi-camera coaching setups */}
+            {/* Camera Select dropdown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 📷 SELECT CONNECTED CAMERA DEVICE ({devices.length > 0 ? `${devices.length} Detected` : 'Scanning...'})
@@ -1081,16 +1093,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   ))
                 )}
               </select>
-            </div>
-
-            <div style={{ fontSize: '0.85rem', color: '#475569', background: '#f0f9ff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bae6fd', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span>
-              <div>
-                <strong style={{ color: '#0369a1' }}>Hands-Free Enterprise Auto-Attendance Active</strong>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#0284c7' }}>
-                  Students step in front of camera $\rightarrow$ System automatically detects face $\rightarrow$ Matches biometrics $\rightarrow$ Marks attendance + Speaks name.
-                </p>
-              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>

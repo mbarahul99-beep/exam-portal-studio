@@ -270,8 +270,12 @@ if (fs.existsSync(path.join(__dirname, 'dist'))) {
 }
 app.use(express.static(__dirname));
 
-// SPA Routing Fallback
+// SPA Routing Fallback with No-Cache Headers
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const distPath = path.join(__dirname, 'dist', 'index.html');
   const rootPath = path.join(__dirname, 'index.html');
 

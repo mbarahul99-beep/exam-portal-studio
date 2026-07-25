@@ -92,6 +92,61 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
+  // Detect if a real human face exists inside the frame canvas (Skin/Face Structure & Contrast Profile)
+  const isHumanFacePresent = (canvas: HTMLCanvasElement): boolean => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const pixels = imgData.data;
+
+    let totalLuminance = 0;
+    const totalPixels = width * height;
+    const blockMeans: number[] = [];
+
+    // Evaluate 4x4 spatial sub-grid
+    const blockW = Math.floor(width / 4);
+    const blockH = Math.floor(height / 4);
+
+    for (let by = 0; by < 4; by++) {
+      for (let bx = 0; bx < 4; bx++) {
+        let bSum = 0;
+        let bCount = 0;
+
+        for (let y = by * blockH; y < (by + 1) * blockH; y++) {
+          for (let x = bx * blockW; x < (bx + 1) * blockW; x++) {
+            const idx = (y * width + x) * 4;
+            const g = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
+            bSum += g;
+            bCount++;
+            totalLuminance += g;
+          }
+        }
+        blockMeans.push(bCount > 0 ? bSum / bCount : 0);
+      }
+    }
+
+    const overallAvg = totalLuminance / totalPixels;
+
+    // Reject dark pitch black frames or blinding bright glare
+    if (overallAvg < 15 || overallAvg > 245) return false;
+
+    // Spatial intensity variance (Human faces have distinct features; flat walls are uniform)
+    const variance = blockMeans.reduce((acc, m) => acc + Math.pow(m - overallAvg, 2), 0) / blockMeans.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Flat wall or empty scene check
+    if (stdDev < 15) return false;
+
+    // Eye-row vs cheek-row luminance contrast
+    const topRowAvg = (blockMeans[4] + blockMeans[5] + blockMeans[6] + blockMeans[7]) / 4;
+    const midRowAvg = (blockMeans[8] + blockMeans[9] + blockMeans[10] + blockMeans[11]) / 4;
+
+    return Math.abs(topRowAvg - midRowAvg) >= 2 || stdDev >= 18;
+  };
+
   // Robust Grid-Based Facial Feature Extractor (LBP + Normalized Spatial Intensity Grid)
   const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
     const ctx = canvas.getContext('2d');
@@ -143,19 +198,27 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return descriptor.map(val => Number((val / norm).toFixed(6)));
   };
 
-  // Cosine Similarity between two normalized biometric vectors (0.0 to 1.0)
+  // Dual Vector Matcher: Cosine Similarity + Euclidean Distance
   const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
     let dot = 0;
     let normA = 0;
     let normB = 0;
+    let euclideanDistSq = 0;
+
     for (let i = 0; i < vecA.length; i++) {
       dot += vecA[i] * vecB[i];
       normA += vecA[i] * vecA[i];
       normB += vecB[i] * vecB[i];
+      euclideanDistSq += Math.pow(vecA[i] - vecB[i], 2);
     }
     const denom = Math.sqrt(normA) * Math.sqrt(normB);
-    return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
+    const cosSim = denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
+    const dist = Math.sqrt(euclideanDistSq);
+
+    // Reject if L2 distance exceeds 0.40
+    if (dist > 0.40) return 0;
+    return cosSim;
   };
 
   // Face Enrollment & Removal States
@@ -180,7 +243,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const startEnrollmentCamera = async (student: Student) => {
     setEnrollingStudent(student);
-    setEnrollMsg(null);
+    setEnrollMsg("Step 1/2: Align your face inside the green oval.");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setEnrollStream(stream);
@@ -226,6 +289,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const x = (width - size) / 2;
       const y = (height - size) / 2;
       ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+      // Verify that a human face is actually present before enrolling
+      if (!isHumanFacePresent(canvas)) {
+        setEnrollMsg("⚠️ No clear face detected! Please position face inside green oval & blink.");
+        return;
+      }
 
       const biometrics = extractFaceBiometrics(canvas);
       
@@ -329,8 +398,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const x = (width - size) / 2;
             const y = (height - size) / 2;
             faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
-            const liveDescriptor = extractFaceBiometrics(faceCanvas);
 
+            // Step 1: Detect if a real human face is in the scanner frame
+            if (!isHumanFacePresent(faceCanvas)) {
+              setTrackedFace(null);
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
+            const liveDescriptor = extractFaceBiometrics(faceCanvas);
             const enrolledStudents = students.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
             
             if (enrolledStudents.length === 0) {
@@ -354,8 +430,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            // Real-world Cosine Similarity Threshold (>= 0.70 is reliable across webcam lighting)
-            if (bestMatch && bestSimilarity >= 0.70) {
+            // Strict Biometric Similarity Threshold (>= 0.82 required for positive match)
+            if (bestMatch && bestSimilarity >= 0.82) {
               const matchPct = Math.round(bestSimilarity * 100);
               const primaryName = bestMatch.name.split('/')[0].trim();
 
@@ -379,7 +455,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else {
               setTrackedFace({
                 ...trackingBox,
-                name: "Scanning Face... Align face in center oval",
+                name: "👤 Unregistered Face (Click 'Enroll Face' on roster)",
                 pct: undefined
               });
             }

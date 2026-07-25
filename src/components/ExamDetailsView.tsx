@@ -772,122 +772,204 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         </div>
       )}
 
-      {/* ANSWER KEY DIRECT UPDATE MODAL */}
+      {/* ANSWER KEY DIRECT UPDATE FULL-SCREEN VIEW */}
       {showAnswerKeyModal && (
-        <div className="modal-backdrop" onClick={() => setShowAnswerKeyModal(false)}>
-          <div className="modal-content answer-key-modal animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', width: '94vw', borderRadius: '16px', padding: '16px 20px' }}>
-            
-            {/* Sticky Header */}
-            <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Answer Key Editor</h3>
-                <p className="subtitle" style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>{exam.title} ({exam.numQuestions} Questions)</p>
-              </div>
-              <button className="btn-close-icon" onClick={() => setShowAnswerKeyModal(false)}>
-                <X size={20} />
-              </button>
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 99999,
+          background: '#475569',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
+          overflow: 'hidden'
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '20px 32px 14px',
+            background: 'transparent',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start'
+          }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>Answer Key Editor</h2>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>
+                {exam.title} ({exam.numQuestions} Questions)
+              </p>
             </div>
+            <button
+              onClick={() => setShowAnswerKeyModal(false)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+            >
+              <X size={24} />
+            </button>
+          </div>
 
-            {/* Quick Fill Action Row */}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Quick Fill:</span>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {['A', 'B', 'C', 'D'].map(opt => (
-                  <button
-                    key={`qf-opt-${opt}`}
-                    onClick={() => {
-                      const nextKeys: Record<number, string> = {};
-                      for (let q = 1; q <= exam.numQuestions; q++) {
-                        nextKeys[q] = opt;
-                      }
-                      setEditableKeys(nextKeys);
-                    }}
-                    style={{
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      color: '#334155',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    All {opt}
-                  </button>
-                ))}
-              </div>
+          {/* Divider Line */}
+          <div style={{ height: '1px', background: '#64748b', margin: '0 32px' }} />
+
+          {/* Quick Fill Bar */}
+          <div style={{
+            padding: '14px 32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.5px' }}>
+              QUICK FILL:
+            </span>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {['A', 'B', 'C', 'D'].map(opt => (
+                <button
+                  key={`qf-opt-${opt}`}
+                  onClick={() => {
+                    const nextKeys: Record<number, string> = {};
+                    for (let q = 1; q <= exam.numQuestions; q++) {
+                      nextKeys[q] = opt;
+                    }
+                    setEditableKeys(nextKeys);
+                  }}
+                  style={{
+                    background: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 18px',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    color: '#1e293b',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  All {opt}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Responsive Grid Container */}
-            <div className="answer-key-grid-container" style={{
+          {/* 3-Column Question Cards Grid Container */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '8px 32px 24px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-              gap: '8px',
-              maxHeight: '55vh',
-              overflowY: 'auto',
-              padding: '12px 4px',
-              boxSizing: 'border-box'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '16px'
             }}>
               {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
                 const currentOpt = editableKeys[q] || 'A';
                 const optionsList = ['A', 'B', 'C', 'D'];
 
                 return (
-                  <div key={`ak-q-${q}`} className="ak-question-row" style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    gap: '6px'
-                  }}>
-                    <span className="ak-q-label" style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', width: '32px' }}>Q{q}</span>
-                    <div className="ak-options-group" style={{ display: 'flex', gap: '4px' }}>
-                      {optionsList.map((opt) => (
-                        <button
-                          key={`ak-q-${q}-opt-${opt}`}
-                          className={`ak-opt-btn ${currentOpt === opt ? 'active' : ''}`}
-                          onClick={() => {
-                            setEditableKeys(prev => ({ ...prev, [q]: opt }));
-                          }}
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '50%',
-                            border: currentOpt === opt ? 'none' : '1px solid #cbd5e1',
-                            background: currentOpt === opt ? '#16a34a' : '#ffffff',
-                            color: currentOpt === opt ? '#ffffff' : '#475569',
-                            fontWeight: 800,
-                            fontSize: '0.78rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: currentOpt === opt ? '0 2px 4px rgba(22, 163, 74, 0.3)' : 'none'
-                          }}
-                        >
-                          {opt}
-                        </button>
-                      ))}
+                  <div
+                    key={`ak-q-card-${q}`}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      padding: '16px 20px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '12px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
+                      Q{q}
+                    </span>
+
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', width: '100%' }}>
+                      {optionsList.map((opt) => {
+                        const isSelected = currentOpt === opt;
+                        return (
+                          <button
+                            key={`ak-q-${q}-opt-${opt}`}
+                            onClick={() => setEditableKeys(prev => ({ ...prev, [q]: opt }))}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              border: isSelected ? 'none' : '1.5px solid #cbd5e1',
+                              background: isSelected ? '#16a34a' : '#ffffff',
+                              color: isSelected ? '#ffffff' : '#475569',
+                              fontWeight: 800,
+                              fontSize: '0.9rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: isSelected ? '0 3px 8px rgba(22, 163, 74, 0.4)' : 'none',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })}
             </div>
+          </div>
 
-            {/* Sticky Action Footer */}
-            <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px', marginTop: '8px' }}>
-              <button className="btn-secondary" onClick={() => setShowAnswerKeyModal(false)}>
-                Cancel
-              </button>
-              <button className="btn-primary" onClick={handleSaveAnswerKeys} disabled={isSavingKey} style={{ background: '#16a34a' }}>
-                {isSavingKey ? 'Saving...' : 'Save Answer Key'}
-              </button>
-            </div>
+          {/* Sticky Bottom Action Footer */}
+          <div style={{
+            padding: '16px 32px',
+            background: 'transparent',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center'
+          }}>
+            <button
+              onClick={() => setShowAnswerKeyModal(false)}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '12px 28px',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                color: '#334155',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
 
+            <button
+              onClick={handleSaveAnswerKeys}
+              disabled={isSavingKey}
+              style={{
+                background: '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '12px 28px',
+                fontSize: '0.95rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)'
+              }}
+            >
+              {isSavingKey ? 'Saving...' : 'Save Answer Key'}
+            </button>
           </div>
         </div>
       )}

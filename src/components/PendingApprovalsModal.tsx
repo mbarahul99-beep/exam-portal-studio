@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Trash2, UserCheck, Clock, CheckCheck } from 'lucide-react';
+import { Check, Trash2, UserCheck, CheckCheck, ArrowLeft } from 'lucide-react';
 import { db, type PendingRegistration } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
@@ -81,105 +81,175 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal-content animate-scale-up" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', borderRadius: '16px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
-        
-        {/* Header */}
-        <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ padding: '8px', borderRadius: '10px', background: '#fef3c7', color: '#d97706' }}>
-              <Clock size={20} />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Pending Student Registrations</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Approve or reject student self-registration requests</p>
-            </div>
-          </div>
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 99999,
+      background: '#475569',
+      display: 'flex',
+      flexDirection: 'column',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
+    }}>
+      {/* Top Header */}
+      <div style={{
+        padding: '20px 32px 14px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              color: '#1e293b'
+            }}
+          >
+            <ArrowLeft size={16} /> Back
+          </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {pendingList.length > 0 && (
-              <button
-                onClick={handleApproveAll}
-                style={{
-                  background: '#16a34a',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px 12px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <CheckCheck size={14} /> Approve All ({pendingList.length})
-              </button>
-            )}
-            <button className="btn-close-icon" onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              <X size={18} />
-            </button>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>
+              Pending Student Approvals
+            </h2>
+            <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
+              Review & approve self-registered candidates before enrolling into class roster
+            </p>
           </div>
         </div>
 
-        {/* List Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {pendingList.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-              <UserCheck size={48} style={{ opacity: 0.4, marginBottom: '10px' }} />
-              <h4 style={{ margin: '0 0 4px 0', color: '#334155' }}>No Pending Registrations</h4>
-              <p style={{ margin: 0, fontSize: '0.85rem' }}>All student registration requests have been processed.</p>
-            </div>
-          ) : (
-            pendingList.map(reg => (
+        {pendingList.length > 0 && (
+          <button
+            onClick={handleApproveAll}
+            style={{
+              background: '#16a34a',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '12px 20px',
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)'
+            }}
+          >
+            <CheckCheck size={18} /> Approve All Requests ({pendingList.length})
+          </button>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: '1px', background: '#64748b', margin: '0 32px' }} />
+
+      {/* Main Full-Screen Grid Body */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '24px 32px',
+        boxSizing: 'border-box'
+      }}>
+        {pendingList.length === 0 ? (
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            padding: '60px 20px',
+            textAlign: 'center',
+            maxWidth: '480px',
+            margin: '40px auto',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          }}>
+            <UserCheck size={56} style={{ color: '#16a34a', marginBottom: '12px' }} />
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+              All Registrations Processed!
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>
+              There are currently no pending student self-registration requests.
+            </p>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: '16px'
+          }}>
+            {pendingList.map(reg => (
               <div
-                key={`pending-reg-${reg.id}`}
+                key={`pending-card-${reg.id}`}
                 style={{
                   background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  padding: '14px 16px',
+                  borderRadius: '16px',
+                  padding: '20px',
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  flexDirection: 'column',
                   gap: '12px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>{reg.name}</span>
-                    <span style={{ background: '#e0f2fe', color: '#0369a1', fontSize: '0.72rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px' }}>
-                      Class: {reg.className}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 2px 0', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                      {reg.name}
+                    </h4>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                      Roll No: <strong>{reg.studentNum}</strong>
                     </span>
                   </div>
-
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', gap: '12px' }}>
-                    <span>Roll No: <strong>{reg.studentNum}</strong></span>
-                    {reg.whatsappNumber && <span>📱 {reg.whatsappNumber}</span>}
-                  </div>
+                  <span style={{
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    padding: '4px 10px',
+                    borderRadius: '8px'
+                  }}>
+                    {reg.className}
+                  </span>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
+                  {reg.whatsappNumber && <div>📱 <strong>Mobile:</strong> {reg.whatsappNumber}</div>}
+                  {reg.email && <div>✉️ <strong>Email:</strong> {reg.email}</div>}
+                  <div>📅 <strong>Submitted:</strong> {new Date(reg.createdAt).toLocaleDateString()}</div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                   <button
                     onClick={() => handleApprove(reg)}
                     disabled={processingId === reg.id}
                     style={{
+                      flex: 1,
                       background: '#16a34a',
                       color: '#ffffff',
                       border: 'none',
-                      borderRadius: '8px',
-                      padding: '8px 14px',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
+                      borderRadius: '10px',
+                      padding: '10px',
+                      fontSize: '0.88rem',
+                      fontWeight: 800,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px'
+                      justifyContent: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)'
                     }}
                   >
-                    <Check size={14} /> Approve
+                    <Check size={16} /> Approve
                   </button>
 
                   <button
@@ -188,9 +258,9 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
                       background: '#fef2f2',
                       color: '#dc2626',
                       border: '1px solid #fecaca',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '0.82rem',
+                      borderRadius: '10px',
+                      padding: '10px 16px',
+                      fontSize: '0.88rem',
                       fontWeight: 700,
                       cursor: 'pointer',
                       display: 'flex',
@@ -198,22 +268,38 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
                       gap: '4px'
                     }}
                   >
-                    <Trash2 size={14} /> Reject
+                    <Trash2 size={16} /> Reject
                   </button>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn-secondary" onClick={onClose} style={{ padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
-            Close
-          </button>
-        </div>
-
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Footer */}
+      <div style={{
+        padding: '16px 32px',
+        display: 'flex',
+        justifyContent: 'flex-end'
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: '10px',
+            padding: '12px 28px',
+            fontSize: '0.95rem',
+            fontWeight: 700,
+            color: '#334155',
+            cursor: 'pointer'
+          }}
+        >
+          Close & Return to Dashboard
+        </button>
+      </div>
+
     </div>
   );
 };

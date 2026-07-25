@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Download, X, Share, PlusSquare } from 'lucide-react';
 
+export function isAppInstalled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches || 
+         (navigator as any).standalone === true ||
+         document.referrer.includes('android-app://');
+}
+
 interface InstallPWAPromptProps {
   forceShow?: boolean;
   onClose?: () => void;
@@ -14,10 +21,10 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
 
   useEffect(() => {
     // Check if already running as installed PWA app
-    const inStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+    const inStandaloneMode = isAppInstalled();
     setIsStandalone(inStandaloneMode);
 
-    if (inStandaloneMode && !forceShow) {
+    if (inStandaloneMode) {
       setShowPrompt(false);
       return;
     }
@@ -117,7 +124,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
-              Install Apex Institute App
+              Install APEX App
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
               Fast 1-tap access on your home screen

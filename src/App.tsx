@@ -18,7 +18,7 @@ import { PendingApprovalsModal } from './components/PendingApprovalsModal';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
-import { InstallPWAPrompt } from './components/InstallPWAPrompt';
+import { InstallPWAPrompt, isAppInstalled } from './components/InstallPWAPrompt';
 import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
 import { 
   Users,
@@ -2212,16 +2212,18 @@ export default function App() {
               <Settings size={18} /> WhatsApp API
             </button>
 
-            <button 
-              className="nav-item"
-              onClick={() => {
-                setShowInstallPrompt(true);
-                setMobileMenuOpen(false);
-              }}
-              style={{ color: '#dc0045', fontWeight: 'bold' }}
-            >
-              <Download size={18} /> Install App
-            </button>
+            {!isAppInstalled() && (
+              <button 
+                className="nav-item"
+                onClick={() => {
+                  setShowInstallPrompt(true);
+                  setMobileMenuOpen(false);
+                }}
+                style={{ color: '#dc0045', fontWeight: 'bold' }}
+              >
+                <Download size={18} /> Install App
+              </button>
+            )}
 
             <button 
               className="nav-item"

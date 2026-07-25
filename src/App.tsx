@@ -15,6 +15,8 @@ import { QuestionBankManager } from './components/QuestionBankManager';
 import { StudentRegisterPortal } from './components/StudentRegisterPortal';
 import { InviteStudentModal } from './components/InviteStudentModal';
 import { PendingApprovalsModal } from './components/PendingApprovalsModal';
+import { TeacherManagementModal } from './components/TeacherManagementModal';
+import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
 import { 
   Users,
@@ -51,7 +53,9 @@ import {
   ListOrdered,
   Phone,
   ArrowLeft,
-  MoreVertical
+  MoreVertical,
+  User,
+  Shield
 } from 'lucide-react';
 
 export default function App() {
@@ -67,7 +71,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Authentication State
-  const [sessionRole, setSessionRole] = useState<'admin' | 'student' | null>(
+  const [sessionRole, setSessionRole] = useState<'admin' | 'teacher' | 'student' | null>(
     () => (localStorage.getItem('appex_session_role') as any) || null
   );
   const [sessionStudentId, setSessionStudentId] = useState<number | null>(
@@ -76,12 +80,23 @@ export default function App() {
       return val ? Number(val) : null;
     }
   );
+  const [sessionTeacherId, setSessionTeacherId] = useState<number | null>(
+    () => {
+      const val = localStorage.getItem('appex_session_teacher_id');
+      return val ? Number(val) : null;
+    }
+  );
+
+  const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
+  const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('appex_session_role');
     localStorage.removeItem('appex_session_student_id');
+    localStorage.removeItem('appex_session_teacher_id');
     setSessionRole(null);
     setSessionStudentId(null);
+    setSessionTeacherId(null);
   };
 
   // Student Invite & Pending Approvals State
@@ -2016,13 +2031,17 @@ export default function App() {
   if (sessionRole === null) {
     return (
       <UnifiedLoginPortal 
-        onLoginSuccess={(role, studId) => {
+        onLoginSuccess={(role, studId, tId) => {
           localStorage.setItem('appex_session_role', role);
           if (studId) {
             localStorage.setItem('appex_session_student_id', String(studId));
           }
+          if (tId) {
+            localStorage.setItem('appex_session_teacher_id', String(tId));
+          }
           setSessionRole(role);
           setSessionStudentId(studId || null);
+          setSessionTeacherId(tId || null);
         }}
         onRegisterClick={() => setInviteClassParam('NEET-2026')}
       />
@@ -2040,6 +2059,14 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* Teacher Management & Profile Modals */}
+      {showTeacherManagementModal && (
+        <TeacherManagementModal onClose={() => setShowTeacherManagementModal(false)} />
+      )}
+      {showTeacherProfileModal && sessionTeacherId && (
+        <TeacherProfileModal teacherId={sessionTeacherId} onClose={() => setShowTeacherProfileModal(false)} />
+      )}
+
       {/* Student Invite & Pending Approvals Modals */}
       {showInviteModal && (
         <InviteStudentModal onClose={() => setShowInviteModal(false)} />
@@ -2131,12 +2158,28 @@ export default function App() {
             >
               <Users size={18} /> Classes
             </button>
-            <button 
-              className="nav-item disabled-nav" 
-              onClick={() => alert('Teachers Module is coming soon!')}
-            >
-              <Users size={18} /> Teachers
-            </button>
+            {sessionRole === 'admin' && (
+              <button 
+                className="nav-item" 
+                onClick={() => {
+                  setShowTeacherManagementModal(true);
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <Shield size={18} /> Teachers
+              </button>
+            )}
+            {sessionRole === 'teacher' && (
+              <button 
+                className="nav-item" 
+                onClick={() => {
+                  setShowTeacherProfileModal(true);
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <User size={18} /> My Profile
+              </button>
+            )}
             <button 
               className={`nav-item ${activeTab === 'questions-bank' ? 'active' : ''}`}
               onClick={() => {

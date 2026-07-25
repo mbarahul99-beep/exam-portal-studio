@@ -136,6 +136,16 @@ export interface PendingRegistration {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface Teacher {
+  id?: number;
+  userId: string;
+  password: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  createdAt: Date;
+}
+
 class AppDatabase extends Dexie {
   students!: Table<Student>;
   exams!: Table<Exam>;
@@ -147,6 +157,7 @@ class AppDatabase extends Dexie {
   questionBanks!: Table<QuestionBank>;
   settings!: Table<SystemSetting>;
   pendingRegistrations!: Table<PendingRegistration>;
+  teachers!: Table<Teacher>;
 
   constructor() {
     super('OMRExamsDatabase');
@@ -179,6 +190,10 @@ class AppDatabase extends Dexie {
     // Version 11 adds pendingRegistrations table for student invite & self-registration
     this.version(11).stores({
       pendingRegistrations: '++id, status, className, createdAt'
+    });
+    // Version 12 adds teachers table for Master Admin & Teacher authentication
+    this.version(12).stores({
+      teachers: '++id, &userId, name'
     });
   }
 }

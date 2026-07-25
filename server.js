@@ -161,11 +161,25 @@ const initDatabase = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         studentNum VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
+        fatherName VARCHAR(255),
         className VARCHAR(100) NOT NULL,
         email VARCHAR(255),
         phone VARCHAR(50),
         whatsappNumber VARCHAR(50),
         status VARCHAR(20) DEFAULT 'pending',
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 8. Teachers Table for Master Admin & Teacher Accounts
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS teachers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        userId VARCHAR(100) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50),
+        email VARCHAR(255),
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
@@ -223,6 +237,7 @@ app.get('/api/sync/all', async (req, res) => {
     const [attendance] = await pool.query('SELECT * FROM attendance');
     const [submissions] = await pool.query('SELECT * FROM submissions');
     const [questions] = await pool.query('SELECT * FROM questions');
+    const [teachers] = await pool.query('SELECT id, userId, password, name, phone, email, createdAt FROM teachers');
 
     res.json({
       students: students.map(s => ({
@@ -246,10 +261,86 @@ app.get('/api/sync/all', async (req, res) => {
       questions: questions.map(q => ({
         ...q,
         options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
-      }))
+      })),
+      teachers
     });
   } catch (err) {
     console.error('Failed to sync all data:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// TEACHER MANAGEMENT & AUTHENTICATION ENDPOINTS
+app.get('/api/teachers', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [rows] = await pool.query('SELECT id, userId, password, name, phone, email, createdAt FROM teachers ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teachers', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, userId, password, name, phone, email } = req.body;
+  try {
+    if (id) {
+      const query = `
+        UPDATE teachers SET userId = ?, password = ?, name = ?, phone = ?, email = ?
+        WHERE id = ?;
+      `;
+      await pool.query(query, [userId, password, name, phone || null, email || null, id]);
+      res.json({ success: true, id });
+    } else {
+      const query = `
+        INSERT INTO teachers (userId, password, name, phone, email)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          password = VALUES(password),
+          name = VALUES(name),
+          phone = VALUES(phone),
+          email = VALUES(email);
+      `;
+      const [result] = await pool.query(query, [userId, password, name, phone || null, email || null]);
+      res.json({ success: true, id: result.insertId || result.id });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teachers/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const teacherId = req.params.id;
+  try {
+    await pool.query('DELETE FROM teachers WHERE id = ?', [teacherId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teacher-login', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { userId, password } = req.body;
+  try {
+    const [rows] = await pool.query('SELECT * FROM teachers WHERE userId = ? AND password = ?', [userId, password]);
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid Teacher User ID or Password' });
+    }
+    const teacher = rows[0];
+    res.json({
+      success: true,
+      teacher: {
+        id: teacher.id,
+        userId: teacher.userId,
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone
+      }
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

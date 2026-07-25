@@ -123,6 +123,17 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
+    if (data.teachers && Array.isArray(data.teachers)) {
+      for (const t of data.teachers) {
+        const existing = await db.teachers.where('userId').equals(t.userId).first();
+        if (!existing) {
+          await db.teachers.add(t);
+        } else {
+          await db.teachers.update(existing.id!, t);
+        }
+      }
+    }
+
     // Pull pending registrations from MySQL
     try {
       const pendingRes = await fetch('/api/pending-registrations');

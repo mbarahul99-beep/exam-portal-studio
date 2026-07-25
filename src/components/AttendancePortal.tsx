@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Calendar, Users, Check, X, Clock, Download, CheckSquare, Camera } from 'lucide-react';
+import { Calendar, Users, Check, X, Clock, Download, CheckSquare, Camera, Trash2 } from 'lucide-react';
 import jsQR from 'jsqr';
 
 interface AttendancePortalProps {
@@ -158,11 +158,25 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
   };
 
-  // Face Enrollment States
+  // Face Enrollment & Removal States
   const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
   const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
   const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
+
+  const isScanningRef = useRef<boolean>(false);
+
+  const handleRemoveFace = async (student: Student) => {
+    const primaryName = student.name.split('/')[0].trim();
+    if (window.confirm(`Are you sure you want to remove the registered face record for ${primaryName}?`)) {
+      try {
+        await db.students.update(student.id!, { faceDescriptor: undefined });
+        alert(`Face record removed for ${primaryName}. You can enroll a fresh face photo anytime.`);
+      } catch (err) {
+        console.error("Failed to remove face descriptor:", err);
+      }
+    }
+  };
 
   const startEnrollmentCamera = async (student: Student) => {
     setEnrollingStudent(student);
@@ -173,6 +187,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       setTimeout(() => {
         if (enrollVideoRef.current) {
           enrollVideoRef.current.srcObject = stream;
+          enrollVideoRef.current.play().catch(() => {});
         }
       }, 300);
     } catch (err) {
@@ -194,7 +209,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const captureAndEnrollFace = async () => {
     if (!enrollingStudent || !enrollVideoRef.current) return;
     const video = enrollVideoRef.current;
-    if (video.readyState < video.HAVE_CURRENT_DATA) {
+    if (video.readyState < 2) {
       setEnrollMsg("Camera loading... Please wait a moment.");
       return;
     }
@@ -235,7 +250,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   };
 
   const scanFrame = () => {
-    if (!isScanning) return;
+    if (!isScanningRef.current) return;
     if (!videoRef.current) {
       requestRef.current = requestAnimationFrame(scanFrame);
       return;
@@ -246,7 +261,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const width = video.videoWidth;
       const height = video.videoHeight;
 
-      // Offscreen canvas
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
@@ -254,7 +268,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
       if (ctx) {
         ctx.drawImage(video, 0, 0, width, height);
-        const imageData = ctx.getImageData(0, 0, width, height);
         
         if (scanMode === 'QR') {
           setTrackedFace(null);
@@ -263,6 +276,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             return;
           }
           try {
+            const imageData = ctx.getImageData(0, 0, width, height);
             const code = jsQR(imageData.data, imageData.width, imageData.height);
             if (code && code.data && !isCooldownRef.current) {
               const scannedNum = code.data.trim();
@@ -291,7 +305,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             console.error("jsQR scan error:", e);
           }
         } else {
-          // Enterprise Automatic Face Recognition Mode
+          // Automatic Face Recognition Mode
           const jitterX = Math.round(Math.random() * 4 - 2);
           const jitterY = Math.round(Math.random() * 4 - 2);
           const trackingBox = {
@@ -306,7 +320,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             return;
           }
 
-          // Extract live face biometric vector
           const faceCanvas = document.createElement('canvas');
           faceCanvas.width = 160;
           faceCanvas.height = 160;
@@ -318,13 +331,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
             const liveDescriptor = extractFaceBiometrics(faceCanvas);
 
-            // Filter enrolled students in database
             const enrolledStudents = students.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
             
             if (enrolledStudents.length === 0) {
               setTrackedFace({
                 ...trackingBox,
-                name: "⚠️ No Enrolled Faces (Click 'Enroll Face' next to student)",
+                name: "⚠️ No Enrolled Student Faces (Click 'Enroll Face' next to student)",
                 pct: undefined
               });
               requestRef.current = requestAnimationFrame(scanFrame);
@@ -342,9 +354,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            // Enterprise Biometric Cosine Similarity Threshold (>= 0.76 required for positive ID match)
-            if (bestMatch && bestSimilarity >= 0.76) {
-              facePresenceStartRef.current = null;
+            // Real-world Cosine Similarity Threshold (>= 0.70 is reliable across webcam lighting)
+            if (bestMatch && bestSimilarity >= 0.70) {
               const matchPct = Math.round(bestSimilarity * 100);
               const primaryName = bestMatch.name.split('/')[0].trim();
 
@@ -352,7 +363,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               playBeep();
               speakAttendance(primaryName);
 
-              setScannedFeedback(`✅ Auto-Checked In: ${primaryName} (${matchPct}% Face Match)`);
+              setScannedFeedback(`✅ Auto-Checked In: ${primaryName} (${matchPct}% Match)`);
               setTrackedFace({
                 ...trackingBox,
                 name: `👤 ${primaryName} (${matchPct}% Match)`,
@@ -381,14 +392,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const startScanner = async () => {
     setIsScanning(true);
+    isScanningRef.current = true;
     setScannedFeedback(null);
     isCooldownRef.current = false;
     try {
-      // Directly request camera stream once
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setScanStream(stream);
 
-      // Enumerate camera devices while the stream is active so labels are populated
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
       setDevices(videoDevices);
@@ -397,20 +407,21 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
       setSelectedDeviceId(activeDeviceId);
 
-      // Wait briefly for ref mounting, then bind
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
           if (requestRef.current) {
             cancelAnimationFrame(requestRef.current);
           }
           requestRef.current = requestAnimationFrame(scanFrame);
         }
-      }, 300);
+      }, 200);
     } catch (err) {
       console.error("Camera access failed:", err);
       alert("Please allow camera permissions to use the scanner.");
       setIsScanning(false);
+      isScanningRef.current = false;
     }
   };
 
@@ -427,6 +438,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       setScanStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
         requestRef.current = requestAnimationFrame(scanFrame);
       }
     } catch (err) {
@@ -435,6 +447,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   };
 
   const stopScanner = () => {
+    isScanningRef.current = false;
     facePresenceStartRef.current = null;
     if (scanStream) {
       scanStream.getTracks().forEach(track => track.stop());
@@ -688,27 +701,51 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                         <td><code>{student.studentNum}</code></td>
                         <td><strong>{primaryName}</strong></td>
                         <td>
-                          <button
-                            onClick={() => startEnrollmentCamera(student)}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '5px 10px',
-                              borderRadius: '6px',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
-                              background: hasFace ? '#f0fdf4' : '#2563eb',
-                              color: hasFace ? '#15803d' : '#ffffff',
-                              transition: 'all 0.15s ease'
-                            }}
-                            title={hasFace ? "Face Enrolled - Click to Re-register" : "Click to Register Student Face"}
-                          >
-                            <Camera size={13} />
-                            {hasFace ? '✔ Enrolled' : 'Enroll Face'}
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => startEnrollmentCamera(student)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '5px 10px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
+                                background: hasFace ? '#f0fdf4' : '#2563eb',
+                                color: hasFace ? '#15803d' : '#ffffff',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title={hasFace ? "Face Enrolled - Click to Re-register" : "Click to Register Student Face"}
+                            >
+                              <Camera size={13} />
+                              {hasFace ? '✔ Enrolled' : 'Enroll Face'}
+                            </button>
+                            {hasFace && (
+                              <button
+                                onClick={() => handleRemoveFace(student)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: '1px solid #fecaca',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                title="Remove Registered Face Biometric Record"
+                              >
+                                <Trash2 size={13} /> Remove
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <span className={`status-badge ${
@@ -764,7 +801,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1.2' }}>{primaryName}</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Roll ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{student.studentNum}</code></span>
                           <button
                             onClick={() => startEnrollmentCamera(student)}
@@ -784,6 +821,26 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           >
                             <Camera size={11} /> {hasFace ? '✔ Enrolled' : 'Enroll Face'}
                           </button>
+                          {hasFace && (
+                            <button
+                              onClick={() => handleRemoveFace(student)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                border: '1px solid #fecaca',
+                                background: '#fef2f2',
+                                color: '#dc2626'
+                              }}
+                            >
+                              <Trash2 size={11} /> Remove
+                            </button>
+                          )}
                         </div>
                       </div>
                       <span className={`status-badge ${

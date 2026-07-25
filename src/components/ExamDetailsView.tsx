@@ -689,115 +689,216 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         </div>
       )}
 
-      {/* VIEW 3: ABSENTEES ROSTER PAGE */}
+      {/* VIEW 3: ABSENTEES LIST (CLEAN, PROFESSIONAL, FULL-SCREEN & MOBILE RESPONSIVE) */}
       {activeView === 'absentees' && (
-        <div className="exam-reports-page animate-fade-in">
-          {/* Top Bar */}
-          <div className="reports-top-bar">
-            <div className="bar-left">
-              <button className="back-btn-circle" onClick={() => setActiveView('hub')} title="Back to Exam Details">
-                <ArrowLeft size={20} />
+        <div style={{ background: '#ffffff', minHeight: '100vh', width: '100%', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+          
+          {/* Header Bar */}
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            background: '#ffffff',
+            borderBottom: '1px solid #f1f5f9',
+            padding: '14px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button
+                onClick={() => setActiveView('hub')}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#1e293b'
+                }}
+                title="Back to Exam Details"
+              >
+                <ArrowLeft size={22} />
               </button>
+
               <div>
-                <h2 className="reports-exam-title" style={{ margin: 0 }}>Absentees List</h2>
-                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{exam.title} ({exam.className})</span>
+                <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  Absentees Roster
+                </h1>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                  {exam.title} ({exam.className})
+                </div>
               </div>
             </div>
 
             {absentStudents.length > 0 && (
-              <button 
-                className="btn-primary-sm" 
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', background: '#dc2626', borderColor: '#dc2626' }} 
+              <button
                 onClick={handleBroadcastAbsentees}
+                style={{
+                  background: '#0f172a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.15)',
+                  transition: 'all 0.15s ease'
+                }}
               >
-                <Send size={14} /> Notify All Absentees
+                <Send size={14} /> Notify All Absentees ({absentStudents.length})
               </button>
             )}
           </div>
 
-          {/* Top Summary Cards for Absentees */}
-          <div className="reports-summary-cards">
-            <div className="summary-card">
-              <div className="card-icon-sq blue">
-                <Users size={18} />
+          <div style={{ maxWidth: '720px', margin: '0 auto', padding: '16px' }}>
+            
+            {/* Clean Summary Stats Strip */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '12px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '20px',
+              textAlign: 'center'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Enrolled</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{totalClassCount}</div>
               </div>
-              <div className="card-info">
-                <span className="label">Total Enrolled</span>
-                <span className="val">{totalClassCount}</span>
+              <div style={{ borderLeft: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Appeared</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#16a34a', marginTop: '2px' }}>{examSubs.length}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Absent</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#dc2626', marginTop: '2px' }}>{absentStudents.length}</div>
               </div>
             </div>
 
-            <div className="summary-card">
-              <div className="card-icon-sq blue-light">
-                <CheckCircle size={18} />
-              </div>
-              <div className="card-info">
-                <span className="label">Appeared</span>
-                <span className="val">{examSubs.length}</span>
-              </div>
-            </div>
-
-            <div className="summary-card" style={{ background: '#fef2f2', borderColor: '#fecaca' }}>
-              <div className="card-icon-sq" style={{ background: '#fee2e2', color: '#dc2626' }}>
-                <UserX size={18} />
-              </div>
-              <div className="card-info">
-                <span className="label" style={{ color: '#991b1b' }}>Absent</span>
-                <span className="val" style={{ color: '#dc2626' }}>{absentStudents.length}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Absent Students List */}
-          <div className="reports-roster-list mt-3">
+            {/* Absent Students List */}
             {absentStudents.length === 0 ? (
-              <div className="empty-roster-card" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', textAlign: 'center', padding: '30px' }}>
-                <CheckCircle size={40} color="#16a34a" style={{ margin: '0 auto 10px' }} />
-                <h3 style={{ margin: '0 0 6px 0', color: '#166534', fontWeight: 800 }}>No Absentees!</h3>
-                <p style={{ margin: 0, color: '#15803d', fontSize: '0.9rem' }}>All enrolled students in {exam.className} have submitted this exam.</p>
+              <div style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                textAlign: 'center',
+                padding: '40px 20px'
+              }}>
+                <CheckCircle size={44} color="#16a34a" style={{ margin: '0 auto 12px' }} />
+                <h3 style={{ margin: '0 0 6px 0', color: '#0f172a', fontWeight: 800 }}>No Absentees!</h3>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>All enrolled students in {exam.className} have appeared for this exam.</p>
               </div>
             ) : (
-              absentStudents.map((st) => {
-                const initial = st.cleanName ? st.cleanName.charAt(0).toUpperCase() : 'A';
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {absentStudents.map((st) => {
+                  const initial = st.cleanName ? st.cleanName.charAt(0).toUpperCase() : 'A';
 
-                return (
-                  <div key={`absent-st-${st.id}`} className="student-report-card" style={{ borderLeft: '4px solid #dc2626' }}>
-                    <div className="student-card-main-row">
-                      {/* Circle Avatar with Initial */}
-                      <div className="student-avatar-circle" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                        <span>{initial}/</span>
+                  return (
+                    <div 
+                      key={`absent-st-${st.id}`} 
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      {/* Top Row: Avatar + Name/Roll + Status Badge */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            background: '#f1f5f9',
+                            color: '#334155',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '1rem'
+                          }}>
+                            {initial}
+                          </div>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+                              {st.cleanName}
+                            </h4>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                              Roll No: {st.studentNum || 'N/A'} • {st.className}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span style={{
+                          background: '#fef2f2',
+                          color: '#991b1b',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #fecdd3'
+                        }}>
+                          Absent
+                        </span>
                       </div>
 
-                      {/* Student Name ONLY - No father name! */}
-                      <div className="student-name-block">
-                        <h4 className="student-primary-name">{st.cleanName}</h4>
-                        <span className="student-roll-no">Roll No: {st.studentNum || 'N/A'} • {st.className}</span>
-                      </div>
+                      {/* Action Bar: Phone number + Send Alert Button */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderTop: '1px solid #f1f5f9',
+                        paddingTop: '12px',
+                        gap: '8px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
+                          {st.whatsappNumber ? `📱 ${st.whatsappNumber}` : 'No phone number'}
+                        </span>
 
-                      {/* Absent Badge */}
-                      <div className="status-pill" style={{ background: '#fee2e2', color: '#dc2626', fontWeight: 800, padding: '4px 10px', fontSize: '0.8rem' }}>
-                        <UserX size={13} /> Absent
+                        <button 
+                          style={{
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 14px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          onClick={() => handleNotifyAbsentee(st)}
+                        >
+                          <Send size={12} /> Send Alert
+                        </button>
                       </div>
                     </div>
-
-                    {/* Action Row */}
-                    <div className="student-card-stats-row" style={{ justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        {st.whatsappNumber ? `📱 ${st.whatsappNumber}` : 'No WhatsApp number listed'}
-                      </span>
-
-                      <button 
-                        className="btn-feature-action whatsapp" 
-                        style={{ padding: '6px 12px', fontSize: '0.78rem', borderRadius: '6px' }}
-                        onClick={() => handleNotifyAbsentee(st)}
-                      >
-                        <Send size={13} /> Send Alert
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
+
           </div>
         </div>
       )}

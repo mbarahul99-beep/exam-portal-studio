@@ -283,38 +283,30 @@ app.get('/api/teachers', async (req, res) => {
 
 app.post('/api/teachers', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { id, userId, password, name, phone, email } = req.body;
+  const { userId, password, name, phone, email } = req.body;
   try {
-    if (id) {
-      const query = `
-        UPDATE teachers SET userId = ?, password = ?, name = ?, phone = ?, email = ?
-        WHERE id = ?;
-      `;
-      await pool.query(query, [userId, password, name, phone || null, email || null, id]);
-      res.json({ success: true, id });
-    } else {
-      const query = `
-        INSERT INTO teachers (userId, password, name, phone, email)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          password = VALUES(password),
-          name = VALUES(name),
-          phone = VALUES(phone),
-          email = VALUES(email);
-      `;
-      const [result] = await pool.query(query, [userId, password, name, phone || null, email || null]);
-      res.json({ success: true, id: result.insertId || result.id });
-    }
+    const query = `
+      INSERT INTO teachers (userId, password, name, phone, email)
+      VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        password = VALUES(password),
+        name = VALUES(name),
+        phone = VALUES(phone),
+        email = VALUES(email);
+    `;
+    const [result] = await pool.query(query, [userId, password, name, phone || null, email || null]);
+    res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
+    console.error('MySQL teacher upsert error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.delete('/api/teachers/:id', async (req, res) => {
+app.delete('/api/teachers/:identifier', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const teacherId = req.params.id;
+  const identifier = req.params.identifier;
   try {
-    await pool.query('DELETE FROM teachers WHERE id = ?', [teacherId]);
+    await pool.query('DELETE FROM teachers WHERE id = ? OR userId = ?', [identifier, identifier]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

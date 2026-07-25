@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Trash2, Edit2, Key, Check, Shield, Search, MoreVertical, Phone, FileSpreadsheet } from 'lucide-react';
 import { db, type Teacher } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 export const TeacherManagementView: React.FC = () => {
   const teachers = useLiveQuery(() => db.teachers.toArray()) || [];
@@ -58,7 +59,6 @@ export const TeacherManagementView: React.FC = () => {
         return;
       }
 
-      let savedId = editingTeacherId;
       if (editingTeacherId) {
         await db.teachers.update(editingTeacherId, {
           userId: userId.trim(),
@@ -68,7 +68,7 @@ export const TeacherManagementView: React.FC = () => {
           email: email.trim() || undefined
         });
       } else {
-        savedId = await db.teachers.add({
+        await db.teachers.add({
           userId: userId.trim(),
           password: password.trim(),
           name: name.trim(),
@@ -84,7 +84,6 @@ export const TeacherManagementView: React.FC = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: savedId,
             userId: userId.trim(),
             password: password.trim(),
             name: name.trim(),
@@ -92,6 +91,7 @@ export const TeacherManagementView: React.FC = () => {
             email: email.trim()
           })
         });
+        await pullCloudUpdatesToIndexedDB();
       } catch (err) {
         console.warn("MySQL teacher sync warning:", err);
       }
@@ -116,7 +116,8 @@ export const TeacherManagementView: React.FC = () => {
     if (confirm(`Are you sure you want to delete teacher "${t.name}" (${t.userId})?`)) {
       try {
         await db.teachers.delete(t.id!);
-        await fetch(`/api/teachers/${t.id!}`, { method: 'DELETE' });
+        await fetch(`/api/teachers/${encodeURIComponent(t.userId)}`, { method: 'DELETE' });
+        await pullCloudUpdatesToIndexedDB();
       } catch (err: any) {
         alert(`Failed to delete teacher: ${err.message}`);
       }

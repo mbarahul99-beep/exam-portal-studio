@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Users, Lock, Sparkles, BookOpen } from 'lucide-react';
 import { db } from '../db';
+import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface UnifiedLoginPortalProps {
   onLoginSuccess: (role: 'admin' | 'teacher' | 'student', studentId?: number, teacherId?: number) => void;
@@ -111,7 +112,13 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.teacher) {
-            onLoginSuccess('teacher', undefined, data.teacher.id);
+            await pullCloudUpdatesToIndexedDB();
+            let teacherId = data.teacher.id;
+            const localTeacher = await db.teachers.where('userId').equals(username.trim()).first();
+            if (localTeacher) {
+              teacherId = localTeacher.id!;
+            }
+            onLoginSuccess('teacher', undefined, teacherId);
             return;
           }
         }

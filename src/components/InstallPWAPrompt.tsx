@@ -38,22 +38,19 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      // Auto show prompt if user hasn't dismissed it in this session
-      const dismissed = sessionStorage.getItem('apex_pwa_prompt_dismissed');
-      if (!dismissed || forceShow) {
+      if (!inStandaloneMode) {
         setShowPrompt(true);
       }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // Auto-show prompt on mobile browsers after 1.5s delay if not dismissed
+    // Auto-show prompt on browser after 500ms delay if app is not added to home screen
     const timer = setTimeout(() => {
-      const dismissed = sessionStorage.getItem('apex_pwa_prompt_dismissed');
-      if ((!dismissed && !inStandaloneMode) || forceShow) {
+      if (!inStandaloneMode) {
         setShowPrompt(true);
       }
-    }, 1500);
+    }, 500);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -70,18 +67,16 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       }
       setDeferredPrompt(null);
     } else {
-      // Fallback for browsers that don't support beforeinstallprompt directly
-      alert("To install this app on your device:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
+      alert("To install APEX on your home screen:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
     }
   };
 
   const handleDismiss = () => {
-    sessionStorage.setItem('apex_pwa_prompt_dismissed', 'true');
     setShowPrompt(false);
     if (onClose) onClose();
   };
 
-  if (isStandalone && !forceShow) return null;
+  if (isStandalone) return null;
   if (!showPrompt && !forceShow) return null;
 
   return (
@@ -95,7 +90,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
         maxWidth: '460px',
         backgroundColor: '#ffffff',
         borderRadius: '16px',
-        boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(220, 0, 69, 0.15)',
+        boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(6, 95, 70, 0.2)',
         zIndex: 9999,
         padding: '20px',
         boxSizing: 'border-box',
@@ -105,29 +100,32 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* APEX Dark Green Logo with White Text */}
           <div 
             style={{ 
-              width: '44px', 
-              height: '44px', 
+              width: '52px', 
+              height: '52px', 
               borderRadius: '12px', 
-              backgroundColor: '#dc0045', 
+              backgroundColor: '#065f46', 
               color: '#ffffff', 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
               fontWeight: 900,
-              fontSize: '1.4rem',
-              boxShadow: '0 4px 12px rgba(220, 0, 69, 0.3)'
+              fontSize: '0.88rem',
+              letterSpacing: '0.5px',
+              boxShadow: '0 4px 12px rgba(6, 95, 70, 0.35)',
+              flexShrink: 0
             }}
           >
-            ⚡
+            APEX
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
               Install APEX App
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-              Fast 1-tap access on your home screen
+              Add to Home Screen for 1-tap access
             </p>
           </div>
         </div>
@@ -153,25 +151,25 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       </div>
 
       <div style={{ margin: '12px 0', fontSize: '0.82rem', color: '#334155', lineHeight: '1.45' }}>
-        Install the official <strong>Apex Exam & OMR Portal</strong> app on your device for instant offline access and full-screen experience.
+        Install the official <strong>APEX INSTITUTE</strong> app on your device for instant 1-tap launch and full-screen experience.
       </div>
 
       {/* iOS Safari Instruction Helper */}
       {isIOS && !deferredPrompt && (
         <div style={{ 
-          background: '#fff5f7', 
-          border: '1px solid #fecdd3', 
+          background: '#ecfdf5', 
+          border: '1px solid #a7f3d0', 
           borderRadius: '10px', 
           padding: '10px 12px', 
           marginBottom: '14px',
           fontSize: '0.78rem',
-          color: '#9f1239',
+          color: '#065f46',
           display: 'flex',
           flexDirection: 'column',
           gap: '6px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
-            <Share size={14} /> To install on iPhone / iPad:
+            <Share size={14} /> To install APEX on iPhone / iPad:
           </div>
           <div>1. Tap the <strong>Share</strong> button at the bottom of Safari.</div>
           <div>2. Scroll down & select <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><PlusSquare size={12} /> Add to Home Screen</strong>.</div>
@@ -183,8 +181,8 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
           onClick={handleInstallClick}
           style={{
             flex: 1,
-            padding: '10px 16px',
-            backgroundColor: '#dc0045',
+            padding: '11px 16px',
+            backgroundColor: '#065f46',
             color: '#ffffff',
             border: 'none',
             borderRadius: '10px',
@@ -195,7 +193,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: '0 4px 12px rgba(220, 0, 69, 0.3)',
+            boxShadow: '0 4px 12px rgba(6, 95, 70, 0.35)',
             transition: 'all 0.15s ease'
           }}
         >
@@ -205,7 +203,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
         <button
           onClick={handleDismiss}
           style={{
-            padding: '10px 16px',
+            padding: '11px 16px',
             backgroundColor: '#f1f5f9',
             color: '#475569',
             border: 'none',

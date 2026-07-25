@@ -118,6 +118,21 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // 6. Pending Registrations Table for Student Invite Links
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS pending_registrations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        studentNum VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        className VARCHAR(100) NOT NULL,
+        email VARCHAR(255),
+        phone VARCHAR(50),
+        whatsappNumber VARCHAR(50),
+        status VARCHAR(20) DEFAULT 'pending',
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     conn.release();
     console.log('✅ Hostinger MySQL Database Schema verified & auto-created successfully!');
   } catch (err) {

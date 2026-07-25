@@ -1068,21 +1068,52 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                             {sec.subjectName} - {sec.sectionName} (Q{sec.qStart} - Q{sec.qEnd})
                           </h5>
 
-                          <div className="key-grid-scroll">
+                          <div className="key-grid-scroll" style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                            gap: '8px',
+                            maxHeight: '320px',
+                            overflowY: 'auto',
+                            padding: '4px'
+                          }}>
                             {Array.from({ length: sec.qCount }).map((_, qIdx) => {
                               const qNum = sec.qStart + qIdx;
                               const options = sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
                               const currentKey = answerKeys[activeSetTab]?.[qNum] || 'A';
 
                               return (
-                                <div key={`wiz-key-${qNum}`} className="key-row-item">
-                                  <span className="q-label-number">Q{String(qNum).padStart(2, '0')}</span>
-                                  <div className="opt-bubble-row">
+                                <div key={`wiz-key-${qNum}`} className="key-row-item" style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  background: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  padding: '6px 10px',
+                                  gap: '6px'
+                                }}>
+                                  <span className="q-label-number" style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', width: '32px' }}>Q{String(qNum).padStart(2, '0')}</span>
+                                  <div className="opt-bubble-row" style={{ display: 'flex', gap: '4px' }}>
                                     {options.map(opt => (
                                       <button
                                         key={`wiz-opt-${qNum}-${opt}`}
                                         className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
                                         onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
+                                        style={{
+                                          width: '28px',
+                                          height: '28px',
+                                          borderRadius: '50%',
+                                          border: currentKey === opt ? 'none' : '1px solid #cbd5e1',
+                                          background: currentKey === opt ? '#16a34a' : '#ffffff',
+                                          color: currentKey === opt ? '#ffffff' : '#475569',
+                                          fontWeight: 800,
+                                          fontSize: '0.78rem',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          boxShadow: currentKey === opt ? '0 2px 4px rgba(22, 163, 74, 0.3)' : 'none'
+                                        }}
                                       >
                                         {opt}
                                       </button>

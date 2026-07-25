@@ -775,32 +775,98 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       {/* ANSWER KEY DIRECT UPDATE MODAL */}
       {showAnswerKeyModal && (
         <div className="modal-backdrop" onClick={() => setShowAnswerKeyModal(false)}>
-          <div className="modal-content answer-key-modal animate-scale-up" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content answer-key-modal animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', width: '94vw', borderRadius: '16px', padding: '16px 20px' }}>
+            
+            {/* Sticky Header */}
+            <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>Answer Key Editor</h3>
-                <p className="subtitle" style={{ margin: 0 }}>{exam.title} ({exam.numQuestions} Questions)</p>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Answer Key Editor</h3>
+                <p className="subtitle" style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>{exam.title} ({exam.numQuestions} Questions)</p>
               </div>
               <button className="btn-close-icon" onClick={() => setShowAnswerKeyModal(false)}>
                 <X size={20} />
               </button>
             </div>
 
-            <div className="answer-key-grid-container">
+            {/* Quick Fill Action Row */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Quick Fill:</span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {['A', 'B', 'C', 'D'].map(opt => (
+                  <button
+                    key={`qf-opt-${opt}`}
+                    onClick={() => {
+                      const nextKeys: Record<number, string> = {};
+                      for (let q = 1; q <= exam.numQuestions; q++) {
+                        nextKeys[q] = opt;
+                      }
+                      setEditableKeys(nextKeys);
+                    }}
+                    style={{
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      color: '#334155',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    All {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Responsive Grid Container */}
+            <div className="answer-key-grid-container" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: '8px',
+              maxHeight: '55vh',
+              overflowY: 'auto',
+              padding: '12px 4px',
+              boxSizing: 'border-box'
+            }}>
               {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
                 const currentOpt = editableKeys[q] || 'A';
                 const optionsList = ['A', 'B', 'C', 'D'];
 
                 return (
-                  <div key={`ak-q-${q}`} className="ak-question-row">
-                    <span className="ak-q-label">Q{q}</span>
-                    <div className="ak-options-group">
+                  <div key={`ak-q-${q}`} className="ak-question-row" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    gap: '6px'
+                  }}>
+                    <span className="ak-q-label" style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', width: '32px' }}>Q{q}</span>
+                    <div className="ak-options-group" style={{ display: 'flex', gap: '4px' }}>
                       {optionsList.map((opt) => (
                         <button
                           key={`ak-q-${q}-opt-${opt}`}
                           className={`ak-opt-btn ${currentOpt === opt ? 'active' : ''}`}
                           onClick={() => {
                             setEditableKeys(prev => ({ ...prev, [q]: opt }));
+                          }}
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            border: currentOpt === opt ? 'none' : '1px solid #cbd5e1',
+                            background: currentOpt === opt ? '#16a34a' : '#ffffff',
+                            color: currentOpt === opt ? '#ffffff' : '#475569',
+                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: currentOpt === opt ? '0 2px 4px rgba(22, 163, 74, 0.3)' : 'none'
                           }}
                         >
                           {opt}
@@ -812,14 +878,16 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               })}
             </div>
 
-            <div className="modal-footer">
+            {/* Sticky Action Footer */}
+            <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px', marginTop: '8px' }}>
               <button className="btn-secondary" onClick={() => setShowAnswerKeyModal(false)}>
                 Cancel
               </button>
-              <button className="btn-primary" onClick={handleSaveAnswerKeys} disabled={isSavingKey}>
+              <button className="btn-primary" onClick={handleSaveAnswerKeys} disabled={isSavingKey} style={{ background: '#16a34a' }}>
                 {isSavingKey ? 'Saving...' : 'Save Answer Key'}
               </button>
             </div>
+
           </div>
         </div>
       )}

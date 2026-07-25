@@ -122,6 +122,18 @@ export interface AttendanceRecord {
   attendanceMethod?: 'Manual' | 'QR' | 'Face';
 }
 
+export interface PendingRegistration {
+  id?: number;
+  studentNum: string;
+  name: string;
+  className: string;
+  email?: string;
+  phone?: string;
+  whatsappNumber?: string;
+  createdAt: Date;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 class AppDatabase extends Dexie {
   students!: Table<Student>;
   exams!: Table<Exam>;
@@ -132,6 +144,7 @@ class AppDatabase extends Dexie {
   questionBank!: Table<BankQuestion>;
   questionBanks!: Table<QuestionBank>;
   settings!: Table<SystemSetting>;
+  pendingRegistrations!: Table<PendingRegistration>;
 
   constructor() {
     super('OMRExamsDatabase');
@@ -160,6 +173,10 @@ class AppDatabase extends Dexie {
     this.version(10).stores({
       questionBanks: '++id, targetExam, subject, topic',
       questionBank: '++id, bankId, difficulty'
+    });
+    // Version 11 adds pendingRegistrations table for student invite & self-registration
+    this.version(11).stores({
+      pendingRegistrations: '++id, status, className, createdAt'
     });
   }
 }

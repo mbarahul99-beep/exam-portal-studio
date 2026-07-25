@@ -12,8 +12,12 @@ import { UnifiedLoginPortal } from './components/UnifiedLoginPortal';
 import { StudentReportPortal } from './components/StudentReportPortal';
 import { AttendancePortal } from './components/AttendancePortal';
 import { QuestionBankManager } from './components/QuestionBankManager';
+import { StudentRegisterPortal } from './components/StudentRegisterPortal';
+import { InviteStudentModal } from './components/InviteStudentModal';
+import { PendingApprovalsModal } from './components/PendingApprovalsModal';
 import { 
-  Users, 
+  Users,
+  UserCheck, 
   FileText, 
   Camera, 
   Award, 
@@ -76,11 +80,29 @@ export default function App() {
     setSessionStudentId(null);
   };
 
+  // Student Invite & Pending Approvals State
+  const [inviteClassParam, setInviteClassParam] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showPendingApprovalsModal, setShowPendingApprovalsModal] = useState(false);
+
+  const pendingCount = useLiveQuery(
+    () => db.pendingRegistrations.where('status').equals('pending').count(),
+    []
+  ) || 0;
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const examIdStr = params.get('examId');
     const onlineExamIdStr = params.get('onlineExamId');
+    const inviteClass = params.get('inviteClass');
+    const isRegister = params.get('register');
+
+    if (inviteClass) {
+      setInviteClassParam(inviteClass);
+    } else if (isRegister === 'true') {
+      setInviteClassParam('NEET-2026');
+    }
     
     if (onlineExamIdStr) {
       setOnlineExamId(Number(onlineExamIdStr));
@@ -1960,6 +1982,10 @@ export default function App() {
     );
   }
 
+  if (inviteClassParam) {
+    return <StudentRegisterPortal initialClassName={inviteClassParam} onDone={() => setInviteClassParam(null)} />;
+  }
+
   if (sessionRole === 'student') {
     return (
       <StudentReportPortal 
@@ -1971,6 +1997,14 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* Student Invite & Pending Approvals Modals */}
+      {showInviteModal && (
+        <InviteStudentModal onClose={() => setShowInviteModal(false)} />
+      )}
+      {showPendingApprovalsModal && (
+        <PendingApprovalsModal onClose={() => setShowPendingApprovalsModal(false)} />
+      )}
+
       {/* 0. ADMIN REPORT PORTAL OVERLAY CONTAINER */}
       {viewingStudentAnalysisSub && (
         <div className="admin-report-portal-modal no-print" style={{ position: 'fixed', inset: 0, zIndex: 9999, overflowY: 'auto', background: '#f8fafc' }}>
@@ -2420,9 +2454,27 @@ export default function App() {
                       <button 
                         className="btn-secondary" 
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '6px' }}
-                        onClick={() => alert('Create Invite Link module is coming soon!')}
+                        onClick={() => setShowInviteModal(true)}
                       >
                         <Link size={16} /> Create invite link
+                      </button>
+
+                      <button 
+                        className="btn-secondary" 
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 16px',
+                          borderRadius: '6px',
+                          background: pendingCount > 0 ? '#fef3c7' : '#ffffff',
+                          borderColor: pendingCount > 0 ? '#f59e0b' : 'var(--border-color)',
+                          color: pendingCount > 0 ? '#b45309' : 'inherit',
+                          fontWeight: 'bold'
+                        }}
+                        onClick={() => setShowPendingApprovalsModal(true)}
+                      >
+                        <UserCheck size={16} /> Pending Approvals {pendingCount > 0 && <span style={{ background: '#d97706', color: '#fff', borderRadius: '10px', padding: '2px 8px', fontSize: '0.75rem' }}>{pendingCount}</span>}
                       </button>
                       
                       <button 

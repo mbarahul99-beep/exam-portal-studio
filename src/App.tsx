@@ -36,7 +36,14 @@ import {
   LogOut,
   Menu,
   CalendarCheck,
-  Settings
+  Settings,
+  Archive,
+  Filter,
+  Globe,
+  Lock,
+  HelpCircle,
+  Scan,
+  MoreHorizontal
 } from 'lucide-react';
 
 export default function App() {
@@ -2610,9 +2617,11 @@ export default function App() {
                   );
                 })()
               ) : (
-                /* EXAMS LIST TABLE PAGE */
+                /* EXAMS LIST PAGE (RESPONSIVE: DESKTOP TABLE + MOBILE CARD LIST) */
                 <div className="exams-list-portal animate-fade-in">
-                  <header className="pane-header">
+                  
+                  {/* DESKTOP HEADER */}
+                  <header className="pane-header desktop-exams-header">
                     <div>
                       <h2>Exams</h2>
                       <p className="subtitle">View scheduled exam entries, class sizes, and OMR submission reports.</p>
@@ -2628,7 +2637,33 @@ export default function App() {
                     </div>
                   </header>
 
-                  <div className="glass-card">
+                  {/* MOBILE HEADER (Matching Screenshot 2) */}
+                  <header className="mobile-exams-header">
+                    <div className="mobile-header-top">
+                      <h2>Exams</h2>
+                      <div className="mobile-header-actions">
+                        <button className="mobile-icon-btn" title="View Documents">
+                          <FileText size={20} />
+                        </button>
+                        <button className="btn-primary-mobile" onClick={() => setShowCreateWizard(true)}>
+                          <Plus size={16} /> Add New
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mobile-header-subbar">
+                      <button className="archived-btn" onClick={() => alert("Archived exams view coming soon!")}>
+                        <Archive size={16} />
+                        <span>Archived</span>
+                      </button>
+                      <button className="mobile-icon-btn" title="Filter list">
+                        <Filter size={18} />
+                      </button>
+                    </div>
+                  </header>
+
+                  {/* DESKTOP EXAMS TABLE (Hidden on mobile) */}
+                  <div className="glass-card desktop-exam-table">
                     {exams.length === 0 ? (
                       <div className="empty-state">
                         <p>No exams created yet. Click "+ Create exam" in the top right to start.</p>
@@ -2688,6 +2723,68 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* MOBILE EXAM CARDS LIST (Matching Screenshot 2 - Visible on mobile) */}
+                  <div className="mobile-exam-card-list">
+                    {exams.length === 0 ? (
+                      <div className="empty-state-mobile">
+                        <p>No exams created yet. Click "+ Add New" to start.</p>
+                      </div>
+                    ) : (
+                      exams.map(exam => {
+                        const appeared = submissions.filter(s => s.examId === exam.id).length;
+                        const dateObj = new Date(exam.date);
+                        const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });
+                        const dayStr = dateObj.getDate();
+
+                        return (
+                          <div 
+                            key={`mobile-exam-${exam.id}`}
+                            className="mobile-exam-card"
+                            onClick={() => setSelectedExamId(exam.id!)}
+                          >
+                            <div className="mobile-date-badge">
+                              <span className="month">{monthStr}</span>
+                              <span className="day">{dayStr}</span>
+                            </div>
+
+                            <div className="mobile-card-content">
+                              <div className="mobile-card-header">
+                                <h3 className="mobile-card-title">{exam.title}</h3>
+                                {exam.status === 'public' ? (
+                                  <span className="mobile-badge public">
+                                    <Globe size={11} /> Public
+                                  </span>
+                                ) : (
+                                  <span className="mobile-badge draft">
+                                    <Lock size={11} /> Draft
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mobile-card-meta">
+                                <div className="meta-item">
+                                  <HelpCircle size={14} />
+                                  <span>{exam.numQuestions || 180}</span>
+                                </div>
+                                <span className="meta-divider">|</span>
+                                <div className="meta-item">
+                                  <Scan size={14} />
+                                  <span>{appeared}</span>
+                                </div>
+                                <span className="meta-divider">|</span>
+                                <div className="meta-item">
+                                  <Users size={14} />
+                                  <span className="truncate">{exam.className || 'Dropper'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
                 </div>
               )}
 
@@ -3319,6 +3416,38 @@ export default function App() {
             <QuestionBankManager onBack={() => setActiveTab('dashboard')} />
           )}
         </main>
+
+        {/* MOBILE BOTTOM NAVIGATION BAR (Matching Screenshot 2) */}
+        <nav className="mobile-bottom-nav">
+          <button 
+            className={`nav-tab-item ${activeTab === 'exams' ? 'active' : ''}`}
+            onClick={() => setActiveTab('exams')}
+          >
+            <FileText size={20} />
+            <span>Exams</span>
+          </button>
+          <button 
+            className={`nav-tab-item ${activeTab === 'attendance' ? 'active' : ''}`}
+            onClick={() => setActiveTab('attendance')}
+          >
+            <CalendarCheck size={20} />
+            <span>Attendance</span>
+          </button>
+          <button 
+            className={`nav-tab-item ${activeTab === 'students' ? 'active' : ''}`}
+            onClick={() => setActiveTab('students')}
+          >
+            <Users size={20} />
+            <span>Classes</span>
+          </button>
+          <button 
+            className="nav-tab-item"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <MoreHorizontal size={20} />
+            <span>More</span>
+          </button>
+        </nav>
       </div>
 
       {/* ADD CLASS MODAL */}

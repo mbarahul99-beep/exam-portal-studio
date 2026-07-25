@@ -1532,3 +1532,302 @@ button {
   }
 }
 
+/* ==========================================================================
+   Responsive Mobile Exam Listing & Card View (Matching Screenshot 2)
+   ========================================================================== */
+
+/* Visibility defaults */
+.desktop-exams-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mobile-exams-header {
+  display: none;
+}
+
+.desktop-exam-table {
+  display: block;
+}
+
+.mobile-exam-card-list {
+  display: none;
+}
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+/* Mobile Devices (< 768px) */
+@media (max-width: 767px) {
+  .main-viewport {
+    margin-left: 0 !important;
+    padding: 16px 14px 80px 14px !important;
+  }
+
+  .desktop-exams-header {
+    display: none !important;
+  }
+
+  .mobile-exams-header {
+    display: flex !important;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 18px;
+    padding-top: 4px;
+  }
+
+  .mobile-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .mobile-header-top h2 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+    letter-spacing: -0.5px;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .mobile-icon-btn {
+    background: transparent;
+    border: none;
+    color: #1058ca;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.15s ease;
+  }
+
+  .mobile-icon-btn:hover {
+    background: #f1f5f9;
+  }
+
+  .btn-primary-mobile {
+    background: #1058ca;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 4px rgba(16, 88, 202, 0.2);
+    cursor: pointer;
+  }
+
+  .mobile-header-subbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 2px;
+  }
+
+  .archived-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #334155;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .archived-btn:hover {
+    background: #f8fafc;
+  }
+
+  .desktop-exam-table {
+    display: none !important;
+  }
+
+  .mobile-exam-card-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .empty-state-mobile {
+    text-align: center;
+    padding: 40px 16px;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+
+  .mobile-exam-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .mobile-exam-card:active {
+    transform: scale(0.99);
+    background: #f8fafc;
+  }
+
+  .mobile-date-badge {
+    width: 52px;
+    height: 56px;
+    background: #eff6ff;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #1d4ed8;
+  }
+
+  .mobile-date-badge .month {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+
+  .mobile-date-badge .day {
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .mobile-card-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .mobile-card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 170px;
+  }
+
+  .mobile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .mobile-badge.public {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .mobile-badge.draft {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .mobile-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .meta-divider {
+    color: #cbd5e1;
+    font-size: 0.75rem;
+  }
+
+  .truncate {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Bottom Navigation Bar */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 62px;
+    background: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 999;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+    padding: 0 8px;
+  }
+
+  .nav-tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    flex: 1;
+    padding: 6px 0;
+    transition: color 0.15s ease;
+  }
+
+  .nav-tab-item.active {
+    color: #1058ca;
+    font-weight: 700;
+  }
+}
+

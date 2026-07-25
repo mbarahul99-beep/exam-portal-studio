@@ -4,9 +4,10 @@ import { db } from '../db';
 
 interface UnifiedLoginPortalProps {
   onLoginSuccess: (role: 'admin' | 'student', studentId?: number) => void;
+  onRegisterClick?: () => void;
 }
 
-export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess }) => {
+export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess, onRegisterClick }) => {
   const [activeTab, setActiveTab] = useState<'student' | 'admin'>('student');
 
   // Student form states
@@ -195,6 +196,27 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             >
               <BookOpen size={16} /> {loading ? 'Verifying...' : 'Verify & Enter Student Portal'}
             </button>
+
+            {onRegisterClick && (
+              <div style={{ marginTop: '16px', textAlign: 'center', borderTop: '1px border #e2e8f0', paddingTop: '12px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#718096' }}>New Student / Got an invite? </span>
+                <button
+                  type="button"
+                  onClick={onRegisterClick}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2b6cb0',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Register Here
+                </button>
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={handleAdminSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

@@ -118,6 +118,18 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
             </div>
           </div>
 
+          {/* QR Code Section */}
+          <div style={{ textAlign: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+            <img
+              src={`https://quickchart.io/qr?text=${encodeURIComponent(inviteUrl)}&size=160`}
+              alt="Scan QR to Register"
+              style={{ width: '140px', height: '140px', borderRadius: '8px', border: '2px solid #ffffff', boxShadow: '0 4px 8px rgba(0,0,0,0.08)' }}
+            />
+            <p style={{ margin: '8px 0 0 0', fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+              Scan QR code with smartphone camera to register for class <strong>{selectedClass}</strong>
+            </p>
+          </div>
+
           {/* Notice Banner */}
           <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '10px', padding: '12px', fontSize: '0.8rem', color: '#92400e', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <GraduationCap size={18} style={{ flexShrink: 0, marginTop: '2px' }} />

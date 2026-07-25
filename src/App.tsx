@@ -1967,6 +1967,10 @@ export default function App() {
   }
 
   // 2. Auth Gate: Intercept render if no session is active or logged in as student
+  if (inviteClassParam) {
+    return <StudentRegisterPortal initialClassName={inviteClassParam} onDone={() => setInviteClassParam(null)} />;
+  }
+
   if (sessionRole === null) {
     return (
       <UnifiedLoginPortal 
@@ -1978,12 +1982,9 @@ export default function App() {
           setSessionRole(role);
           setSessionStudentId(studId || null);
         }}
+        onRegisterClick={() => setInviteClassParam('NEET-2026')}
       />
     );
-  }
-
-  if (inviteClassParam) {
-    return <StudentRegisterPortal initialClassName={inviteClassParam} onDone={() => setInviteClassParam(null)} />;
   }
 
   if (sessionRole === 'student') {

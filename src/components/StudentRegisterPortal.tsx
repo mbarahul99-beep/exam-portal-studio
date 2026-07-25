@@ -39,6 +39,15 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
       const rollNo = studentNum.trim() || String(Math.floor(10000 + Math.random() * 90000));
       const cleanPhone = phone.trim() ? (phone.startsWith('91') ? phone.trim() : `91${phone.trim()}`) : '';
 
+      // Check if student is already in roster
+      const existing = await db.students.where('studentNum').equals(rollNo).first();
+      if (existing) {
+        alert(`You are already registered! Name: ${existing.name}, Roll No: ${existing.studentNum}. You can directly log in using your Roll Number.`);
+        setIsSubmitting(false);
+        if (onDone) onDone();
+        return;
+      }
+
       // Save to Dexie Pending Registrations
       await db.pendingRegistrations.add({
         name: name.trim(),
@@ -305,6 +314,26 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
             >
               {isSubmitting ? 'Submitting...' : <>Submit Registration Request <ArrowRight size={18} /></>}
             </button>
+
+            {onDone && (
+              <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={onDone}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Already registered? Go to Login Gateway
+                </button>
+              </div>
+            )}
           </form>
         )}
       </div>

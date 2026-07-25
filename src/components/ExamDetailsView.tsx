@@ -376,7 +376,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const firstKey = Object.values(exam.answerKey || {})[0] || 'A';
 
   return (
-    <div className="exam-details-panel animate-fade-in" style={{ paddingBottom: '120px' }}>
+    <div className="exam-details-panel animate-fade-in">
       
       {/* VIEW 1: EXAM DETAILS HUB (Matching Screenshot 1) */}
       {activeView === 'hub' && (

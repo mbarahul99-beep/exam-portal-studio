@@ -564,7 +564,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   };
 
   return (
-    <div className="scan-images-portal animate-fade-in" style={{ paddingBottom: '120px' }}>
+    <div className="scan-images-portal animate-fade-in">
       {/* Top Header Breadcrumb Trail */}
       <div className="breadcrumb-nav mb-4">
         <span style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={onClose}>Exams</span>

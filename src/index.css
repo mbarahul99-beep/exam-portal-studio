@@ -1111,7 +1111,7 @@ button {
     align-items: stretch !important;
     gap: 16px !important;
     text-align: center !important;
-    margin-bottom: 75px !important;
+    margin-bottom: 0 !important;
     padding: 16px !important;
     background: #ffffff !important;
     border: 1.5px solid #cbd5e1 !important;
@@ -2205,8 +2205,9 @@ button {
 @media (max-width: 767px) {
   .exam-details-panel,
   .exam-details-hub,
-  .exam-reports-page {
-    padding-bottom: 130px !important;
+  .exam-reports-page,
+  .scan-images-portal {
+    padding-bottom: calc(62px + 16px) !important;
   }
 
   .circular-buttons-grid {

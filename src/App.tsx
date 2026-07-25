@@ -2119,7 +2119,7 @@ export default function App() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>⚡</span>
-          <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>Appex</span>
+          <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--text-primary)' }}>APEX</span>
         </div>
         <div style={{ width: '24px' }}></div>
       </header>
@@ -2130,7 +2130,7 @@ export default function App() {
         <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px' }}>
             <span style={{ fontSize: '1.4rem', color: 'var(--primary)', marginRight: '-2px' }}>⚡</span>
-            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', letterSpacing: '0.5px', color: 'var(--text-primary)' }}>Appex</span>
+            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', letterSpacing: '0.5px', color: 'var(--text-primary)' }}>APEX</span>
           </div>
 
           <nav className="sidebar-nav">

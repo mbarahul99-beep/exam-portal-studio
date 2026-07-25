@@ -24,23 +24,19 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Uncaught App Error:", error, errorInfo);
+    // Auto-reload immediately and silently without displaying any error UI
+    try {
+      window.location.reload();
+    } catch {
+      // Fallback reset
+      this.setState({ hasError: false, error: null });
+    }
   }
 
   public render() {
     if (this.state.hasError) {
-      return (
-        <div style={{ padding: '20px', textAlign: 'center' }}>
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Application recovered. Returning to main view...</p>
-          <button 
-            onClick={() => {
-              this.setState({ hasError: false, error: null });
-              window.location.href = window.location.pathname;
-            }} 
-            style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-            Continue to App
-          </button>
-        </div>
-      );
+      // Return null so no error banner or "Application recovered" text is shown
+      return null;
     }
     return this.props.children;
   }

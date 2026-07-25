@@ -112,6 +112,26 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
+    // Pull pending registrations from MySQL
+    try {
+      const pendingRes = await fetch('/api/pending-registrations');
+      if (pendingRes.ok) {
+        const pendingData = await pendingRes.json();
+        if (Array.isArray(pendingData)) {
+          for (const reg of pendingData) {
+            const existing = await db.pendingRegistrations.get(reg.id);
+            if (!existing) {
+              await db.pendingRegistrations.add(reg);
+            } else {
+              await db.pendingRegistrations.update(reg.id, reg);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore secondary pull failure
+    }
+
     console.log("✅ Cloud sync from Hostinger MySQL completed successfully.");
   } catch (err) {
     console.warn("Cloud sync pull failed:", err);

@@ -111,9 +111,9 @@ export default function App() {
       setOnlineExamId(Number(examIdStr));
     }
 
-    // Pull latest database updates from Hostinger MySQL
+    // Pull latest database updates from Hostinger MySQL immediately and every 3 seconds for instant real-time sync
     pullCloudUpdatesToIndexedDB();
-    const interval = setInterval(pullCloudUpdatesToIndexedDB, 15000);
+    const interval = setInterval(pullCloudUpdatesToIndexedDB, 3000);
     return () => clearInterval(interval);
   }, []);
 

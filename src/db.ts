@@ -63,6 +63,7 @@ export interface Exam {
   className: string; // Target class name (e.g. "NEET")
   date: string;       // Scheduled Date (e.g. "2026-07-14")
   status: 'private' | 'public';
+  isResultsPublished?: boolean;
   numQuestions: number;
   answerKey: Record<number, string>; // Default answer key (Maps question number to option)
   correctMarks: number;              // Default marks for correct answer

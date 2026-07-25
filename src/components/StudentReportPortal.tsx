@@ -73,7 +73,11 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       totalStudents,
       classAvg
     };
-  }).filter(item => item !== null) as Array<ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }>;
+  }).filter(item => {
+    if (!item) return false;
+    if (adminMode) return true;
+    return Boolean(item.exam.isResultsPublished || item.exam.status === 'public');
+  }) as Array<ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }>;
 
   // Calculate Overall KPIs
   let totalPctSum = 0;

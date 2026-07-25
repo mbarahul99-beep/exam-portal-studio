@@ -27,6 +27,7 @@ import {
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
 import { ResponseAnalysisView } from './ResponseAnalysisView';
+import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
 
 interface ExamDetailsViewProps {
@@ -54,6 +55,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis'>('hub');
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
   const [editableKeys, setEditableKeys] = useState<Record<number, string>>(() => ({ ...(exam.answerKey || {}) }));
   const [isSavingKey, setIsSavingKey] = useState(false);
 
@@ -568,6 +570,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <TrendingUp size={22} color="#1058ca" />
                 </div>
                 <span className="action-label">Response Analysis</span>
+              </button>
+
+              <button className="circular-action-card" onClick={() => setShowPublishModal(true)}>
+                <div className="circle-icon-box" style={{ background: exam.isResultsPublished ? '#f0fdf4' : '#eff6ff', borderColor: exam.isResultsPublished ? '#bbf7d0' : '#bfdbfe' }}>
+                  <Globe size={22} color={exam.isResultsPublished ? '#16a34a' : '#2563eb'} />
+                </div>
+                <span className="action-label" style={{ fontWeight: 800, color: exam.isResultsPublished ? '#16a34a' : '#2563eb' }}>
+                  {exam.isResultsPublished ? 'Published' : 'Publish Results'}
+                </span>
               </button>
             </div>
           </div>
@@ -1130,6 +1141,22 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* PUBLISH EXAM RESULTS MODAL */}
+      {showPublishModal && (
+        <PublishResultsModal
+          exam={exam}
+          submissions={submissions}
+          onClose={() => setShowPublishModal(false)}
+          onStartWhatsAppBroadcast={() => {
+            setShowPublishModal(false);
+            startWhatsAppBroadcast();
+          }}
+          onUpdateExam={(updated) => {
+            Object.assign(exam, updated);
+          }}
+        />
       )}
 
     </div>

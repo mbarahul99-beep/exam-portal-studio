@@ -16,6 +16,7 @@ import { StudentRegisterPortal } from './components/StudentRegisterPortal';
 import { InviteStudentModal } from './components/InviteStudentModal';
 import { PendingApprovalsModal } from './components/PendingApprovalsModal';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
+import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
 import { 
@@ -62,7 +63,7 @@ export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank'>('dashboard');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -2160,9 +2161,9 @@ export default function App() {
             </button>
             {sessionRole === 'admin' && (
               <button 
-                className="nav-item" 
+                className={`nav-item ${activeTab === 'teachers' ? 'active' : ''}`} 
                 onClick={() => {
-                  setShowTeacherManagementModal(true);
+                  setActiveTab('teachers');
                   setMobileMenuOpen(false);
                 }}
               >
@@ -2831,6 +2832,11 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB: TEACHERS MANAGEMENT (FULL SCREEN ALL WHITE BACKGROUND) */}
+          {activeTab === 'teachers' && (
+            <TeacherManagementView />
           )}
 
           {/* TAB 3: MANAGE EXAMS */}

@@ -260,27 +260,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return descriptor.map(val => Number((val / norm).toFixed(6)));
   };
 
-  // Dual Vector Matcher: Cosine Similarity + Euclidean Distance
+  // Cosine Similarity between two normalized L2 biometric vectors (0.0 to 1.0)
   const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
     let dot = 0;
     let normA = 0;
     let normB = 0;
-    let euclideanDistSq = 0;
 
     for (let i = 0; i < vecA.length; i++) {
       dot += vecA[i] * vecB[i];
       normA += vecA[i] * vecA[i];
       normB += vecB[i] * vecB[i];
-      euclideanDistSq += Math.pow(vecA[i] - vecB[i], 2);
     }
     const denom = Math.sqrt(normA) * Math.sqrt(normB);
-    const cosSim = denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
-    const dist = Math.sqrt(euclideanDistSq);
-
-    // Reject if L2 distance exceeds 0.35
-    if (dist > 0.35) return 0;
-    return cosSim;
+    return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
   };
 
   // Face Enrollment & Removal States
@@ -469,7 +462,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
 
             const liveDescriptor = extractFaceBiometrics(faceCanvas);
-            const enrolledStudents = students.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
+            const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
             
             if (enrolledStudents.length === 0) {
               setTrackedFace({
@@ -499,10 +492,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const secondScore = secondMatch ? secondMatch.similarity : 0;
             const margin = topScore - secondScore;
 
-            // Strict Anti-False-Positive Rules:
-            // 1. Top score must be >= 0.88 (88% Match)
-            // 2. Margin over second candidate must be >= 0.08 (unless only 1 candidate enrolled)
-            if (topMatch && topScore >= 0.88 && (matchScores.length === 1 || margin >= 0.08)) {
+            // Instant & Accurate Matching Rules:
+            // 1. Top Cosine similarity score >= 0.78 (78% Match)
+            // 2. Clear margin over 2nd best candidate >= 0.05 (unless only 1 candidate is enrolled)
+            if (topMatch && topScore >= 0.78 && (matchScores.length === 1 || margin >= 0.05)) {
               const matchPct = Math.round(topScore * 100);
               const primaryName = topMatch.student.name.split('/')[0].trim();
 
@@ -523,7 +516,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 setScannedFeedback(null);
                 setTrackedFace(null);
               }, 2500);
-            } else if (topMatch && topScore >= 0.75 && margin < 0.08 && matchScores.length > 1) {
+            } else if (topMatch && topScore >= 0.65 && margin < 0.05 && matchScores.length > 1) {
               setTrackedFace({
                 ...trackingBox,
                 name: "👤 Face Ambiguous - Please Position Face Closer to Camera",
@@ -614,14 +607,17 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setScannedFeedback(null);
   };
 
+  // Reactive live query for all students from IndexedDB
+  const dbStudents = useLiveQuery(() => db.students.toArray(), []) || students;
+
   // Load existing attendance records for the selected class and date
   const attendanceRecords = useLiveQuery(
     () => db.attendance.where('date').equals(selectedDate).and(r => r.className === selectedClass).toArray(),
     [selectedDate, selectedClass]
   ) || [];
 
-  // Filter students based on selected class
-  const classStudents = students.filter(s => s.className === selectedClass);
+  // Filter students based on selected class using live DB students array
+  const classStudents = dbStudents.filter(s => s.className === selectedClass);
 
   // Map student ID to attendance record for fast lookups
   const attendanceMap = new Map<number, AttendanceRecord>(

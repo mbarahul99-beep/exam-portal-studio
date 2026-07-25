@@ -8,15 +8,21 @@ interface PendingApprovalsModalProps {
 }
 
 export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ onClose }) => {
-  const pendingList = useLiveQuery(
-    () => db.pendingRegistrations.where('status').equals('pending').toArray(),
-    []
-  ) || [];
+  const pendingList = useLiveQuery(async () => {
+    try {
+      if (!db.pendingRegistrations) return [];
+      const list = await db.pendingRegistrations.where('status').equals('pending').toArray();
+      return list || [];
+    } catch {
+      return [];
+    }
+  }, []) || [];
 
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const handleApprove = async (reg: PendingRegistration) => {
-    setProcessingId(reg.id!);
+    if (!reg.id) return;
+    setProcessingId(reg.id);
     try {
       // 1. Add student to db.students roster
       await db.students.add({
@@ -29,7 +35,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
       });
 
       // 2. Mark pending status as approved
-      await db.pendingRegistrations.update(reg.id!, { status: 'approved' });
+      await db.pendingRegistrations.update(reg.id, { status: 'approved' });
 
       // 3. Try syncing to Hostinger MySQL
       try {
@@ -76,16 +82,16 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal-content animate-scale-up" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', borderRadius: '16px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="modal-content animate-scale-up" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', borderRadius: '16px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
         
         {/* Header */}
-        <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '14px' }}>
+        <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ padding: '8px', borderRadius: '10px', background: '#fef3c7', color: '#d97706' }}>
               <Clock size={20} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Pending Student Registrations</h3>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Pending Student Registrations</h3>
               <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Approve or reject student self-registration requests</p>
             </div>
           </div>
@@ -111,7 +117,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
                 <CheckCheck size={14} /> Approve All ({pendingList.length})
               </button>
             )}
-            <button className="btn-close-icon" onClick={onClose}>
+            <button className="btn-close-icon" onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
               <X size={18} />
             </button>
           </div>
@@ -201,8 +207,8 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
         </div>
 
         {/* Footer */}
-        <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
-          <button className="btn-secondary" onClick={onClose}>
+        <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn-secondary" onClick={onClose} style={{ padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
             Close
           </button>
         </div>

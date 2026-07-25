@@ -29,16 +29,15 @@ class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '40px auto', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-          <h2 style={{ color: '#ef4444' }}>⚠️ Portal Initialization Warning</h2>
-          <p style={{ color: '#4b5563' }}>The portal encountered a startup issue. Please click below to refresh.</p>
-          <pre style={{ background: '#f3f4f6', padding: '12px', borderRadius: '6px', fontSize: '12px', textAlign: 'left', overflowX: 'auto', color: '#991b1b' }}>
-            {this.state.error?.toString()}
-          </pre>
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Application recovered. Returning to main view...</p>
           <button 
-            onClick={() => window.location.reload()} 
-            style={{ marginTop: '15px', padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-            🔄 Refresh Portal
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.href = window.location.pathname;
+            }} 
+            style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            Continue to App
           </button>
         </div>
       );

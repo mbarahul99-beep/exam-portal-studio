@@ -2202,6 +2202,28 @@ button {
   line-height: 1.2;
 }
 
+@media (max-width: 767px) {
+  .exam-details-panel,
+  .exam-details-hub,
+  .exam-reports-page {
+    padding-bottom: 130px !important;
+  }
+
+  .circular-buttons-grid {
+    grid-template-columns: repeat(auto-fill, minmax(75px, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .circle-icon-box {
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  .action-label {
+    font-size: 0.72rem !important;
+  }
+}
+
 /* ==========================================================================
    Student Reports Roster Page Styles (Matching Screenshot 2)
    ========================================================================== */

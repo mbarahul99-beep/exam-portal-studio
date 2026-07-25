@@ -15,6 +15,7 @@ import { QuestionBankManager } from './components/QuestionBankManager';
 import { StudentRegisterPortal } from './components/StudentRegisterPortal';
 import { InviteStudentModal } from './components/InviteStudentModal';
 import { PendingApprovalsModal } from './components/PendingApprovalsModal';
+import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
 import { 
   Users,
   UserCheck, 
@@ -109,6 +110,11 @@ export default function App() {
     } else if (view === 'online-exam' && examIdStr) {
       setOnlineExamId(Number(examIdStr));
     }
+
+    // Pull latest database updates from Hostinger MySQL
+    pullCloudUpdatesToIndexedDB();
+    const interval = setInterval(pullCloudUpdatesToIndexedDB, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   // Auto-seed question bank on mount
@@ -1860,13 +1866,27 @@ export default function App() {
         await db.submissions.delete(duplicate.id!);
       }
 
-      await db.submissions.add({
+      const subId = await db.submissions.add({
         examId: scannerExamId,
         studentId: scanResult.studentId,
         score: scanResult.score,
         answers: scanResult.answers,
         scannedAt: new Date()
       });
+
+      // Sync submission to Hostinger MySQL
+      const savedSub = await db.submissions.get(subId);
+      if (savedSub) {
+        try {
+          await fetch('/api/submissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(savedSub)
+          });
+        } catch (err) {
+          console.warn("MySQL submission sync warning:", err);
+        }
+      }
 
       confetti({ particleCount: 100, spread: 80 });
       alert(`Score of ${scanResult.score} saved successfully for ${scanResult.studentName}!`);

@@ -520,6 +520,22 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         });
       }
 
+      // Sync exam record to Hostinger MySQL
+      if (finalExamId) {
+        const savedExam = await db.exams.get(finalExamId);
+        if (savedExam) {
+          try {
+            await fetch('/api/exams', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(savedExam)
+            });
+          } catch (err) {
+            console.warn("MySQL exam sync warning:", err);
+          }
+        }
+      }
+
       // Write questions if online
       if (examMode === 'online' && finalExamId) {
         // If edit mode, delete old questions first to ensure clean state

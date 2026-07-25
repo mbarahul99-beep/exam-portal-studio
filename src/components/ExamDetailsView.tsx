@@ -178,6 +178,20 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       // 1. Update exam answerKey in DB
       await db.exams.update(exam.id!, { answerKey: editableKeys });
 
+      // Sync exam to Hostinger MySQL
+      const updatedExam = await db.exams.get(exam.id!);
+      if (updatedExam) {
+        try {
+          await fetch('/api/exams', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedExam)
+          });
+        } catch (err) {
+          console.warn("MySQL exam sync warning:", err);
+        }
+      }
+
       // 2. Recalculate scores for all submissions of this exam
       const cMarks = exam.correctMarks ?? 4;
       const wMarks = exam.incorrectMarks ?? 0;
@@ -197,6 +211,20 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           }
         }
         await db.submissions.update(sub.id!, { score: newScore });
+
+        // Sync submission to Hostinger MySQL
+        const updatedSub = await db.submissions.get(sub.id!);
+        if (updatedSub) {
+          try {
+            await fetch('/api/submissions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedSub)
+            });
+          } catch (err) {
+            console.warn("MySQL submission sync warning:", err);
+          }
+        }
       }
 
       alert(`Successfully saved updated Answer Keys for Q1 to Q${exam.numQuestions}!`);

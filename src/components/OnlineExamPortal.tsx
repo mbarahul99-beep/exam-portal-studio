@@ -295,7 +295,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
       }
 
       // 2. Save submission details
-      await db.submissions.add({
+      const subId = await db.submissions.add({
         examId: examId,
         studentId: student.id!,
         score: score,
@@ -305,6 +305,20 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         timeTakenSeconds: (exam.durationMins || 180) * 60 - secondsLeft,
         attemptType: 'Online'
       });
+
+      // Sync online submission to Hostinger MySQL
+      const savedSub = await db.submissions.get(subId);
+      if (savedSub) {
+        try {
+          await fetch('/api/submissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(savedSub)
+          });
+        } catch (err) {
+          console.warn("MySQL submission sync warning:", err);
+        }
+      }
 
       // Compute total maximum potential points
       let maxScore = 0;

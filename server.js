@@ -261,6 +261,117 @@ app.post('/api/attendance', async (req, res) => {
   }
 });
 
+// Upsert Exam API (Create or update exam details & answer keys in Hostinger MySQL)
+app.post('/api/exams', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode } = req.body;
+  try {
+    const keyJson = typeof answerKey === 'object' ? JSON.stringify(answerKey) : answerKey;
+    if (id) {
+      const query = `
+        UPDATE exams SET
+          title = ?, className = ?, date = ?, status = ?, numQuestions = ?, answerKey = ?,
+          correctMarks = ?, incorrectMarks = ?, unansweredMarks = ?, startsAt = ?, durationMins = ?,
+          loginOption = ?, passcode = ?
+        WHERE id = ?;
+      `;
+      await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, id]);
+      res.json({ success: true, id });
+    } else {
+      const query = `
+        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `;
+      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode]);
+      res.json({ success: true, id: result.insertId });
+    }
+  } catch (err) {
+    console.error("Exam save error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upsert Submission API (Save student scores & graded responses in Hostinger MySQL)
+app.post('/api/submissions', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, examId, studentId, score, answers, omrImageUrl, accessToken } = req.body;
+  try {
+    const ansJson = typeof answers === 'object' ? JSON.stringify(answers) : answers;
+    if (id) {
+      const query = `
+        UPDATE submissions SET score = ?, answers = ?, omrImageUrl = COALESCE(?, omrImageUrl), accessToken = COALESCE(?, accessToken)
+        WHERE id = ?;
+      `;
+      await pool.query(query, [score, ansJson, omrImageUrl, accessToken, id]);
+      res.json({ success: true, id });
+    } else {
+      const query = `
+        INSERT INTO submissions (examId, studentId, score, answers, omrImageUrl, accessToken)
+        VALUES (?, ?, ?, ?, ?, ?);
+      `;
+      const [result] = await pool.query(query, [examId, studentId, score, ansJson, omrImageUrl, accessToken]);
+      res.json({ success: true, id: result.insertId });
+    }
+  } catch (err) {
+    console.error("Submission save error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upsert Class API
+app.post('/api/classes', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { name, state } = req.body;
+  try {
+    const query = `
+      INSERT INTO classes (name, state)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE state = VALUES(state);
+    `;
+    const [result] = await pool.query(query, [name, state || 'Synced']);
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pending Registrations APIs for Student Invite Links
+app.get('/api/pending-registrations', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [rows] = await pool.query('SELECT * FROM pending_registrations WHERE status = "pending" ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/register-student', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { studentNum, name, className, email, phone, whatsappNumber } = req.body;
+  try {
+    const query = `
+      INSERT INTO pending_registrations (studentNum, name, className, email, phone, whatsappNumber, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending');
+    `;
+    const [result] = await pool.query(query, [studentNum, name, className, email, phone, whatsappNumber]);
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/approve-registration', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, status } = req.body;
+  try {
+    await pool.query('UPDATE pending_registrations SET status = ? WHERE id = ?', [status || 'approved', id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Save Scanned OMR Sheet Image API
 app.post('/api/upload-omr', async (req, res) => {
   const { imageDataBase64, filename } = req.body;

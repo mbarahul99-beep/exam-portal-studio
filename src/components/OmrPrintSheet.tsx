@@ -56,9 +56,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
            }} 
       />
 
-      {/* Header section with APEX INSTITUTE, JIND */}
-      <div className="omr-header-section" style={{ top: toY(65) }}>
+      {/* Institute Name (Positioned ABOVE top margin line 70, outside scanning frame) */}
+      <div style={{ position: 'absolute', top: toY(30), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
         <h1 className="omr-institute-title">APEX INSTITUTE, JIND</h1>
+      </div>
+
+      {/* Header section inside the margin frame */}
+      <div className="omr-header-section" style={{ top: toY(78) }}>
         <div className="omr-exam-title">{examTitle.toUpperCase()}</div>
         <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
       </div>
@@ -199,12 +203,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             <div className="info-row">
               <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
               <div className="info-line" />
-            </div>
-            <div className="info-row">
-              <span className="info-label">EXAM NAME</span>
-              <div className="info-line" style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: '#000', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                {examTitle}
-              </div>
             </div>
           </div>
         );

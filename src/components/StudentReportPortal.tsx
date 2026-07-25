@@ -572,7 +572,9 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Detailed Performance Roster</h3>
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.01)' }}>
-                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  
+                  {/* Desktop Table View */}
+                  <div className="desktop-roster-table-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 800 }}>
@@ -673,6 +675,55 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Mobile Roster Cards View */}
+                  <div className="mobile-roster-cards-view">
+                    {studentHistory.map((sub, idx) => {
+                      const maxScore = sub.exam.numQuestions * (sub.exam.correctMarks || 4);
+                      const pct = maxScore > 0 ? Math.round((sub.score / maxScore) * 100) : 0;
+                      const diffFromAvg = Math.round((sub.score - sub.classAvg) * 10) / 10;
+                      const aboveAvg = diffFromAvg >= 0;
+
+                      return (
+                        <div key={`m-roster-${idx}`} className="mobile-exam-item-card">
+                          <div className="card-header-line">
+                            <div>
+                              <h4 className="exam-card-title">{sub.exam.title}</h4>
+                              <div className="sub-meta-row">
+                                <span className="meta-text"><Calendar size={12} /> {new Date(sub.exam.date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                                <span className={`type-badge ${sub.attemptType === 'Online' ? 'online' : 'omr'}`}>
+                                  {sub.attemptType || 'OMR'}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="rank-badge-pill">Rank #{sub.studentRank}</span>
+                          </div>
+
+                          <div className="stats-grid-row">
+                            <div className="stat-box">
+                              <span className="lbl">Score</span>
+                              <span className="val">{sub.score} <small>/ {maxScore}</small></span>
+                            </div>
+                            <div className="stat-box">
+                              <span className="lbl">Class Avg</span>
+                              <span className="val">{sub.classAvg} <small style={{ color: aboveAvg ? '#16a34a' : '#dc2626' }}>({aboveAvg ? '+' : ''}{diffFromAvg})</small></span>
+                            </div>
+                            <div className="stat-box">
+                              <span className="lbl">Accuracy</span>
+                              <span className="val">{pct}%</span>
+                            </div>
+                          </div>
+
+                          <div className="card-action-row">
+                            <button className="btn-view-analysis-mobile" onClick={() => setActiveAnalysisSub(sub)}>
+                              View Analysis
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
                 </div>
               </div>
 

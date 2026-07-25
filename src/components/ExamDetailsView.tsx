@@ -14,7 +14,9 @@ import {
   Edit2,
   Send,
   X,
-  Search
+  Search,
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -323,6 +325,44 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     }
   };
 
+  const handleDownloadExcelReport = () => {
+    if (examSubs.length === 0) {
+      alert("No student submissions available for this exam yet to export.");
+      return;
+    }
+
+    const totalPossible = exam.numQuestions * (exam.correctMarks ?? 4);
+
+    // Build CSV export content
+    const headers = ["Rank", "Roll Number", "Student Name", "Class", "Score", "Total Marks", "Percentage", "Submission Date"];
+    const rows = rankedRows.map(row => {
+      const pct = totalPossible > 0 ? Math.max(0, Math.round((row.score / totalPossible) * 100)) : 0;
+      const dateStr = new Date(row.scannedAt).toLocaleString().replace(/,/g, '');
+      return [
+        row.rank,
+        `"${row.studentNum || ''}"`,
+        `"${row.studentName.replace(/"/g, '""')}"`,
+        `"${row.className || ''}"`,
+        row.score,
+        totalPossible,
+        `${pct}%`,
+        `"${dateStr}"`
+      ].join(",");
+    });
+
+    const csvString = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\ufeff" + csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const sanitizedTitle = exam.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+    link.download = `${sanitizedTitle}_Report.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Stats calculation
   const highestScore = examSubs.length > 0 ? Math.max(...examSubs.map(s => s.score)) : 0;
   const averageScore = examSubs.length > 0 
@@ -352,8 +392,52 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       {/* Main Details Card Header */}
       <div className="glass-card exam-details-header-card mb-4">
         <div className="header-meta-row">
-          <div>
+          <div style={{ flex: 1 }}>
             <h2 className="detail-exam-title">{exam.title.toUpperCase()}</h2>
+            
+            {/* Feature Action Buttons Bar right below Exam Heading */}
+            <div className="exam-feature-actions-bar mt-3 mb-3">
+              <button 
+                className="btn-feature-action primary"
+                onClick={() => setActiveSubTab('result')}
+                title="View Student Results & Reports"
+              >
+                <FileText size={16} /> View Reports
+              </button>
+
+              <button 
+                className="btn-feature-action success"
+                onClick={handleDownloadExcelReport}
+                title="Download Graded Exam Leaderboard as Excel / CSV File"
+              >
+                <FileSpreadsheet size={16} /> Download Excel Report
+              </button>
+
+              <button 
+                className="btn-feature-action"
+                onClick={() => setIsScanningMode(true)}
+                title="Scan OMR Sheets"
+              >
+                <Camera size={16} /> Scan Sheets
+              </button>
+
+              <button 
+                className="btn-feature-action"
+                onClick={() => onPrintRedirect(exam)}
+                title="Print OMR Sheet (PDF)"
+              >
+                <Printer size={16} /> Print OMR
+              </button>
+
+              <button 
+                className="btn-feature-action whatsapp"
+                onClick={startWhatsAppBroadcast}
+                title="Broadcast Private Report Links to Parents via WhatsApp"
+              >
+                <Send size={16} /> WhatsApp Broadcast
+              </button>
+            </div>
+
             <div className="exam-meta-pills mt-2">
               <span className="meta-pill">
                 <Calendar size={14} />

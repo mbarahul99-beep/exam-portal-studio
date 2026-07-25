@@ -320,7 +320,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Section-wise Performance Breakdown</h3>
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  {/* Desktop Table View */}
+                  <div className="desktop-sec-table-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 800 }}>
@@ -352,6 +353,59 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         })}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Mobile Cards View */}
+                  <div className="mobile-sec-cards-view">
+                    {analysisDetails.sectionRows.map((row, idx) => {
+                      const pct = row.total > 0 ? Math.round((row.correct / row.total) * 100) : 0;
+                      return (
+                        <div key={`m-sec-${idx}`} className="mobile-sec-card">
+                          <div className="mobile-sec-card-header">
+                            <h4 className="sec-name">{row.name}</h4>
+                            <span 
+                              className="sec-accuracy-pill"
+                              style={{ 
+                                color: pct >= 75 ? '#15803d' : pct >= 50 ? '#1d4ed8' : '#c2410c',
+                                background: pct >= 75 ? '#f0fdf4' : pct >= 50 ? '#eff6ff' : '#fff7ed',
+                                border: `1px solid ${pct >= 75 ? '#bbf7d0' : pct >= 50 ? '#bfdbfe' : '#ffedd5'}`
+                              }}
+                            >
+                              {pct}% Accuracy
+                            </span>
+                          </div>
+
+                          <div className="mobile-sec-card-stats-row">
+                            <div className="sec-stat-badge correct">
+                              <span className="dot">✓</span> {row.correct} Correct
+                            </div>
+                            <div className="sec-stat-badge incorrect">
+                              <span className="dot">✗</span> {row.incorrect} Wrong
+                            </div>
+                            <div className="sec-stat-badge left">
+                              <span className="dot">◯</span> {row.unanswered} Left
+                            </div>
+                          </div>
+
+                          <div className="mobile-sec-card-footer">
+                            <span className="sec-score-label">Marks Scored</span>
+                            <span className="sec-score-val">
+                              <strong>{row.score}</strong> / {row.maxScore} pts
+                            </span>
+                          </div>
+
+                          <div className="sec-progress-track">
+                            <div 
+                              className="sec-progress-fill" 
+                              style={{ 
+                                width: `${Math.max(0, Math.min(100, pct))}%`,
+                                background: pct >= 75 ? '#16a34a' : pct >= 50 ? '#2563eb' : '#ea580c'
+                              }} 
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

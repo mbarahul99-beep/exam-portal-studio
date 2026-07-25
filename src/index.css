@@ -2542,3 +2542,130 @@ button {
   border-color: #1058ca;
 }
 
+/* ==========================================================================
+   Sectionwise Performance Breakdown Mobile Styles
+   ========================================================================== */
+
+.student-analysis-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.desktop-sec-table-view {
+  display: block;
+}
+
+.mobile-sec-cards-view {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .student-analysis-split {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .desktop-sec-table-view {
+    display: none !important;
+  }
+
+  .mobile-sec-cards-view {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    background: #f8fafc;
+  }
+
+  .mobile-sec-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  }
+
+  .mobile-sec-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .mobile-sec-card-header .sec-name {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+  }
+
+  .sec-accuracy-pill {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
+  .mobile-sec-card-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .sec-stat-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .sec-stat-badge.correct {
+    background: #f0fdf4;
+    color: #16a34a;
+  }
+
+  .sec-stat-badge.incorrect {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+
+  .sec-stat-badge.left {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .mobile-sec-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-bottom: 8px;
+  }
+
+  .sec-score-val {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .sec-progress-track {
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .sec-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+}
+

@@ -18,6 +18,7 @@ import { PendingApprovalsModal } from './components/PendingApprovalsModal';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
+import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
 import { 
   Users,
@@ -56,7 +57,8 @@ import {
   ArrowLeft,
   MoreVertical,
   User,
-  Shield
+  Shield,
+  Download
 } from 'lucide-react';
 
 export default function App() {
@@ -70,6 +72,7 @@ export default function App() {
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [onlineExamId, setOnlineExamId] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   // Authentication State
   const [sessionRole, setSessionRole] = useState<'admin' | 'teacher' | 'student' | null>(
@@ -2207,6 +2210,17 @@ export default function App() {
               }}
             >
               <Settings size={18} /> WhatsApp API
+            </button>
+
+            <button 
+              className="nav-item"
+              onClick={() => {
+                setShowInstallPrompt(true);
+                setMobileMenuOpen(false);
+              }}
+              style={{ color: '#dc0045', fontWeight: 'bold' }}
+            >
+              <Download size={18} /> Install App
             </button>
 
             <button 
@@ -5151,6 +5165,9 @@ export default function App() {
           }
         }
       `}</style>
+
+      {/* PWA Add to Home Screen Prompt Modal / Banner */}
+      <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
     </div>
   );
 }

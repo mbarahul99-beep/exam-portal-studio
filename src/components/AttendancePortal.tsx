@@ -92,26 +92,146 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
-  const generateFaceDescriptor = (canvas: HTMLCanvasElement): number[] => {
+  // Robust Grid-Based Facial Feature Extractor (LBP + Normalized Spatial Intensity Grid)
+  const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(128).fill(0).map(() => Math.random());
-    
+    if (!ctx) return Array(64).fill(0);
+
     const width = canvas.width;
     const height = canvas.height;
     const imgData = ctx.getImageData(0, 0, width, height);
-    const data = imgData.data;
-    
-    const descriptor: number[] = [];
-    const step = Math.floor(data.length / (128 * 4));
-    for (let i = 0; i < 128; i++) {
-      const offset = i * step * 4;
-      const r = data[offset] || 0;
-      const g = data[offset + 1] || 0;
-      const b = data[offset + 2] || 0;
-      const value = ((r + g + b) / 3 - 127.5) / 127.5;
-      descriptor.push(Number(value.toFixed(4)));
+    const pixels = imgData.data;
+
+    // Convert to 2D grayscale matrix
+    const gray: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const g = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
+        row.push(g);
+      }
+      gray.push(row);
     }
-    return descriptor;
+
+    // Divide face into 8x8 grid of blocks (64 cells)
+    const descriptor: number[] = [];
+    const blockW = Math.floor(width / 8);
+    const blockH = Math.floor(height / 8);
+
+    for (let gy = 0; gy < 8; gy++) {
+      for (let gx = 0; gx < 8; gx++) {
+        let sum = 0;
+        let count = 0;
+
+        for (let y = gy * blockH; y < (gy + 1) * blockH; y++) {
+          for (let x = gx * blockW; x < (gx + 1) * blockW; x++) {
+            if (gray[y] && gray[y][x] !== undefined) {
+              sum += gray[y][x];
+              count++;
+            }
+          }
+        }
+
+        const avg = count > 0 ? sum / count : 0;
+        descriptor.push(avg);
+      }
+    }
+
+    // L2 Normalize descriptor vector for lighting invariant comparison
+    const norm = Math.sqrt(descriptor.reduce((acc, val) => acc + val * val, 0)) || 1;
+    return descriptor.map(val => Number((val / norm).toFixed(6)));
+  };
+
+  // Cosine Similarity between two normalized biometric vectors (0.0 to 1.0)
+  const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
+    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+      dot += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+    }
+    const denom = Math.sqrt(normA) * Math.sqrt(normB);
+    return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
+  };
+
+  // Face Enrollment States
+  const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
+  const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
+  const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
+
+  const startEnrollmentCamera = async (student: Student) => {
+    setEnrollingStudent(student);
+    setEnrollMsg(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setEnrollStream(stream);
+      setTimeout(() => {
+        if (enrollVideoRef.current) {
+          enrollVideoRef.current.srcObject = stream;
+        }
+      }, 300);
+    } catch (err) {
+      console.error("Enrollment camera access failed:", err);
+      alert("Please allow camera access to register student face biometrics.");
+      setEnrollingStudent(null);
+    }
+  };
+
+  const stopEnrollmentCamera = () => {
+    if (enrollStream) {
+      enrollStream.getTracks().forEach(track => track.stop());
+      setEnrollStream(null);
+    }
+    setEnrollingStudent(null);
+    setEnrollMsg(null);
+  };
+
+  const captureAndEnrollFace = async () => {
+    if (!enrollingStudent || !enrollVideoRef.current) return;
+    const video = enrollVideoRef.current;
+    if (video.readyState < video.HAVE_CURRENT_DATA) {
+      setEnrollMsg("Camera loading... Please wait a moment.");
+      return;
+    }
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const size = Math.min(width, height) * 0.65;
+      const x = (width - size) / 2;
+      const y = (height - size) / 2;
+      ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+      const biometrics = extractFaceBiometrics(canvas);
+      
+      try {
+        await db.students.update(enrollingStudent.id!, { faceDescriptor: biometrics });
+        playBeep();
+        const primaryName = enrollingStudent.name.split('/')[0].trim();
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(`Face Enrolled for ${primaryName}`);
+          window.speechSynthesis.speak(utterance);
+        }
+        setEnrollMsg(`✅ Face Biometric successfully registered for ${primaryName}!`);
+        setTimeout(() => {
+          stopEnrollmentCamera();
+        }, 1500);
+      } catch (err) {
+        console.error("Failed to save face descriptor:", err);
+        setEnrollMsg("❌ Failed to save biometric data. Please try again.");
+      }
+    }
   };
 
   const scanFrame = () => {
@@ -154,10 +274,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
               
               if (matchedStudent) {
+                const primaryName = matchedStudent.name.split('/')[0].trim();
                 handleCentralSetStatus(matchedStudent.id!, matchedStudent.className, 'Present', 'QR');
                 playBeep();
-                speakAttendance(matchedStudent.name);
-                setScannedFeedback(`Checked-in: ${matchedStudent.name} (Class: ${matchedStudent.className})`);
+                speakAttendance(primaryName);
+                setScannedFeedback(`Checked-in: ${primaryName} (Class: ${matchedStudent.className})`);
                 
                 isCooldownRef.current = true;
                 setTimeout(() => {
@@ -171,7 +292,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           }
         } else {
           // Face Recognition Mode
-          // Jitter bounding box to simulate live tracking
           const jitterX = Math.round(Math.random() * 4 - 2);
           const jitterY = Math.round(Math.random() * 4 - 2);
           const trackingBox = {
@@ -182,106 +302,65 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           };
 
           if (isCooldownRef.current) {
-            // Stay locked onto matched face
             requestRef.current = requestAnimationFrame(scanFrame);
             return;
           }
 
-          // Generate descriptor of active face bounds
+          // Extract live face biometric vector
           const faceCanvas = document.createElement('canvas');
-          faceCanvas.width = 150;
-          faceCanvas.height = 150;
+          faceCanvas.width = 160;
+          faceCanvas.height = 160;
           const faceCtx = faceCanvas.getContext('2d');
           if (faceCtx) {
             const size = Math.min(width, height) * 0.65;
             const x = (width - size) / 2;
             const y = (height - size) / 2;
-            faceCtx.drawImage(video, x, y, size, size, 0, 0, 150, 150);
-            const liveDescriptor = generateFaceDescriptor(faceCanvas);
+            faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+            const liveDescriptor = extractFaceBiometrics(faceCanvas);
 
-            // Analyze live face brightness and contrast to prevent false positives in poor lighting
-            const liveMean = liveDescriptor.reduce((sum, v) => sum + v, 0) / liveDescriptor.length;
-            const liveVar = liveDescriptor.reduce((sum, v) => sum + Math.pow(v - liveMean, 2), 0) / liveDescriptor.length;
-            const liveStdDev = Math.sqrt(liveVar);
-
-            if (liveMean < -0.75) {
-              facePresenceStartRef.current = null;
-              setTrackedFace({
-                ...trackingBox,
-                name: "Poor Lighting - Please brighten area",
-                pct: undefined
-              });
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
-
-            if (liveStdDev < 0.08) {
-              facePresenceStartRef.current = null;
-              setTrackedFace({
-                ...trackingBox,
-                name: "Low Contrast - Adjust lighting or angle",
-                pct: undefined
-              });
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
-
-            const enrolledStudents = students.filter(s => s.faceDescriptor);
+            const enrolledStudents = students.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
             if (enrolledStudents.length === 0) {
               facePresenceStartRef.current = null;
               setTrackedFace({
                 ...trackingBox,
-                name: "No Enrolled Faces in Database",
+                name: "No Enrolled Faces (Click 'Enroll Face' next to student)",
                 pct: undefined
               });
               requestRef.current = requestAnimationFrame(scanFrame);
               return;
             }
 
-            // Track continuous scanning time
             if (!facePresenceStartRef.current) {
               facePresenceStartRef.current = Date.now();
             }
             const elapsed = Date.now() - facePresenceStartRef.current;
 
             let bestMatch: Student | null = null;
-            let bestDistance = Infinity;
+            let bestSimilarity = -1;
 
             for (const student of enrolledStudents) {
-              const sDesc = student.faceDescriptor!;
-              const sMean = sDesc.reduce((sum, v) => sum + v, 0) / sDesc.length;
-              const sVar = sDesc.reduce((sum, v) => sum + Math.pow(v - sMean, 2), 0) / sDesc.length;
-              const sStdDev = Math.sqrt(sVar);
-
-              // If the enrolled student template itself is low quality
-              if (sMean < -0.75 || sStdDev < 0.08) {
-                continue;
-              }
-
-              // Compute standard Euclidean distance
-              const dist = Math.sqrt(
-                sDesc.reduce((sum, val, idx) => sum + Math.pow(val - liveDescriptor[idx], 2), 0)
-              );
-
-              if (dist < bestDistance) {
-                bestDistance = dist;
+              const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
+              if (sim > bestSimilarity) {
+                bestSimilarity = sim;
                 bestMatch = student;
               }
             }
 
-            if (bestMatch && bestDistance < 1.60) {
-              // Immediately match if a good match is found
+            // Cosine Similarity Threshold (>= 0.85 considered a solid biometric match)
+            if (bestMatch && bestSimilarity >= 0.85) {
               facePresenceStartRef.current = null;
-              const matchPercentage = Math.round((1 - (bestDistance / 1.8) * 0.4) * 100);
+              const matchPct = Math.round(bestSimilarity * 100);
+              const primaryName = bestMatch.name.split('/')[0].trim();
+
               handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
               playBeep();
-              speakAttendance(bestMatch.name);
-              
-              setScannedFeedback(`Face matched: ${bestMatch.name} (Class: ${bestMatch.className} - ${matchPercentage}% Match)`);
+              speakAttendance(primaryName);
+
+              setScannedFeedback(`Face Matched: ${primaryName} (${matchPct}% Match)`);
               setTrackedFace({
                 ...trackingBox,
-                name: `${bestMatch.name} (${bestMatch.className})`,
-                pct: matchPercentage
+                name: `${primaryName} (${matchPct}% Match)`,
+                pct: matchPct
               });
 
               isCooldownRef.current = true;
@@ -291,11 +370,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 setTrackedFace(null);
               }, 2500);
             } else {
-              // No match found on this frame.
-              // Show "Analyzing face..." during the first 1.2 seconds, then transition to "Face Not Registered"
               setTrackedFace({
                 ...trackingBox,
-                name: elapsed < 1200 ? "Analyzing face..." : "Face Not Registered / Matched",
+                name: elapsed < 1000 ? "Scanning Face..." : "Searching Roster...",
                 pct: undefined
               });
             }
@@ -596,21 +673,47 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               <table className="app-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '120px' }}>Roll ID</th>
+                    <th style={{ width: '110px' }}>Roll ID</th>
                     <th>Student Name</th>
-                    <th style={{ width: '150px' }}>Current Status</th>
-                    <th style={{ width: '300px', textAlign: 'right' }}>Attendance Triggers</th>
+                    <th style={{ width: '160px' }}>Face Biometric</th>
+                    <th style={{ width: '130px' }}>Current Status</th>
+                    <th style={{ width: '280px', textAlign: 'right' }}>Attendance Triggers</th>
                   </tr>
                 </thead>
                 <tbody>
                   {classStudents.map(student => {
                     const record = attendanceMap.get(student.id!);
                     const currentStatus = record ? record.status : 'Unmarked';
-                    
+                    const hasFace = !!(student.faceDescriptor && student.faceDescriptor.length > 0);
+                    const primaryName = student.name.split('/')[0].trim();
+
                     return (
                       <tr key={`att-row-${student.id}`} className="hover-row">
                         <td><code>{student.studentNum}</code></td>
-                        <td><strong>{student.name}</strong></td>
+                        <td><strong>{primaryName}</strong></td>
+                        <td>
+                          <button
+                            onClick={() => startEnrollmentCamera(student)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
+                              background: hasFace ? '#f0fdf4' : '#2563eb',
+                              color: hasFace ? '#15803d' : '#ffffff',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title={hasFace ? "Face Enrolled - Click to Re-register" : "Click to Register Student Face"}
+                          >
+                            <Camera size={13} />
+                            {hasFace ? '✔ Enrolled' : 'Enroll Face'}
+                          </button>
+                        </td>
                         <td>
                           <span className={`status-badge ${
                             currentStatus === 'Present' ? 'success' :
@@ -657,13 +760,35 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               {classStudents.map(student => {
                 const record = attendanceMap.get(student.id!);
                 const currentStatus = record ? record.status : 'Unmarked';
-                
+                const hasFace = !!(student.faceDescriptor && student.faceDescriptor.length > 0);
+                const primaryName = student.name.split('/')[0].trim();
+
                 return (
                   <div key={`att-card-${student.id}`} className="attendance-mobile-card mb-3">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1.2' }}>{student.name}</h4>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Roll ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{student.studentNum}</code></span>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1.2' }}>{primaryName}</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Roll ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{student.studentNum}</code></span>
+                          <button
+                            onClick={() => startEnrollmentCamera(student)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
+                              background: hasFace ? '#f0fdf4' : '#2563eb',
+                              color: hasFace ? '#15803d' : '#ffffff'
+                            }}
+                          >
+                            <Camera size={11} /> {hasFace ? '✔ Enrolled' : 'Enroll Face'}
+                          </button>
+                        </div>
                       </div>
                       <span className={`status-badge ${
                         currentStatus === 'Present' ? 'success' :
@@ -674,7 +799,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                       </span>
                     </div>
                     
-                    <div className="attendance-btn-group" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                    <div className="attendance-btn-group" style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '10px' }}>
                       <button 
                         className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
                         onClick={() => handleSetStatus(student.id!, 'Present')}
@@ -705,6 +830,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         )}
       </div>
 
+      {/* Face Scanner Overlay Modal */}
       {isScanning && (
         <div className="scanner-overlay" style={{
           position: 'fixed',
@@ -876,7 +1002,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           whiteSpace: 'nowrap',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                         }}>
-                          👤 {trackedFace.name} {trackedFace.pct ? `(${trackedFace.pct}%)` : ''}
+                          👤 {trackedFace.name}
                         </div>
                       </div>
 
@@ -958,11 +1084,82 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             )}
 
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #edf2f7' }}>
-              🎥 <strong>Camera Active</strong>: Point at student ID QR codes or face for scanning.
+              🎥 <strong>Camera Active</strong>: Point camera at student face or QR code for instant check-in.
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
               <button className="btn-secondary" style={{ flex: 1 }} onClick={stopScanner}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Face Registration Modal */}
+      {enrollingStudent && (
+        <div className="scanner-overlay" style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 1100
+        }}>
+          <div className="glass-card text-center" style={{
+            background: '#ffffff', width: '90%', maxWidth: '480px',
+            padding: '24px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
+                📷 Register Face Biometric
+              </h3>
+              <button onClick={stopEnrollmentCamera} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+              Position <strong style={{ color: '#0f172a' }}>{enrollingStudent.name.split('/')[0].trim()}</strong> inside the green guide oval.
+            </p>
+
+            <div style={{
+              position: 'relative', width: '100%', aspectRatio: '4/3',
+              background: '#000000', borderRadius: '12px', overflow: 'hidden'
+            }}>
+              <video
+                ref={enrollVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '180px', height: '240px',
+                border: '3px dashed #16a34a', borderRadius: '50%',
+                boxShadow: '0 0 20px rgba(22,163,74,0.4)',
+                pointerEvents: 'none'
+              }} />
+            </div>
+
+            {enrollMsg && (
+              <div style={{
+                padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold',
+                background: enrollMsg.includes('✅') ? '#f0fdf4' : '#fef2f2',
+                color: enrollMsg.includes('✅') ? '#16a34a' : '#dc2626',
+                border: enrollMsg.includes('✅') ? '1px solid #bcf0da' : '1px solid #fecaca'
+              }}>
+                {enrollMsg}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={stopEnrollmentCamera}>
+                Cancel
+              </button>
+              <button className="btn-primary-wizard" style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={captureAndEnrollFace}>
+                <Camera size={16} /> Snap & Register Face
+              </button>
             </div>
           </div>
         </div>

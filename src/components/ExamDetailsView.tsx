@@ -20,7 +20,8 @@ import {
   Check,
   Send,
   Printer,
-  Download
+  Download,
+  UserX
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
@@ -47,8 +48,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onDownloadJPG,
   onViewAnalysis
 }) => {
-  // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'analysis'
-  const [activeView, setActiveView] = useState<'hub' | 'reports' | 'analysis'>('hub');
+  // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis'
+  const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis'>('hub');
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [editableKeys, setEditableKeys] = useState<Record<number, string>>(() => ({ ...(exam.answerKey || {}) }));
@@ -66,6 +67,60 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const classStudents = students.filter(s => s.className === exam.className);
   const totalClassCount = classStudents.length > 0 ? classStudents.length : Math.max(examSubs.length, 1);
   const scannedPercentage = Math.min(100, Math.round((examSubs.length / totalClassCount) * 100));
+
+  // Calculate absent students (enrolled in class but sheet not scanned/submitted)
+  const submittedStudentIds = new Set(examSubs.map(s => s.studentId));
+  const absentStudents = classStudents
+    .filter(st => !submittedStudentIds.has(st.id!))
+    .map(st => ({
+      ...st,
+      cleanName: st.name.split('/')[0].trim()
+    }));
+
+  const handleNotifyAbsentee = async (student: Student) => {
+    const config = await getWhatsAppConfig();
+    if (!config.metaAccessToken || !config.phoneNumberId) {
+      alert("WhatsApp API credentials are not configured. Go to the 'WhatsApp API' settings tab first.");
+      return;
+    }
+
+    if (!student.whatsappNumber) {
+      alert(`WhatsApp number is missing in roster profile for ${student.name.split('/')[0].trim()}.`);
+      return;
+    }
+
+    const cleanName = student.name.split('/')[0].trim();
+    try {
+      const result = await sendWhatsAppTemplateMessage({
+        recipientPhone: student.whatsappNumber,
+        studentName: cleanName,
+        examTitle: exam.title,
+        reportUrl: window.location.origin,
+        accessToken: 'ABSENT'
+      }, config);
+
+      if (result.success) {
+        alert(`Sent absence alert to ${cleanName}'s parent via WhatsApp!`);
+      } else {
+        alert(`WhatsApp error: ${result.error || 'Failed to send notification.'}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleBroadcastAbsentees = async () => {
+    if (absentStudents.length === 0) {
+      alert("All students in this class have submitted their exam. No absentees!");
+      return;
+    }
+
+    if (confirm(`Send WhatsApp absence alert to all ${absentStudents.length} absent students' parents?`)) {
+      for (const st of absentStudents) {
+        await handleNotifyAbsentee(st);
+      }
+    }
+  };
 
   // Compute student map & dense ranks for reports
   const studentMap = new Map(students.map(s => [s.id, s]));
@@ -443,13 +498,6 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <span className="action-label">Download OMR JPG</span>
               </button>
 
-              <button className="circular-action-card" onClick={handleShareLink}>
-                <div className="circle-icon-box">
-                  <Globe size={22} color="#1058ca" />
-                </div>
-                <span className="action-label">Web Features</span>
-              </button>
-
               <button className="circular-action-card" onClick={startWhatsAppBroadcast}>
                 <div className="circle-icon-box">
                   <Send size={22} color="#16a34a" />
@@ -469,6 +517,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <FileText size={22} color="#1058ca" />
                 </div>
                 <span className="action-label">View Reports</span>
+              </button>
+
+              <button className="circular-action-card" onClick={() => setActiveView('absentees')}>
+                <div className="circle-icon-box" style={{ borderColor: '#fecaca', background: '#fef2f2' }}>
+                  <UserX size={22} color="#dc2626" />
+                </div>
+                <span className="action-label" style={{ color: '#dc2626', fontWeight: 700 }}>Absentees</span>
               </button>
 
               <button className="circular-action-card" onClick={handleDownloadExcelReport}>
@@ -595,6 +650,119 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                       <div className="stat-verified-check">
                         <Check size={14} />
                       </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 3: ABSENTEES ROSTER PAGE */}
+      {activeView === 'absentees' && (
+        <div className="exam-reports-page animate-fade-in">
+          {/* Top Bar */}
+          <div className="reports-top-bar">
+            <div className="bar-left">
+              <button className="back-btn-circle" onClick={() => setActiveView('hub')} title="Back to Exam Details">
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h2 className="reports-exam-title" style={{ margin: 0 }}>Absentees List</h2>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{exam.title} ({exam.className})</span>
+              </div>
+            </div>
+
+            {absentStudents.length > 0 && (
+              <button 
+                className="btn-primary-sm" 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', background: '#dc2626', borderColor: '#dc2626' }} 
+                onClick={handleBroadcastAbsentees}
+              >
+                <Send size={14} /> Notify All Absentees
+              </button>
+            )}
+          </div>
+
+          {/* Top Summary Cards for Absentees */}
+          <div className="reports-summary-cards">
+            <div className="summary-card">
+              <div className="card-icon-sq blue">
+                <Users size={18} />
+              </div>
+              <div className="card-info">
+                <span className="label">Total Enrolled</span>
+                <span className="val">{totalClassCount}</span>
+              </div>
+            </div>
+
+            <div className="summary-card">
+              <div className="card-icon-sq blue-light">
+                <CheckCircle size={18} />
+              </div>
+              <div className="card-info">
+                <span className="label">Appeared</span>
+                <span className="val">{examSubs.length}</span>
+              </div>
+            </div>
+
+            <div className="summary-card" style={{ background: '#fef2f2', borderColor: '#fecaca' }}>
+              <div className="card-icon-sq" style={{ background: '#fee2e2', color: '#dc2626' }}>
+                <UserX size={18} />
+              </div>
+              <div className="card-info">
+                <span className="label" style={{ color: '#991b1b' }}>Absent</span>
+                <span className="val" style={{ color: '#dc2626' }}>{absentStudents.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Absent Students List */}
+          <div className="reports-roster-list mt-3">
+            {absentStudents.length === 0 ? (
+              <div className="empty-roster-card" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', textAlign: 'center', padding: '30px' }}>
+                <CheckCircle size={40} color="#16a34a" style={{ margin: '0 auto 10px' }} />
+                <h3 style={{ margin: '0 0 6px 0', color: '#166534', fontWeight: 800 }}>No Absentees!</h3>
+                <p style={{ margin: 0, color: '#15803d', fontSize: '0.9rem' }}>All enrolled students in {exam.className} have submitted this exam.</p>
+              </div>
+            ) : (
+              absentStudents.map((st) => {
+                const initial = st.cleanName ? st.cleanName.charAt(0).toUpperCase() : 'A';
+
+                return (
+                  <div key={`absent-st-${st.id}`} className="student-report-card" style={{ borderLeft: '4px solid #dc2626' }}>
+                    <div className="student-card-main-row">
+                      {/* Circle Avatar with Initial */}
+                      <div className="student-avatar-circle" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                        <span>{initial}/</span>
+                      </div>
+
+                      {/* Student Name ONLY - No father name! */}
+                      <div className="student-name-block">
+                        <h4 className="student-primary-name">{st.cleanName}</h4>
+                        <span className="student-roll-no">Roll No: {st.studentNum || 'N/A'} • {st.className}</span>
+                      </div>
+
+                      {/* Absent Badge */}
+                      <div className="status-pill" style={{ background: '#fee2e2', color: '#dc2626', fontWeight: 800, padding: '4px 10px', fontSize: '0.8rem' }}>
+                        <UserX size={13} /> Absent
+                      </div>
+                    </div>
+
+                    {/* Action Row */}
+                    <div className="student-card-stats-row" style={{ justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {st.whatsappNumber ? `📱 ${st.whatsappNumber}` : 'No WhatsApp number listed'}
+                      </span>
+
+                      <button 
+                        className="btn-feature-action whatsapp" 
+                        style={{ padding: '6px 12px', fontSize: '0.78rem', borderRadius: '6px' }}
+                        onClick={() => handleNotifyAbsentee(st)}
+                      >
+                        <Send size={13} /> Send Alert
+                      </button>
                     </div>
                   </div>
                 );

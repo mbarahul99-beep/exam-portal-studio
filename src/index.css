@@ -1111,9 +1111,17 @@ button {
     align-items: stretch !important;
     gap: 16px !important;
     text-align: center !important;
+    margin-bottom: 75px !important;
+    padding: 16px !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+    border-radius: 12px !important;
   }
   .scan-bottom-bar label {
     justify-content: center !important;
+    font-weight: 700 !important;
+    color: #1e293b !important;
   }
   .scan-bottom-bar div {
     justify-content: center !important;

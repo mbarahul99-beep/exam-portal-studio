@@ -264,9 +264,24 @@ app.post('/api/upload-omr', async (req, res) => {
   }
 });
 
+// Serve Production Static Assets (Checks both dist folder and root folder for Hostinger)
+if (fs.existsSync(path.join(__dirname, 'dist'))) {
+  app.use(express.static(path.join(__dirname, 'dist')));
+}
+app.use(express.static(__dirname));
+
 // SPA Routing Fallback
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  const distPath = path.join(__dirname, 'dist', 'index.html');
+  const rootPath = path.join(__dirname, 'index.html');
+
+  if (fs.existsSync(distPath)) {
+    res.sendFile(distPath);
+  } else if (fs.existsSync(rootPath)) {
+    res.sendFile(rootPath);
+  } else {
+    res.status(404).send('Index HTML not found. Please ensure npm run build has completed.');
+  }
 });
 
 app.listen(PORT, () => {

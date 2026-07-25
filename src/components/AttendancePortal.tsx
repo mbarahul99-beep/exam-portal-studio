@@ -147,53 +147,115 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return Math.abs(topRowAvg - midRowAvg) >= 2 || stdDev >= 18;
   };
 
-  // Robust Grid-Based Facial Feature Extractor (LBP + Normalized Spatial Intensity Grid)
+  // 128-Element Lighting-Invariant Facial Biometric Extractor (Zero-Mean Unit-Variance + Gradients)
   const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(64).fill(0);
+    if (!ctx) return Array(128).fill(0);
 
     const width = canvas.width;
     const height = canvas.height;
     const imgData = ctx.getImageData(0, 0, width, height);
     const pixels = imgData.data;
 
-    // Convert to 2D grayscale matrix
+    // Convert to grayscale 2D array
     const gray: number[][] = [];
+    let sumGray = 0;
+    const totalPixels = width * height;
+
     for (let y = 0; y < height; y++) {
       const row: number[] = [];
       for (let x = 0; x < width; x++) {
         const idx = (y * width + x) * 4;
         const g = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
         row.push(g);
+        sumGray += g;
       }
       gray.push(row);
     }
 
-    // Divide face into 8x8 grid of blocks (64 cells)
+    // Zero-Mean Unit-Variance Standardization (Strips lighting & ambient shadow variations)
+    const meanGray = sumGray / totalPixels;
+    let varSum = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        varSum += Math.pow(gray[y][x] - meanGray, 2);
+      }
+    }
+    const stdGray = Math.sqrt(varSum / totalPixels) || 1;
+
+    const stdMatrix: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < width; x++) {
+        row.push((gray[y][x] - meanGray) / stdGray);
+      }
+      stdMatrix.push(row);
+    }
+
     const descriptor: number[] = [];
+
+    // Part A: 8x8 Spatial Grid Means (64 elements)
     const blockW = Math.floor(width / 8);
     const blockH = Math.floor(height / 8);
 
     for (let gy = 0; gy < 8; gy++) {
       for (let gx = 0; gx < 8; gx++) {
-        let sum = 0;
+        let bSum = 0;
         let count = 0;
-
         for (let y = gy * blockH; y < (gy + 1) * blockH; y++) {
           for (let x = gx * blockW; x < (gx + 1) * blockW; x++) {
-            if (gray[y] && gray[y][x] !== undefined) {
-              sum += gray[y][x];
+            if (stdMatrix[y] && stdMatrix[y][x] !== undefined) {
+              bSum += stdMatrix[y][x];
               count++;
             }
           }
         }
-
-        const avg = count > 0 ? sum / count : 0;
-        descriptor.push(avg);
+        descriptor.push(count > 0 ? bSum / count : 0);
       }
     }
 
-    // L2 Normalize descriptor vector for lighting invariant comparison
+    // Part B: 4x4 Gradient Magnitude Grid (32 elements)
+    const gBlockW = Math.floor(width / 4);
+    const gBlockH = Math.floor(height / 4);
+
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 4; gx++) {
+        let gradSum = 0;
+        let count = 0;
+        for (let y = gy * gBlockH + 1; y < (gy + 1) * gBlockH - 1; y++) {
+          for (let x = gx * gBlockW + 1; x < (gx + 1) * gBlockW - 1; x++) {
+            if (stdMatrix[y] && stdMatrix[y][x] !== undefined) {
+              const dx = stdMatrix[y][x + 1] - stdMatrix[y][x - 1];
+              const dy = stdMatrix[y + 1][x] - stdMatrix[y - 1][x];
+              gradSum += Math.sqrt(dx * dx + dy * dy);
+              count++;
+            }
+          }
+        }
+        descriptor.push(count > 0 ? gradSum / count : 0);
+      }
+    }
+
+    // Part C: 8 Sub-region Landmark Contrast Ratios (32 elements)
+    const subW = Math.floor(width / 4);
+    const subH = Math.floor(height / 8);
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 4; c++) {
+        let val = 0;
+        let cnt = 0;
+        for (let y = r * subH; y < (r + 1) * subH; y++) {
+          for (let x = c * subW; x < (c + 1) * subW; x++) {
+            if (stdMatrix[y] && stdMatrix[y][x] !== undefined) {
+              val += stdMatrix[y][x];
+              cnt++;
+            }
+          }
+        }
+        descriptor.push(cnt > 0 ? val / cnt : 0);
+      }
+    }
+
+    // L2 Vector Normalization
     const norm = Math.sqrt(descriptor.reduce((acc, val) => acc + val * val, 0)) || 1;
     return descriptor.map(val => Number((val / norm).toFixed(6)));
   };
@@ -216,8 +278,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     const cosSim = denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
     const dist = Math.sqrt(euclideanDistSq);
 
-    // Reject if L2 distance exceeds 0.40
-    if (dist > 0.40) return 0;
+    // Reject if L2 distance exceeds 0.35
+    if (dist > 0.35) return 0;
     return cosSim;
   };
 
@@ -419,23 +481,32 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               return;
             }
 
-            let bestMatch: Student | null = null;
-            let bestSimilarity = -1;
+            // Calculate similarity scores for ALL enrolled candidates
+            const matchScores: { student: Student, similarity: number }[] = [];
 
             for (const student of enrolledStudents) {
               const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
-              if (sim > bestSimilarity) {
-                bestSimilarity = sim;
-                bestMatch = student;
-              }
+              matchScores.push({ student, similarity: sim });
             }
 
-            // Strict Biometric Similarity Threshold (>= 0.82 required for positive match)
-            if (bestMatch && bestSimilarity >= 0.82) {
-              const matchPct = Math.round(bestSimilarity * 100);
-              const primaryName = bestMatch.name.split('/')[0].trim();
+            // Sort by highest similarity score
+            matchScores.sort((a, b) => b.similarity - a.similarity);
 
-              handleCentralSetStatus(bestMatch.id!, bestMatch.className, 'Present', 'Face');
+            const topMatch = matchScores[0];
+            const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
+
+            const topScore = topMatch.similarity;
+            const secondScore = secondMatch ? secondMatch.similarity : 0;
+            const margin = topScore - secondScore;
+
+            // Strict Anti-False-Positive Rules:
+            // 1. Top score must be >= 0.88 (88% Match)
+            // 2. Margin over second candidate must be >= 0.08 (unless only 1 candidate enrolled)
+            if (topMatch && topScore >= 0.88 && (matchScores.length === 1 || margin >= 0.08)) {
+              const matchPct = Math.round(topScore * 100);
+              const primaryName = topMatch.student.name.split('/')[0].trim();
+
+              handleCentralSetStatus(topMatch.student.id!, topMatch.student.className, 'Present', 'Face');
               playBeep();
               speakAttendance(primaryName);
 
@@ -452,6 +523,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 setScannedFeedback(null);
                 setTrackedFace(null);
               }, 2500);
+            } else if (topMatch && topScore >= 0.75 && margin < 0.08 && matchScores.length > 1) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "👤 Face Ambiguous - Please Position Face Closer to Camera",
+                pct: undefined
+              });
             } else {
               setTrackedFace({
                 ...trackingBox,
@@ -961,29 +1038,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
       {/* Face Scanner Overlay Modal */}
       {isScanning && (
-        <div className="scanner-overlay" style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1050
-        }}>
-          <div className="glass-card text-center" style={{
-            background: '#ffffff',
-            width: '90%',
-            maxWidth: '500px',
-            padding: '24px',
-            borderRadius: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
-          }}>
+        <div className="scanner-overlay">
+          <div className="scanner-modal-responsive text-center">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 'bold' }}>Scan Attendance</h3>
               <button 
@@ -1237,18 +1293,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
       {/* Face Registration Modal */}
       {enrollingStudent && (
-        <div className="scanner-overlay" style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.85)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          zIndex: 1100
-        }}>
-          <div className="glass-card text-center" style={{
-            background: '#ffffff', width: '90%', maxWidth: '480px',
-            padding: '24px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
-          }}>
+        <div className="scanner-overlay">
+          <div className="scanner-modal-responsive text-center">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
                 📷 Register Face Biometric

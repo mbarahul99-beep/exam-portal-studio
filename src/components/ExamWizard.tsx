@@ -554,6 +554,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         }));
         await db.questions.bulkAdd(questionRecords);
 
+        // Sync questions to Hostinger MySQL
+        try {
+          await fetch('/api/questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ examId: finalExamId, questions: questionRecords })
+          });
+        } catch (err) {
+          console.warn("MySQL questions sync warning:", err);
+        }
+
         // Advance to step 5 for online links sharing!
         setCreatedExamId(finalExamId);
         setStep(5);

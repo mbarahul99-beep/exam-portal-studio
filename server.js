@@ -86,11 +86,43 @@ const initDatabase = async () => {
         durationMins INT DEFAULT 180,
         loginOption VARCHAR(50),
         passcode VARCHAR(50),
+        subjects JSON,
+        sections JSON,
+        answerKeys JSON,
+        sectionsMarking JSON,
+        rollNoDigits INT DEFAULT 5,
+        examSetsCount INT DEFAULT 1,
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 4. Attendance Table
+    // Ensure columns exist if table was previously created
+    const addCol = async (colDef) => {
+      try { await conn.query(`ALTER TABLE exams ADD COLUMN ${colDef}`); } catch {}
+    };
+    await addCol('subjects JSON');
+    await addCol('sections JSON');
+    await addCol('answerKeys JSON');
+    await addCol('sectionsMarking JSON');
+    await addCol('rollNoDigits INT DEFAULT 5');
+    await addCol('examSetsCount INT DEFAULT 1');
+
+    // 4. Questions Table for Online MCQ Tests
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS questions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        examId INT NOT NULL,
+        sectionName VARCHAR(100),
+        questionText TEXT,
+        options JSON,
+        correctOptionIdx INT DEFAULT 0,
+        explanation TEXT,
+        questionImage LONGTEXT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 5. Attendance Table
     await conn.query(`
       CREATE TABLE IF NOT EXISTS attendance (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -104,7 +136,7 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 5. Submissions Table
+    // 6. Submissions Table
     await conn.query(`
       CREATE TABLE IF NOT EXISTS submissions (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -118,7 +150,7 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 6. Pending Registrations Table for Student Invite Links
+    // 7. Pending Registrations Table for Student Invite Links
     await conn.query(`
       CREATE TABLE IF NOT EXISTS pending_registrations (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -185,6 +217,7 @@ app.get('/api/sync/all', async (req, res) => {
     const [exams] = await pool.query('SELECT * FROM exams');
     const [attendance] = await pool.query('SELECT * FROM attendance');
     const [submissions] = await pool.query('SELECT * FROM submissions');
+    const [questions] = await pool.query('SELECT * FROM questions');
 
     res.json({
       students: students.map(s => ({
@@ -194,12 +227,20 @@ app.get('/api/sync/all', async (req, res) => {
       classes,
       exams: exams.map(e => ({
         ...e,
-        answerKey: typeof e.answerKey === 'string' ? JSON.parse(e.answerKey) : e.answerKey
+        answerKey: typeof e.answerKey === 'string' ? JSON.parse(e.answerKey) : e.answerKey,
+        subjects: typeof e.subjects === 'string' ? JSON.parse(e.subjects) : e.subjects,
+        sections: typeof e.sections === 'string' ? JSON.parse(e.sections) : e.sections,
+        answerKeys: typeof e.answerKeys === 'string' ? JSON.parse(e.answerKeys) : e.answerKeys,
+        sectionsMarking: typeof e.sectionsMarking === 'string' ? JSON.parse(e.sectionsMarking) : e.sectionsMarking
       })),
       attendance,
       submissions: submissions.map(sub => ({
         ...sub,
         answers: typeof sub.answers === 'string' ? JSON.parse(sub.answers) : sub.answers
+      })),
+      questions: questions.map(q => ({
+        ...q,
+        options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
       }))
     });
   } catch (err) {
@@ -264,29 +305,56 @@ app.post('/api/attendance', async (req, res) => {
 // Upsert Exam API (Create or update exam details & answer keys in Hostinger MySQL)
 app.post('/api/exams', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode } = req.body;
+  const { id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, sectionsMarking, rollNoDigits, examSetsCount } = req.body;
   try {
     const keyJson = typeof answerKey === 'object' ? JSON.stringify(answerKey) : answerKey;
+    const subjectsJson = typeof subjects === 'object' ? JSON.stringify(subjects) : subjects;
+    const sectionsJson = typeof sections === 'object' ? JSON.stringify(sections) : sections;
+    const answerKeysJson = typeof answerKeys === 'object' ? JSON.stringify(answerKeys) : answerKeys;
+    const sectionsMarkingJson = typeof sectionsMarking === 'object' ? JSON.stringify(sectionsMarking) : sectionsMarking;
+
     if (id) {
       const query = `
         UPDATE exams SET
           title = ?, className = ?, date = ?, status = ?, numQuestions = ?, answerKey = ?,
           correctMarks = ?, incorrectMarks = ?, unansweredMarks = ?, startsAt = ?, durationMins = ?,
-          loginOption = ?, passcode = ?
+          loginOption = ?, passcode = ?, subjects = ?, sections = ?, answerKeys = ?, sectionsMarking = ?,
+          rollNoDigits = ?, examSetsCount = ?
         WHERE id = ?;
       `;
-      await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, id]);
+      await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, id]);
       res.json({ success: true, id });
     } else {
       const query = `
-        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, sectionsMarking, rollNoDigits, examSetsCount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `;
-      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode]);
+      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1]);
       res.json({ success: true, id: result.insertId });
     }
   } catch (err) {
     console.error("Exam save error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upsert Questions API (Save MCQ questions for online exams in Hostinger MySQL)
+app.post('/api/questions', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { examId, questions } = req.body;
+  if (!examId || !Array.isArray(questions)) return res.status(400).json({ error: 'Invalid parameters' });
+  try {
+    await pool.query('DELETE FROM questions WHERE examId = ?', [examId]);
+    for (const q of questions) {
+      const optionsJson = typeof q.options === 'object' ? JSON.stringify(q.options) : q.options;
+      await pool.query(`
+        INSERT INTO questions (examId, sectionName, questionText, options, correctOptionIdx, explanation, questionImage)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [examId, q.sectionName, q.questionText, optionsJson, q.correctOptionIdx || 0, q.explanation || '', q.questionImage || null]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Questions save error:", err);
     res.status(500).json({ error: err.message });
   }
 });

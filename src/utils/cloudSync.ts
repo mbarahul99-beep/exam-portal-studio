@@ -112,6 +112,17 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
+    if (data.questions && Array.isArray(data.questions)) {
+      for (const q of data.questions) {
+        const existing = await db.questions.get(q.id);
+        if (!existing) {
+          await db.questions.add(q);
+        } else {
+          await db.questions.update(q.id, q);
+        }
+      }
+    }
+
     // Pull pending registrations from MySQL
     try {
       const pendingRes = await fetch('/api/pending-registrations');

@@ -91,43 +91,81 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
+      width: '100vw',
       background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      padding: '20px',
-      boxSizing: 'border-box'
+      padding: '16px 12px',
+      boxSizing: 'border-box',
+      overflowY: 'auto'
     }}>
-      <div style={{
-        background: '#ffffff',
-        width: '100%',
-        maxWidth: '480px',
-        borderRadius: '20px',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-        padding: '32px 24px',
-        textAlign: 'center',
-        boxSizing: 'border-box',
-        animation: 'fadeIn 0.3s ease-out'
-      }}>
+      <style>{`
+        .student-reg-card {
+          width: 100%;
+          max-width: 480px;
+          background: #ffffff;
+          border-radius: 20px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          padding: 28px 20px;
+          text-align: center;
+          box-sizing: border-box;
+          margin: auto;
+        }
+
+        .student-reg-input {
+          width: 100%;
+          padding: 12px 14px;
+          border-radius: 10px;
+          border: 1.5px solid #cbd5e1;
+          font-size: 16px !important; /* Prevents auto-zoom on mobile iOS/Android */
+          box-sizing: border-box;
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          background: #ffffff;
+        }
+
+        .student-reg-input:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        @media (max-width: 480px) {
+          .student-reg-card {
+            padding: 20px 16px;
+            border-radius: 16px;
+            box-shadow: none;
+          }
+          .student-reg-title {
+            font-size: 1.25rem !important;
+          }
+          .student-reg-subtitle {
+            font-size: 0.82rem !important;
+            margin-bottom: 18px !important;
+          }
+        }
+      `}</style>
+
+      <div className="student-reg-card">
         <div style={{
-          width: '64px',
-          height: '64px',
-          borderRadius: '20px',
+          width: '56px',
+          height: '56px',
+          borderRadius: '16px',
           background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          margin: '0 auto 16px',
+          margin: '0 auto 14px',
           boxShadow: '0 8px 16px rgba(37, 99, 235, 0.25)'
         }}>
-          <GraduationCap size={36} color="#ffffff" />
+          <GraduationCap size={32} color="#ffffff" />
         </div>
 
-        <h2 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
+        <h2 className="student-reg-title" style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
           Student Registration Portal
         </h2>
-        <p style={{ margin: '0 0 24px 0', fontSize: '0.88rem', color: '#64748b' }}>
+        <p className="student-reg-subtitle" style={{ margin: '0 0 24px 0', fontSize: '0.88rem', color: '#64748b' }}>
           Register your profile for Institute Apex Exam & Attendance Portal
         </p>
 
@@ -168,10 +206,11 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '10px',
-                  padding: '12px',
-                  fontSize: '0.9rem',
+                  padding: '14px',
+                  fontSize: '0.95rem',
                   fontWeight: 700,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  minHeight: '48px'
                 }}
               >
                 Go to Portal
@@ -179,11 +218,11 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
             )}
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
             
             {/* Student Name */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 FULL NAME *
               </label>
               <input
@@ -192,35 +231,20 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                 placeholder="e.g. Rahul Kumar"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.95rem',
-                  boxSizing: 'border-box'
-                }}
+                className="student-reg-input"
               />
             </div>
 
             {/* Target Class */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 TARGET CLASS *
               </label>
               <select
                 required
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.95rem',
-                  boxSizing: 'border-box',
-                  background: '#ffffff'
-                }}
+                className="student-reg-input"
               >
                 <option value="">Select your class...</option>
                 {classesList.map(c => (
@@ -233,7 +257,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
 
             {/* Student Roll Number / ID */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 ROLL NUMBER / STUDENT ID (OPTIONAL)
               </label>
               <input
@@ -241,20 +265,13 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                 placeholder="e.g. 00105 (leave blank to auto-assign)"
                 value={studentNum}
                 onChange={(e) => setStudentNum(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.95rem',
-                  boxSizing: 'border-box'
-                }}
+                className="student-reg-input"
               />
             </div>
 
             {/* Mobile / WhatsApp Number */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 MOBILE NUMBER *
               </label>
               <input
@@ -267,16 +284,9 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                   setPhone(val);
                   if (isSameWhatsApp) setWhatsappNumber(val);
                 }}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.95rem',
-                  boxSizing: 'border-box'
-                }}
+                className="student-reg-input"
               />
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer', fontSize: '0.88rem', color: '#2563eb', fontWeight: 600, userSelect: 'none' }}>
                 <input
                   type="checkbox"
                   checked={isSameWhatsApp}
@@ -284,14 +294,15 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                     setIsSameWhatsApp(e.target.checked);
                     if (e.target.checked) setWhatsappNumber(phone);
                   }}
+                  style={{ width: '18px', height: '18px', accentColor: '#2563eb' }}
                 />
-                Is the above number your WhatsApp number?
+                <span>Is the above number your WhatsApp number?</span>
               </label>
             </div>
 
             {!isSameWhatsApp && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   WHATSAPP NUMBER
                 </label>
                 <input
@@ -299,21 +310,14 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                   placeholder="e.g. 9876543210"
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    borderRadius: '10px',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.95rem',
-                    boxSizing: 'border-box'
-                  }}
+                  className="student-reg-input"
                 />
               </div>
             )}
 
             {/* Email Address */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 EMAIL ADDRESS (OPTIONAL)
               </label>
               <input
@@ -321,14 +325,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                 placeholder="e.g. student@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.95rem',
-                  boxSizing: 'border-box'
-                }}
+                className="student-reg-input"
               />
             </div>
 
@@ -340,12 +337,13 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                 background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                 color: '#ffffff',
                 border: 'none',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 padding: '14px',
-                fontSize: '0.95rem',
+                fontSize: '1rem',
                 fontWeight: 800,
                 cursor: 'pointer',
-                marginTop: '8px',
+                marginTop: '10px',
+                minHeight: '50px',
                 boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
                 display: 'flex',
                 justifyContent: 'center',
@@ -357,7 +355,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
             </button>
 
             {onDone && (
-              <div style={{ textAlign: 'center', marginTop: '12px' }}>
+              <div style={{ textAlign: 'center', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={onDone}
@@ -368,7 +366,8 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                     fontSize: '0.85rem',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    textDecoration: 'underline'
+                    textDecoration: 'underline',
+                    padding: '8px'
                   }}
                 >
                   Already registered? Go to Login Gateway

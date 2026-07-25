@@ -532,7 +532,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
               <button className="circular-action-card" onClick={startWhatsAppBroadcast}>
                 <div className="circle-icon-box">
-                  <Send size={22} color="#16a34a" />
+                  <Send size={22} color="#1058ca" />
                 </div>
                 <span className="action-label">WhatsApp Broadcast</span>
               </button>
@@ -552,10 +552,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               </button>
 
               <button className="circular-action-card" onClick={() => setActiveView('absentees')}>
-                <div className="circle-icon-box" style={{ borderColor: '#fecaca', background: '#fef2f2' }}>
-                  <UserX size={22} color="#dc2626" />
+                <div className="circle-icon-box">
+                  <UserX size={22} color="#1058ca" />
                 </div>
-                <span className="action-label" style={{ color: '#dc2626', fontWeight: 700 }}>Absentees</span>
+                <span className="action-label">Absentees</span>
               </button>
 
               <button className="circular-action-card" onClick={handleDownloadExcelReport}>
@@ -573,10 +573,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               </button>
 
               <button className="circular-action-card" onClick={() => setShowPublishModal(true)}>
-                <div className="circle-icon-box" style={{ background: exam.isResultsPublished ? '#f0fdf4' : '#eff6ff', borderColor: exam.isResultsPublished ? '#bbf7d0' : '#bfdbfe' }}>
-                  <Globe size={22} color={exam.isResultsPublished ? '#16a34a' : '#2563eb'} />
+                <div className="circle-icon-box">
+                  <Globe size={22} color="#1058ca" />
                 </div>
-                <span className="action-label" style={{ fontWeight: 800, color: exam.isResultsPublished ? '#16a34a' : '#2563eb' }}>
+                <span className="action-label">
                   {exam.isResultsPublished ? 'Published' : 'Publish Results'}
                 </span>
               </button>

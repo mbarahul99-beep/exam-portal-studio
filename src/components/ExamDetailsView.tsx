@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
+import { ResponseAnalysisView } from './ResponseAnalysisView';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
 
 interface ExamDetailsViewProps {
@@ -562,11 +563,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <span className="action-label">Download Excel</span>
               </button>
 
-              <button className="circular-action-card" onClick={() => setActiveView('reports')}>
+              <button className="circular-action-card" onClick={() => setActiveView('analysis')}>
                 <div className="circle-icon-box">
                   <TrendingUp size={22} color="#1058ca" />
                 </div>
-                <span className="action-label">Analysis</span>
+                <span className="action-label">Response Analysis</span>
               </button>
             </div>
           </div>
@@ -799,6 +800,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* VIEW 4: RESPONSE ANALYSIS (MATCHING UPLOADED SCREENSHOTS) */}
+      {activeView === 'analysis' && (
+        <ResponseAnalysisView 
+          exam={exam}
+          submissions={submissions}
+          onClose={() => setActiveView('hub')}
+        />
       )}
 
       {/* ANSWER KEY DIRECT UPDATE FULL-SCREEN VIEW (EXACT SCREENSHOT MATCH) */}

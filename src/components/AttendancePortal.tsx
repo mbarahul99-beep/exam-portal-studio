@@ -291,7 +291,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             console.error("jsQR scan error:", e);
           }
         } else {
-          // Face Recognition Mode
+          // Enterprise Automatic Face Recognition Mode
           const jitterX = Math.round(Math.random() * 4 - 2);
           const jitterY = Math.round(Math.random() * 4 - 2);
           const trackingBox = {
@@ -318,24 +318,32 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
             const liveDescriptor = extractFaceBiometrics(faceCanvas);
 
-            // Filter enrolled students in current class or all students
+            // Filter enrolled students in database
             const enrolledStudents = students.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
             
+            if (enrolledStudents.length === 0) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "⚠️ No Enrolled Faces (Click 'Enroll Face' next to student)",
+                pct: undefined
+              });
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
             let bestMatch: Student | null = null;
             let bestSimilarity = -1;
 
-            if (enrolledStudents.length > 0) {
-              for (const student of enrolledStudents) {
-                const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
-                if (sim > bestSimilarity) {
-                  bestSimilarity = sim;
-                  bestMatch = student;
-                }
+            for (const student of enrolledStudents) {
+              const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
+              if (sim > bestSimilarity) {
+                bestSimilarity = sim;
+                bestMatch = student;
               }
             }
 
-            // Cosine Similarity Threshold (>= 0.65 is reliable for webcams with varying lighting)
-            if (bestMatch && bestSimilarity >= 0.65) {
+            // Enterprise Biometric Cosine Similarity Threshold (>= 0.76 required for positive ID match)
+            if (bestMatch && bestSimilarity >= 0.76) {
               facePresenceStartRef.current = null;
               const matchPct = Math.round(bestSimilarity * 100);
               const primaryName = bestMatch.name.split('/')[0].trim();
@@ -344,10 +352,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               playBeep();
               speakAttendance(primaryName);
 
-              setScannedFeedback(`Face Matched: ${primaryName} (${matchPct}% Match)`);
+              setScannedFeedback(`✅ Auto-Checked In: ${primaryName} (${matchPct}% Face Match)`);
               setTrackedFace({
                 ...trackingBox,
-                name: `${primaryName} (${matchPct}% Match)`,
+                name: `👤 ${primaryName} (${matchPct}% Match)`,
                 pct: matchPct
               });
 
@@ -360,9 +368,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else {
               setTrackedFace({
                 ...trackingBox,
-                name: enrolledStudents.length === 0 
-                  ? "Face Active - Select student below to pair & check in" 
-                  : "Scanning Face... (Align inside oval)",
+                name: "Scanning Face... Align face in center oval",
                 pct: undefined
               });
             }
@@ -1054,88 +1060,37 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               )}
             </div>
 
-            {/* Camera Select dropdown */}
-            {devices.length > 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT CAMERA</label>
-                <select 
-                  value={selectedDeviceId}
-                  onChange={(e) => {
-                    setSelectedDeviceId(e.target.value);
-                    attachStream(e.target.value);
-                  }}
-                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '0.9rem', width: '100%' }}
-                >
-                  {devices.map((d, i) => (
-                    <option key={`cam-${d.deviceId}`} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>
-                  ))}
-                </select>
+            {/* Camera Select dropdown for multi-camera coaching setups */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                📷 SELECT CONNECTED CAMERA DEVICE ({devices.length > 0 ? `${devices.length} Detected` : 'Scanning...'})
+              </label>
+              <select 
+                value={selectedDeviceId}
+                onChange={(e) => {
+                  setSelectedDeviceId(e.target.value);
+                  attachStream(e.target.value);
+                }}
+                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.88rem', width: '100%', background: '#f8fafc', fontWeight: 600, color: '#0f172a' }}
+              >
+                {devices.length === 0 ? (
+                  <option value="">Default System Camera</option>
+                ) : (
+                  devices.map((d, i) => (
+                    <option key={`cam-${d.deviceId}`} value={d.deviceId}>{d.label || `Camera Device ${i + 1}`}</option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <div style={{ fontSize: '0.85rem', color: '#475569', background: '#f0f9ff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bae6fd', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '1.2rem' }}>⚡</span>
+              <div>
+                <strong style={{ color: '#0369a1' }}>Hands-Free Enterprise Auto-Attendance Active</strong>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#0284c7' }}>
+                  Students step in front of camera $\rightarrow$ System automatically detects face $\rightarrow$ Matches biometrics $\rightarrow$ Marks attendance + Speaks name.
+                </p>
               </div>
-            )}
-
-            {/* Quick Register / Check-In Active Face */}
-            {scanMode === 'Face' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left', background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                  ⚡ Quick Register / Check-In Face To Student
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select 
-                    id="quickFaceStudentSelect"
-                    style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
-                  >
-                    <option value="">-- Select Student --</option>
-                    {classStudents.map(s => (
-                      <option key={`qs-${s.id}`} value={s.id}>
-                        {s.name.split('/')[0].trim()} (Roll {s.studentNum}) {s.faceDescriptor ? '✔' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={async () => {
-                      const sel = document.getElementById('quickFaceStudentSelect') as HTMLSelectElement;
-                      if (!sel || !sel.value || !videoRef.current) return;
-                      const sId = parseInt(sel.value, 10);
-                      const targetStud = students.find(s => s.id === sId);
-                      if (!targetStud) return;
-
-                      const video = videoRef.current;
-                      const width = video.videoWidth || 640;
-                      const height = video.videoHeight || 480;
-                      const canvas = document.createElement('canvas');
-                      canvas.width = 160;
-                      canvas.height = 160;
-                      const ctx = canvas.getContext('2d');
-                      if (ctx) {
-                        const size = Math.min(width, height) * 0.65;
-                        const x = (width - size) / 2;
-                        const y = (height - size) / 2;
-                        ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
-                        const biometrics = extractFaceBiometrics(canvas);
-                        await db.students.update(targetStud.id!, { faceDescriptor: biometrics });
-                        
-                        const primaryName = targetStud.name.split('/')[0].trim();
-                        handleCentralSetStatus(targetStud.id!, targetStud.className, 'Present', 'Face');
-                        playBeep();
-                        speakAttendance(primaryName);
-                        setScannedFeedback(`Face Registered & Checked-in: ${primaryName}!`);
-                        isCooldownRef.current = true;
-                        setTimeout(() => {
-                          isCooldownRef.current = false;
-                          setScannedFeedback(null);
-                        }, 2500);
-                      }
-                    }}
-                    style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 14px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    Check In & Save Face
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #edf2f7' }}>
-              🎥 <strong>Camera Active</strong>: Point camera at student face or QR code for instant check-in.
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>

@@ -217,6 +217,7 @@ export default function App() {
   // Add Student Drawer Form States
   const [drawerRollNo, setDrawerRollNo] = useState('');
   const [drawerName, setDrawerName] = useState('');
+  const [drawerFatherName, setDrawerFatherName] = useState('');
   const [drawerEmail, setDrawerEmail] = useState('');
   const [drawerPhone, setDrawerPhone] = useState('');
   const [drawerWhatsApp, setDrawerWhatsApp] = useState('');
@@ -591,6 +592,7 @@ export default function App() {
       if (editingStudentId) {
         await db.students.update(editingStudentId, {
           name: drawerName.trim(),
+          fatherName: drawerFatherName.trim() || undefined,
           studentNum: drawerRollNo,
           email: drawerEmail.trim() || undefined,
           phone: drawerPhone.trim() || undefined,
@@ -600,6 +602,7 @@ export default function App() {
       } else {
         savedStudentId = await db.students.add({
           name: drawerName.trim(),
+          fatherName: drawerFatherName.trim() || undefined,
           studentNum: drawerRollNo,
           className: selectedClassName,
           email: drawerEmail.trim() || undefined,
@@ -626,6 +629,7 @@ export default function App() {
 
       setDrawerRollNo('');
       setDrawerName('');
+      setDrawerFatherName('');
       setDrawerEmail('');
       setDrawerPhone('');
       setDrawerWhatsApp('');
@@ -2569,6 +2573,7 @@ export default function App() {
                                       setEditingStudentId(s.id!);
                                       setDrawerRollNo(s.studentNum);
                                       setDrawerName(s.name);
+                                      setDrawerFatherName(s.fatherName || '');
                                       setDrawerEmail(s.email || '');
                                       setDrawerPhone(s.phone || '');
                                       setDrawerWhatsApp(s.whatsappNumber || '');
@@ -2593,11 +2598,16 @@ export default function App() {
                                       {initial}
                                     </div>
 
-                                    {/* Middle Details: Name, Roll No, Phone */}
+                                    {/* Middle Details: Name, Father's Name, Roll No, Phone */}
                                     <div>
-                                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>
                                         {s.name}
                                       </div>
+                                      {s.fatherName && (
+                                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px' }}>
+                                          S/o: {s.fatherName}
+                                        </div>
+                                      )}
 
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', color: '#475569' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2654,6 +2664,7 @@ export default function App() {
                                               setEditingStudentId(s.id!);
                                               setDrawerRollNo(s.studentNum);
                                               setDrawerName(s.name);
+                                              setDrawerFatherName(s.fatherName || '');
                                               setDrawerEmail(s.email || '');
                                               setDrawerPhone(s.phone || '');
                                               setDrawerWhatsApp(s.whatsappNumber || '');
@@ -3674,11 +3685,11 @@ export default function App() {
 
       {/* ADD STUDENT SLIDE-OUT DRAWER (Screenshot 2) */}
       {showAddStudentDrawer && (
-        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
-          <div className="drawer-panel animate-slide-left" onClick={(e) => e.stopPropagation()} style={{ width: '450px', background: '#ffffff', height: '100%', position: 'fixed', right: 0, top: 0, zIndex: 1002, boxShadow: '-5px 0 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
+        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
+          <div className="drawer-panel animate-slide-left" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '450px', background: '#ffffff', height: '100%', position: 'fixed', right: 0, top: 0, zIndex: 1002, boxShadow: '-5px 0 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
             <header style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>{editingStudentId ? 'Edit student' : 'Add student'}</h3>
-              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
+              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
                 <X size={20} />
               </button>
             </header>
@@ -3690,7 +3701,7 @@ export default function App() {
                   type="text" 
                   value={selectedClassName || ''} 
                   disabled 
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#f7fafc', cursor: 'not-allowed', color: '#4a5568', fontWeight: '600' }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#f7fafc', cursor: 'not-allowed', color: '#4a5568', fontWeight: '600', fontSize: '16px' }}
                 />
               </div>
 
@@ -3703,7 +3714,7 @@ export default function App() {
                   onChange={(e) => setDrawerRollNo(e.target.value.replace(/\D/g, ''))}
                   placeholder="Enter Student Roll ID"
                   required
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '16px' }}
                 />
                 <small style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', display: 'block' }}>Must be a unique numeric ID matching the bubbles on the OMR sheet.</small>
               </div>
@@ -3716,7 +3727,18 @@ export default function App() {
                   onChange={(e) => setDrawerName(e.target.value)}
                   placeholder="Enter student full name"
                   required
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '16px' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Father's Name</label>
+                <input 
+                  type="text" 
+                  value={drawerFatherName}
+                  onChange={(e) => setDrawerFatherName(e.target.value)}
+                  placeholder="Enter father's full name"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '16px' }}
                 />
               </div>
 

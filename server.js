@@ -50,6 +50,7 @@ const initDatabase = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         studentNum VARCHAR(50) NOT NULL UNIQUE,
         name VARCHAR(255) NOT NULL,
+        fatherName VARCHAR(255),
         className VARCHAR(100) NOT NULL,
         email VARCHAR(255),
         phone VARCHAR(50),
@@ -58,6 +59,10 @@ const initDatabase = async () => {
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Ensure fatherName exists if table was previously created
+    try { await conn.query('ALTER TABLE students ADD COLUMN fatherName VARCHAR(255)'); } catch {}
+    try { await conn.query('ALTER TABLE pending_registrations ADD COLUMN fatherName VARCHAR(255)'); } catch {}
 
     // 2. Classes Table
     await conn.query(`
@@ -252,21 +257,22 @@ app.get('/api/sync/all', async (req, res) => {
 // Upsert Student API
 app.post('/api/students', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, className, email, phone, whatsappNumber, faceDescriptor } = req.body;
+  const { studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor } = req.body;
   try {
     const faceJson = faceDescriptor ? JSON.stringify(faceDescriptor) : null;
     const query = `
-      INSERT INTO students (studentNum, name, className, email, phone, whatsappNumber, faceDescriptor)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         name = VALUES(name),
+        fatherName = VALUES(fatherName),
         className = VALUES(className),
         email = VALUES(email),
         phone = VALUES(phone),
         whatsappNumber = VALUES(whatsappNumber),
         faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor);
     `;
-    const [result] = await pool.query(query, [studentNum, name, className, email, phone, whatsappNumber, faceJson]);
+    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email, phone, whatsappNumber, faceJson]);
     res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -416,13 +422,13 @@ app.get('/api/pending-registrations', async (req, res) => {
 
 app.post('/api/register-student', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, className, email, phone, whatsappNumber } = req.body;
+  const { studentNum, name, fatherName, className, email, phone, whatsappNumber } = req.body;
   try {
     const query = `
-      INSERT INTO pending_registrations (studentNum, name, className, email, phone, whatsappNumber, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending');
+      INSERT INTO pending_registrations (studentNum, name, fatherName, className, email, phone, whatsappNumber, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending');
     `;
-    const [result] = await pool.query(query, [studentNum, name, className, email, phone, whatsappNumber]);
+    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email, phone, whatsappNumber]);
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });

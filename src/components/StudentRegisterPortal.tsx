@@ -15,6 +15,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
   const classesList = useLiveQuery(() => db.classes.toArray(), []) || [];
   
   const [name, setName] = useState('');
+  const [fatherName, setFatherName] = useState('');
   const [studentNum, setStudentNum] = useState('');
   const [className, setClassName] = useState(initialClassName || '');
   const [phone, setPhone] = useState('');
@@ -54,6 +55,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
       // Save to Dexie Pending Registrations
       await db.pendingRegistrations.add({
         name: name.trim(),
+        fatherName: fatherName.trim() || undefined,
         studentNum: rollNo,
         className,
         phone: phone.trim(),
@@ -70,6 +72,7 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: name.trim(),
+            fatherName: fatherName.trim() || undefined,
             studentNum: rollNo,
             className,
             phone: phone.trim(),
@@ -231,6 +234,20 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
                 placeholder="e.g. Rahul Kumar"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                className="student-reg-input"
+              />
+            </div>
+
+            {/* Father's Name */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                FATHER'S NAME (OPTIONAL)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Suresh Kumar"
+                value={fatherName}
+                onChange={(e) => setFatherName(e.target.value)}
                 className="student-reg-input"
               />
             </div>

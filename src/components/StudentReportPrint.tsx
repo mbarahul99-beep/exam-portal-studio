@@ -69,6 +69,12 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           <span className="label">Student Name</span>
           <span className="val">{student.name}</span>
         </div>
+        {student.fatherName && (
+          <div className="meta-item">
+            <span className="label">Father's Name</span>
+            <span className="val">{student.fatherName}</span>
+          </div>
+        )}
         <div className="meta-item">
           <span className="label">Roll ID / Number</span>
           <span className="val font-mono">{student.studentNum}</span>

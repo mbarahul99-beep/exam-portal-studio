@@ -273,6 +273,12 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               </h2>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span>Candidate: <strong style={{ color: '#0f172a' }}>{student.name}</strong></span>
+                {student.fatherName && (
+                  <>
+                    <span style={{ color: '#cbd5e1' }}>•</span>
+                    <span>Father: <strong style={{ color: '#0f172a' }}>{student.fatherName}</strong></span>
+                  </>
+                )}
                 <span style={{ color: '#cbd5e1' }}>•</span>
                 <span>Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code></span>
                 <span style={{ color: '#cbd5e1' }}>•</span>
@@ -504,7 +510,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                   <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Candidate Hub</span>
                 </div>
                 <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                  Welcome back, <strong style={{ color: '#0f172a' }}>{student.name}</strong> | Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code> | Target Stream: <strong style={{ color: '#0f172a' }}>{student.className}</strong>
+                  Welcome back, <strong style={{ color: '#0f172a' }}>{student.name}</strong> {student.fatherName ? `(Father: ${student.fatherName})` : ''} | Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code> | Target Stream: <strong style={{ color: '#0f172a' }}>{student.className}</strong>
                 </p>
               </div>
 

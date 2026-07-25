@@ -4,6 +4,7 @@ export interface Student {
   id?: number;
   studentNum: string; // e.g. "00001", maps to bubbles filled by student
   name: string;
+  fatherName?: string;
   className: string;
   email?: string;
   phone?: string;
@@ -126,6 +127,7 @@ export interface PendingRegistration {
   id?: number;
   studentNum: string;
   name: string;
+  fatherName?: string;
   className: string;
   email?: string;
   phone?: string;

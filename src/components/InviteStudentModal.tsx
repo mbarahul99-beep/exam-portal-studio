@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, Share2, GraduationCap, ArrowLeft } from 'lucide-react';
+import { Copy, Check, Share2, GraduationCap, ArrowLeft } from 'lucide-react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
@@ -48,59 +48,42 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
       right: 0,
       bottom: 0,
       zIndex: 99999,
-      background: '#475569',
+      background: '#ffffff',
       display: 'flex',
       flexDirection: 'column',
       boxSizing: 'border-box',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
       {/* Top Header */}
       <div style={{
-        padding: '20px 32px 14px',
+        padding: '16px 20px',
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        borderBottom: '1px solid #f3f4f6',
+        background: '#ffffff'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button
             onClick={onClose}
             style={{
-              background: '#ffffff',
+              background: 'transparent',
               border: 'none',
-              borderRadius: '8px',
-              padding: '8px 12px',
               cursor: 'pointer',
+              padding: '4px',
               display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              color: '#1e293b'
+              alignItems: 'center'
             }}
           >
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={22} color="#0f172a" />
           </button>
 
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>
-              Create Student Invite Link
-            </h2>
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
-              Generate shareable registration URL & QR code for student self-enrollment
-            </p>
-          </div>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+            Create Student Invite Link
+          </h2>
         </div>
-
-        <button
-          onClick={onClose}
-          style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-        >
-          <X size={24} />
-        </button>
       </div>
-
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#64748b', margin: '0 32px' }} />
 
       {/* Content Container */}
       <div style={{

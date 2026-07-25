@@ -88,46 +88,41 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
       right: 0,
       bottom: 0,
       zIndex: 99999,
-      background: '#475569',
+      background: '#ffffff',
       display: 'flex',
       flexDirection: 'column',
       boxSizing: 'border-box',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
       {/* Top Header */}
       <div style={{
-        padding: '20px 32px 14px',
+        padding: '16px 20px',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        borderBottom: '1px solid #f3f4f6',
+        background: '#ffffff'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button
             onClick={onClose}
             style={{
-              background: '#ffffff',
+              background: 'transparent',
               border: 'none',
-              borderRadius: '8px',
-              padding: '8px 12px',
               cursor: 'pointer',
+              padding: '4px',
               display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              color: '#1e293b'
+              alignItems: 'center'
             }}
           >
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={22} color="#0f172a" />
           </button>
 
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
               Pending Student Approvals
             </h2>
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
-              Review & approve self-registered candidates before enrolling into class roster
-            </p>
           </div>
         </div>
 
@@ -138,24 +133,20 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
               background: '#16a34a',
               color: '#ffffff',
               border: 'none',
-              borderRadius: '10px',
-              padding: '12px 20px',
-              fontSize: '0.9rem',
-              fontWeight: 800,
+              borderRadius: '8px',
+              padding: '8px 16px',
+              fontSize: '0.85rem',
+              fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)'
+              gap: '6px'
             }}
           >
-            <CheckCheck size={18} /> Approve All Requests ({pendingList.length})
+            <CheckCheck size={16} /> Approve All ({pendingList.length})
           </button>
         )}
       </div>
-
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#64748b', margin: '0 32px' }} />
 
       {/* Main Full-Screen Grid Body */}
       <div style={{

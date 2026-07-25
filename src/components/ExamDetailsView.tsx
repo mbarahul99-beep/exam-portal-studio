@@ -18,6 +18,7 @@ import {
   Lock, 
   Filter, 
   Check,
+  MoreVertical,
   Send,
   Printer,
   Download,
@@ -772,7 +773,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         </div>
       )}
 
-      {/* ANSWER KEY DIRECT UPDATE FULL-SCREEN VIEW */}
+      {/* ANSWER KEY DIRECT UPDATE FULL-SCREEN VIEW (EXACT SCREENSHOT MATCH) */}
       {showAnswerKeyModal && (
         <div style={{
           position: 'fixed',
@@ -781,120 +782,124 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           right: 0,
           bottom: 0,
           zIndex: 99999,
-          background: '#475569',
+          background: '#ffffff',
           display: 'flex',
           flexDirection: 'column',
           boxSizing: 'border-box',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
         }}>
-          {/* Header */}
+          {/* Top Header */}
           <div style={{
-            padding: '20px 32px 14px',
-            background: 'transparent',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start'
-          }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#ffffff' }}>Answer Key Editor</h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>
-                {exam.title} ({exam.numQuestions} Questions)
-              </p>
-            </div>
-            <button
-              onClick={() => setShowAnswerKeyModal(false)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#94a3b8',
-                cursor: 'pointer',
-                padding: '4px'
-              }}
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          {/* Divider Line */}
-          <div style={{ height: '1px', background: '#64748b', margin: '0 32px' }} />
-
-          {/* Quick Fill Bar */}
-          <div style={{
-            padding: '14px 32px',
+            padding: '16px 20px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px'
+            borderBottom: '1px solid #f3f4f6',
+            background: '#ffffff'
           }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.5px' }}>
-              QUICK FILL:
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <button
+                onClick={() => setShowAnswerKeyModal(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+              >
+                <ArrowLeft size={22} color="#0f172a" />
+              </button>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                Answer Key
+              </h2>
+            </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['A', 'B', 'C', 'D'].map(opt => (
-                <button
-                  key={`qf-opt-${opt}`}
-                  onClick={() => {
-                    const nextKeys: Record<number, string> = {};
-                    for (let q = 1; q <= exam.numQuestions; q++) {
-                      nextKeys[q] = opt;
-                    }
-                    setEditableKeys(nextKeys);
-                  }}
-                  style={{
-                    background: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '8px 18px',
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    color: '#1e293b',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                  }}
-                >
-                  All {opt}
-                </button>
-              ))}
+            {/* Quick Fill Dropdown Menu */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => {
+                  const menu = document.getElementById('ak-quick-menu');
+                  if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
+              >
+                <MoreVertical size={20} color="#0f172a" />
+              </button>
+
+              <div
+                id="ak-quick-menu"
+                style={{
+                  display: 'none',
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  background: '#ffffff',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  padding: '8px 0',
+                  zIndex: 100,
+                  minWidth: '140px'
+                }}
+              >
+                <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>QUICK FILL ALL:</div>
+                {['A', 'B', 'C', 'D'].map(opt => (
+                  <button
+                    key={`menu-qf-${opt}`}
+                    onClick={() => {
+                      const nextKeys: Record<number, string> = {};
+                      for (let q = 1; q <= exam.numQuestions; q++) {
+                        nextKeys[q] = opt;
+                      }
+                      setEditableKeys(nextKeys);
+                      const menu = document.getElementById('ak-quick-menu');
+                      if (menu) menu.style.display = 'none';
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 16px',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '0.88rem',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Set All {opt}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* 3-Column Question Cards Grid Container */}
+          {/* Question List View */}
           <div style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '8px 32px 24px',
+            padding: '0 20px',
             boxSizing: 'border-box'
           }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '16px'
-            }}>
+            <div style={{ maxWidth: '640px', margin: '0 auto' }}>
               {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
                 const currentOpt = editableKeys[q] || 'A';
                 const optionsList = ['A', 'B', 'C', 'D'];
 
                 return (
                   <div
-                    key={`ak-q-card-${q}`}
+                    key={`ak-row-${q}`}
                     style={{
-                      background: '#ffffff',
-                      borderRadius: '16px',
-                      padding: '16px 20px',
                       display: 'flex',
-                      flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '12px',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+                      justifyContent: 'space-between',
+                      padding: '14px 4px',
+                      borderBottom: '1px solid #f1f5f9'
                     }}
                   >
-                    <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
-                      Q{q}
+                    {/* Question Number */}
+                    <span style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1e293b', width: '40px' }}>
+                      {q}
                     </span>
 
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', width: '100%' }}>
+                    {/* Option Bubbles */}
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                       {optionsList.map((opt) => {
                         const isSelected = currentOpt === opt;
                         return (
@@ -902,20 +907,20 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                             key={`ak-q-${q}-opt-${opt}`}
                             onClick={() => setEditableKeys(prev => ({ ...prev, [q]: opt }))}
                             style={{
-                              width: '36px',
-                              height: '36px',
+                              width: '42px',
+                              height: '42px',
                               borderRadius: '50%',
-                              border: isSelected ? 'none' : '1.5px solid #cbd5e1',
-                              background: isSelected ? '#16a34a' : '#ffffff',
-                              color: isSelected ? '#ffffff' : '#475569',
-                              fontWeight: 800,
-                              fontSize: '0.9rem',
+                              border: 'none',
+                              background: isSelected ? '#008726' : '#e5e7eb',
+                              color: isSelected ? '#ffffff' : '#374151',
+                              fontWeight: 700,
+                              fontSize: '0.95rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              boxShadow: isSelected ? '0 3px 8px rgba(22, 163, 74, 0.4)' : 'none',
-                              transition: 'all 0.15s ease'
+                              transition: 'all 0.1s ease',
+                              boxShadow: isSelected ? '0 2px 6px rgba(0, 135, 38, 0.3)' : 'none'
                             }}
                           >
                             {opt}
@@ -929,46 +934,60 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             </div>
           </div>
 
-          {/* Sticky Bottom Action Footer */}
+          {/* Bottom Sticky Footer */}
           <div style={{
-            padding: '16px 32px',
-            background: 'transparent',
+            padding: '12px 20px 20px',
+            borderTop: '1px solid #f3f4f6',
+            background: '#ffffff',
             display: 'flex',
             gap: '12px',
-            alignItems: 'center'
+            maxWidth: '640px',
+            width: '100%',
+            margin: '0 auto',
+            boxSizing: 'border-box'
           }}>
+            {/* Reset Button */}
             <button
-              onClick={() => setShowAnswerKeyModal(false)}
+              onClick={() => {
+                const resetKeys: Record<number, string> = {};
+                for (let q = 1; q <= exam.numQuestions; q++) {
+                  resetKeys[q] = 'A';
+                }
+                setEditableKeys(resetKeys);
+              }}
               style={{
+                flex: 1,
                 background: '#ffffff',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #2563eb',
                 borderRadius: '10px',
-                padding: '12px 28px',
+                padding: '12px',
                 fontSize: '0.95rem',
                 fontWeight: 700,
-                color: '#334155',
+                color: '#2563eb',
                 cursor: 'pointer'
               }}
             >
-              Cancel
+              Reset
             </button>
 
+            {/* Save Button */}
             <button
               onClick={handleSaveAnswerKeys}
               disabled={isSavingKey}
               style={{
-                background: '#16a34a',
+                flex: 1,
+                background: '#2563eb',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '10px',
-                padding: '12px 28px',
+                padding: '12px',
                 fontSize: '0.95rem',
-                fontWeight: 800,
+                fontWeight: 700,
                 cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)'
+                boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
               }}
             >
-              {isSavingKey ? 'Saving...' : 'Save Answer Key'}
+              {isSavingKey ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

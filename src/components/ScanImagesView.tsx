@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Camera,
-  X
+  ArrowLeft
 } from 'lucide-react';
 import { db, type Exam, type Student } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
@@ -43,8 +43,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true); // Active tracking by default
-  const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
+  const [isAutoSnapEnabled] = useState(true);
+  const [, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
   const [pendingSnapUrl, setPendingSnapUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1235,123 +1235,91 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       </div>
 
-      {/* Framed Camera Modal Overlay with Margins */}
+      {/* Clean Reference-App Camera Modal Overlay */}
       {showCameraModal && (
         <div className="camera-fullscreen-overlay">
-          <div className="camera-frame-container">
-            <div className="camera-fullscreen-header">
-              <div className="camera-fullscreen-title">
-                📷 {exam.title} - OMR Scanner
-              </div>
+          {/* Top Clean App Bar */}
+          <div className="clean-app-bar">
+            <div className="clean-app-bar-left">
               <button 
                 type="button"
-                className="camera-close-btn" 
+                className="clean-back-btn" 
                 onClick={() => {
                   setPendingSnapUrl(null);
                   stopCameraStream();
                   setShowCameraModal(false);
                 }}
-                title="Exit Camera Scanner"
+                title="Back to Exam Portal"
               >
-                <X size={24} />
+                <ArrowLeft size={22} />
               </button>
+              <div className="clean-app-bar-titles">
+                <h3>{exam.title}</h3>
+                <p>{exam.className || 'Exam Scanner'}</p>
+              </div>
             </div>
 
-            <div className="camera-fullscreen-viewport" style={{ overflow: 'hidden', touchAction: 'none' }}>
-              {pendingSnapUrl ? (
-                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                  <img src={pendingSnapUrl} alt="Captured OMR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', background: '#22c55e', color: '#fff', padding: '10px 24px', borderRadius: '24px', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 15px rgba(0,0,0,0.4)', zIndex: 20 }}>
-                    📸 Sheet Captured! Tap OK to grade.
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
+            {cameraDevices.length > 1 && (
+              <select 
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600 }}
+              >
+                {cameraDevices.map(d => (
+                  <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
-                  {/* Top Orientation Guide */}
-                  <div className="camera-orientation-tag">Top</div>
-
-                  {/* 4 Blue Guide Target Boxes */}
-                  <div className={`guide-target-box tl ${isPaperDetected ? 'active' : ''}`} />
-                  <div className={`guide-target-box tr ${isPaperDetected ? 'active' : ''}`} />
-                  <div className={`guide-target-box bl ${isPaperDetected ? 'active' : ''}`} />
-                  <div className={`guide-target-box br ${isPaperDetected ? 'active' : ''}`} />
-
-                  {/* Center Processing Spinner */}
-                  {isScanning && (
-                    <div className="camera-center-spinner-box">
-                      <div className="camera-center-spinner-arc" />
-                    </div>
-                  )}
-
-                  <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
-                    <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.75)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
-                      {autoSnapStatus}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="camera-fullscreen-controls">
-              {pendingSnapUrl ? (
-                <div style={{ display: 'flex', gap: '16px', width: '100%', justifyContent: 'center' }}>
+          {/* Camera Viewport */}
+          <div className="clean-camera-viewport">
+            {pendingSnapUrl ? (
+              <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                <img src={pendingSnapUrl} alt="Captured OMR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                
+                {/* Bottom Confirmation Bar */}
+                <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '16px', zIndex: 20 }}>
                   <button 
                     type="button"
-                    className="btn-secondary"
                     onClick={handleRetakeSnap}
-                    style={{ padding: '12px 24px', fontSize: '1rem', borderRadius: '30px', background: '#475569', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                    style={{ padding: '12px 24px', fontSize: '1rem', borderRadius: '30px', background: '#475569', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}
                   >
                     🔄 Retake
                   </button>
                   <button 
                     type="button"
-                    className="btn-primary"
                     onClick={handleConfirmPendingSnap}
                     style={{ padding: '12px 36px', fontSize: '1.1rem', borderRadius: '30px', background: '#22c55e', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 20px rgba(34,197,94,0.6)' }}
                   >
                     ✅ OK (Grade Sheet)
                   </button>
                 </div>
-              ) : (
-                <>
-                  <button 
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setIsAutoSnapEnabled(!isAutoSnapEnabled)}
-                    style={{ background: isAutoSnapEnabled ? 'rgba(34, 197, 94, 0.85)' : 'rgba(100, 116, 139, 0.85)', color: '#fff', border: 'none', borderRadius: '20px', padding: '8px 18px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    ⚡ Auto-Snap: {isAutoSnapEnabled ? 'ON' : 'OFF'}
-                  </button>
+              </div>
+            ) : (
+              <>
+                <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
 
-                  {cameraDevices.length > 1 && (
-                    <select 
-                      value={selectedCameraId}
-                      onChange={(e) => setSelectedCameraId(e.target.value)}
-                      style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '8px 14px' }}
-                    >
-                      {cameraDevices.map(d => (
-                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
-                      ))}
-                    </select>
-                  )}
+                {/* Top Orientation Text */}
+                <div className="camera-orientation-tag">Top</div>
 
-                  <button 
-                    type="button"
-                    onClick={captureCameraPhoto} 
-                    className="btn-primary capture-btn"
-                    style={{ padding: '12px 28px', fontSize: '1rem', borderRadius: '30px', boxShadow: '0 4px 15px rgba(16,88,202,0.6)' }}
-                    disabled={isScanning}
-                  >
-                    {isScanning ? <RefreshCw className="spin" /> : '📸 Manual Snap'}
-                  </button>
-                </>
-              )}
-            </div>
+                {/* 4 Blue Guide Target Boxes */}
+                <div className={`guide-target-box tl ${isPaperDetected ? 'active' : ''}`} />
+                <div className={`guide-target-box tr ${isPaperDetected ? 'active' : ''}`} />
+                <div className={`guide-target-box bl ${isPaperDetected ? 'active' : ''}`} />
+                <div className={`guide-target-box br ${isPaperDetected ? 'active' : ''}`} />
 
-            <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+                {/* Center Circular White Spinner (during processing) */}
+                {isScanning && (
+                  <div className="camera-center-spinner-box">
+                    <div className="camera-center-spinner-arc" />
+                  </div>
+                )}
+              </>
+            )}
           </div>
+
+          <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
         </div>
       )}
     </div>

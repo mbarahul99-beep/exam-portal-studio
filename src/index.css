@@ -2859,84 +2859,66 @@ button {
   right: 0 !important;
   bottom: 0 !important;
   width: 100vw !important;
-  height: 100vh !important;
-  background: rgba(15, 23, 42, 0.85) !important;
-  backdrop-filter: blur(8px) !important;
+  height: 100dvh !important;
+  background: #ffffff !important;
   z-index: 99999 !important;
   display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 24px 16px !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-}
-
-.camera-frame-container {
-  position: relative !important;
-  width: 100% !important;
-  max-width: 900px !important;
-  height: calc(100vh - 48px) !important;
-  max-height: 850px !important;
-  background: #ffffff !important;
-  border-radius: 24px !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 0 4px #ffffff !important;
-  display: flex !important;
   flex-direction: column !important;
-  overflow: hidden !important;
   box-sizing: border-box !important;
+  overflow: hidden !important;
+  touch-action: none !important;
 }
 
-.camera-fullscreen-header {
-  position: absolute !important;
-  top: 16px !important;
-  left: 16px !important;
-  right: 16px !important;
+.clean-app-bar {
+  height: 56px !important;
+  background: #ffffff !important;
+  padding: 0 16px !important;
   display: flex !important;
-  justify-content: space-between !important;
   align-items: center !important;
+  justify-content: space-between !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
   z-index: 100001 !important;
-  pointer-events: auto !important;
 }
 
-.camera-fullscreen-title {
-  color: #ffffff !important;
-  font-weight: 700 !important;
-  font-size: 1rem !important;
-  background: rgba(0, 0, 0, 0.65) !important;
-  padding: 8px 16px !important;
-  border-radius: 20px !important;
-  backdrop-filter: blur(8px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+.clean-app-bar-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
 }
 
-.camera-close-btn {
-  background: rgba(239, 68, 68, 0.9) !important;
-  color: #ffffff !important;
+.clean-back-btn {
+  background: transparent !important;
   border: none !important;
-  border-radius: 50% !important;
-  width: 44px !important;
-  height: 44px !important;
+  color: #0f172a !important;
+  cursor: pointer !important;
+  padding: 4px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  cursor: pointer !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
-  transition: transform 0.15s ease !important;
 }
 
-.camera-close-btn:hover {
-  transform: scale(1.1) !important;
-  background: #dc2626 !important;
+.clean-app-bar-titles h3 {
+  margin: 0 !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  line-height: 1.2 !important;
 }
 
-.camera-fullscreen-viewport {
+.clean-app-bar-titles p {
+  margin: 0 !important;
+  font-size: 0.75rem !important;
+  color: #64748b !important;
+}
+
+.clean-camera-viewport {
+  flex: 1 !important;
   position: relative !important;
   width: 100% !important;
-  height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  height: calc(100dvh - 56px) !important;
   background: #000000 !important;
+  overflow: hidden !important;
 }
 
 .camera-fullscreen-viewport video {

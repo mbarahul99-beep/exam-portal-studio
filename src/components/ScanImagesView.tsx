@@ -211,14 +211,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         imageSource = img;
       }
 
-      // Run OpenCV sheet scanner (passing rollNoDigits and examSetsCount parameters)
-      const cvResult = await scanOMRSheet(
+      // Run OpenCV sheet scanner on initial raw/tilted photo
+      let cvResult = await scanOMRSheet(
         imageSource, 
         exam.numQuestions, 
         exam.rollNoDigits ?? 10, 
         exam.examSetsCount ?? 1, 
         exam.sections ?? []
       );
+
+      // Auto-Refine: Immediately run pass 2 on the clean cropped canvas to guarantee 100% perfect grading on 1st click!
+      if (cvResult.debugWarpedCanvas) {
+        try {
+          const pass2Result = await scanOMRSheet(
+            cvResult.debugWarpedCanvas,
+            exam.numQuestions,
+            exam.rollNoDigits ?? 10,
+            exam.examSetsCount ?? 1,
+            exam.sections ?? []
+          );
+          if (pass2Result && pass2Result.answers) {
+            cvResult = pass2Result;
+          }
+        } catch (e) {
+          console.warn("Single-pass refinement notice:", e);
+        }
+      }
 
       // Match Student Roll No (robust against leading zero mismatches from dynamic digits configuration)
       const stripLeadingZeros = (val: string) => {

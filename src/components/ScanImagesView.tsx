@@ -10,7 +10,10 @@ import {
   RefreshCw,
   Trash2,
   Image as ImageIcon,
-  Eye
+  Eye,
+  Search,
+  CheckCircle,
+  FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
@@ -38,9 +41,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [isScanning, setIsScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
 
-  // Scanned Submissions & View Scanned Sheets Modal
+  // Scanned Submissions & Full-Screen View Sheets Mode
   const [existingSubmissions, setExistingSubmissions] = useState<ExamSubmission[]>([]);
-  const [showScannedSheetsModal, setShowScannedSheetsModal] = useState(false);
+  const [showScannedSheetsFullScreen, setShowScannedSheetsFullScreen] = useState(false);
+  const [scannedSheetSearch, setScannedSheetSearch] = useState('');
   const [viewingOmrModalUrl, setViewingOmrModalUrl] = useState<{ name: string; url: string; score: number } | null>(null);
 
   // Camera Modal States & Refs
@@ -168,7 +172,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!videoRef.current || !cvLoaded || isScanning) return;
 
     if (maxClassSheets !== Infinity && fileList.length >= maxClassSheets) {
-      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+      alert(`Class limit reached (${maxClassSheets} registered students).`);
       setShowCameraModal(false);
       return;
     }
@@ -330,7 +334,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       confetti({ particleCount: 60, spread: 60 });
       setShowCameraModal(false);
     } catch (err: any) {
-      alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Please align sheet inside video frame."));
+      alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Align sheet inside frame."));
     } finally {
       setIsScanning(false);
     }
@@ -343,7 +347,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     const incomingCount = e.target.files.length;
 
     if (maxClassSheets !== Infinity && currentCount >= maxClassSheets) {
-      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+      alert(`Class limit reached (${maxClassSheets} registered students).`);
       e.target.value = '';
       return;
     }
@@ -351,7 +355,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     let allowedCount = incomingCount;
     if (maxClassSheets !== Infinity && currentCount + incomingCount > maxClassSheets) {
       allowedCount = maxClassSheets - currentCount;
-      alert(`⚠️ Selection Adjusted!\n\nClass "${exam.className}" has ${maxClassSheets} registered student(s). Only ${allowedCount} sheet(s) could be added to reach the maximum limit of ${maxClassSheets}.`);
     }
 
     const newFiles: ScanFileItem[] = [];
@@ -380,11 +383,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     const target = fileList.find(f => f.id === fileId);
     if (!target) return;
 
-    const studentInfo = target.result 
-      ? (target.result.studentName !== 'Unknown Candidate' ? `${target.result.studentName} (${target.result.detectedStudentNum})` : `Roll: ${target.result.detectedStudentNum}`)
-      : target.name;
-
-    if (!window.confirm(`Are you sure you want to delete this OMR sheet record?\n\nFile/Student: ${studentInfo}`)) {
+    if (!window.confirm(`Delete sheet record?`)) {
       return;
     }
 
@@ -424,7 +423,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         return updated;
       });
 
-      alert(`OMR sheet record deleted successfully.`);
       refreshSubmissions();
     } catch (err: any) {
       alert(`Failed to delete record: ${err.message || err}`);
@@ -613,7 +611,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!activeResult || !selectedFileId) return;
 
     if (!detectedStudentId) {
-      alert('Please associate this scan with a student record before saving.');
+      alert('Please associate scan with a student.');
       return;
     }
 
@@ -666,7 +664,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       }
       pullCloudUpdatesToIndexedDB();
 
-      alert('Student score successfully saved to database!');
+      alert('Student score saved!');
       refreshSubmissions();
 
       setFileList(prev => {
@@ -682,55 +680,67 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
   };
 
+  // Filtered submissions for Full Screen Scanned Sheets mode
+  const filteredSubmissions = existingSubmissions.filter(sub => {
+    const student = students.find(s => s.id === sub.studentId);
+    const name = student ? student.name : '';
+    const roll = student ? student.studentNum : '';
+    const query = scannedSheetSearch.toLowerCase();
+    return name.toLowerCase().includes(query) || roll.toLowerCase().includes(query);
+  });
+
   return (
     <div className="scan-images-portal animate-fade-in" style={{ paddingBottom: '30px' }}>
       
-      {/* RESTORED SINGLE SCANNING HEADER BAR */}
-      <div className="clean-app-header mb-3" style={{ background: '#ffffff', padding: '14px 20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button className="clean-back-btn" onClick={onClose}>
-            <ArrowLeft size={20} />
+      {/* CLEAN, MOBILE-PERFECT HEADER BAR */}
+      <div className="glass-card mb-3" style={{ background: '#ffffff', padding: '12px 16px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        
+        {/* Left Side: Back Arrow + Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <button 
+            type="button"
+            className="clean-back-btn" 
+            onClick={onClose}
+            style={{ border: 'none', background: '#f1f5f9', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+          >
+            <ArrowLeft size={18} />
           </button>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              📷 OMR Sheet Scanner: {exam.title}
+
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {exam.title}
             </h3>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Class: {exam.className || 'General'} | Scanned: <strong>{scannedCount}</strong> of {maxClassSheets === Infinity ? 'Unlimited' : maxClassSheets}
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              {exam.className || 'General'} • Scanned {scannedCount}/{maxClassSheets === Infinity ? '∞' : maxClassSheets}
             </p>
           </div>
         </div>
 
-        {/* Small Clean Option to View Scanned Sheets of Students */}
+        {/* Right Side: Clean View Sheets Button */}
         <button
           type="button"
-          onClick={() => setShowScannedSheetsModal(true)}
+          onClick={() => setShowScannedSheetsFullScreen(true)}
           style={{
-            padding: '8px 16px',
+            padding: '8px 12px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+            background: '#0284c7',
             color: '#ffffff',
             border: 'none',
-            fontWeight: 600,
-            fontSize: '0.88rem',
+            fontWeight: 700,
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            boxShadow: '0 2px 8px rgba(2,132,199,0.3)'
+            flexShrink: 0,
+            boxShadow: '0 2px 6px rgba(2,132,199,0.3)'
           }}
         >
-          <Eye size={16} /> View Scanned Sheets ({scannedCount})
+          <Eye size={15} /> View Sheets ({scannedCount})
         </button>
       </div>
 
-      {isClassLimitReached && (
-        <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '10px', color: '#c53030', fontSize: '0.9rem', fontWeight: 600 }}>
-          ⚠️ Registered Class Limit Reached! All {maxClassSheets} registered student sheets for "{exam.className}" have been scanned. No extra sheets can be added.
-        </div>
-      )}
-
-      {/* RESTORED SINGLE SCANNING WORKSPACE (2-COLUMN RESPONSIVE LAYOUT) */}
+      {/* SINGLE SCANNING WORKSPACE */}
       <div className="split-scan-view">
         {/* Left Controls & Queue */}
         <div className="left-panel glass-card">
@@ -741,7 +751,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               type="button"
               onClick={() => {
                 if (isClassLimitReached) {
-                  alert(`⚠️ Registered Class Limit Reached!\n\nAll ${maxClassSheets} student sheets for class "${exam.className}" are already scanned.`);
+                  alert(`Class limit reached (${maxClassSheets} registered students scanned).`);
                   return;
                 }
                 setShowCameraModal(true);
@@ -751,25 +761,27 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 width: '100%',
                 padding: '14px',
                 borderRadius: '12px',
-                background: isClassLimitReached ? '#cbd5e1' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                background: isClassLimitReached ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                 color: '#ffffff',
                 border: 'none',
                 fontWeight: 'bold',
-                fontSize: '1rem',
+                fontSize: '0.95rem',
                 cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
                 boxShadow: isClassLimitReached ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '10px'
+                gap: '8px'
               }}
             >
-              <Camera size={20} /> Live Camera Fast Scanner
+              <Camera size={18} /> Live Camera Scanner
             </button>
 
-            <label className={`upload-drop-zone ${isClassLimitReached ? 'disabled' : ''}`} style={{ margin: 0, padding: '16px', borderRadius: '12px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer' }}>
-              <Upload size={22} className="mb-1" />
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Choose OMR Image Files</span>
+            <label className={`upload-drop-zone ${isClassLimitReached ? 'disabled' : ''}`} style={{ margin: 0, padding: '14px', borderRadius: '12px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer' }}>
+              <Upload size={20} className="mb-1" />
+              <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                {isClassLimitReached ? 'Class Limit Reached' : 'Choose OMR Image Files'}
+              </span>
               <input 
                 type="file" 
                 multiple 
@@ -782,14 +794,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           </div>
 
           {/* Pending Queue List */}
-          <div style={{ flex: 1, overflowY: 'auto', marginTop: '16px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', marginTop: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Scan Queue ({fileList.length})</h4>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Scan Queue ({fileList.length})</h4>
             </div>
 
             {fileList.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                No pending images in queue. Click "Live Camera Fast Scanner" or choose files to begin.
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No pending images in queue. Click "Live Camera Scanner" or choose files to begin.
               </div>
             ) : (
               <table className="clean-table">
@@ -831,7 +843,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                             handleDeleteFile(item.id);
                           }}
                           style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', padding: '4px' }}
-                          title="Delete sheet record"
+                          title="Delete record"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -848,7 +860,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         <div className="right-panel">
           {selectedFileId && getSelectedFile() ? (
             <>
-              <div className="glass-card" style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '340px' }}>
+              <div className="glass-card" style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '320px' }}>
                 {/* View Controls */}
                 <div style={{ position: 'absolute', left: '16px', top: '16px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.9)', padding: '6px 12px', borderRadius: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                   <button type="button" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate Left"><RotateCcw size={16} /></button>
@@ -862,7 +874,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <img 
                       src={getSelectedFile()?.previewUrl} 
                       alt="OMR Preview" 
-                      style={{ maxHeight: '420px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
+                      style={{ maxHeight: '400px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
                     />
                   </div>
                 </div>
@@ -872,12 +884,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <div className="glass-card scan-diag-card mt-3 animate-fade-in" style={{ padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>OMR Processing Diagnostic</h4>
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>OMR Diagnostic</h4>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {activeResult && (
-                      <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
                         Score: {activeResult.score} pts
                       </span>
                     )}
@@ -900,92 +912,132 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       onClick={handleSaveResult}
                       style={{ flex: 1, padding: '12px', borderRadius: '10px', fontWeight: 'bold', background: '#16a34a', color: '#fff', border: 'none' }}
                     >
-                      💾 Save Student Result
+                      💾 Save Result
                     </button>
                   )}
                 </div>
               </div>
             </>
           ) : (
-            <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <ImageIcon size={48} className="mb-2" style={{ opacity: 0.3 }} />
-              <h4>No OMR Sheet Selected</h4>
-              <p style={{ fontSize: '0.85rem' }}>Select a file from the scan queue or click "Live Camera Fast Scanner" above.</p>
+            <div className="glass-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <ImageIcon size={40} className="mb-2" style={{ opacity: 0.3 }} />
+              <h4 style={{ margin: 0, fontSize: '0.95rem' }}>No OMR Sheet Selected</h4>
+              <p style={{ fontSize: '0.82rem', marginTop: '4px' }}>Select a file from the queue or click "Live Camera Scanner".</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* VIEW SCANNED SHEETS MODAL */}
-      {showScannedSheetsModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '650px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}>
-            
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>📋 Scanned Student Sheets ({existingSubmissions.length})</h3>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Exam: {exam.title}</p>
-              </div>
+      {/* FULL SCREEN VIEW SCANNED SHEETS MODE */}
+      {showScannedSheetsFullScreen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f8fafc', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          
+          {/* Top Full Screen Header */}
+          <div style={{ background: '#ffffff', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', position: 'sticky', top: 0, zIndex: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <button 
-                onClick={() => setShowScannedSheetsModal(false)}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                type="button"
+                onClick={() => setShowScannedSheetsFullScreen(false)}
+                style={{ border: 'none', background: '#f1f5f9', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
-                ✕
+                <ArrowLeft size={20} />
               </button>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>📋 Scanned Student Sheets</h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Exam: {exam.title} ({existingSubmissions.length} scanned)
+                </p>
+              </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-              {existingSubmissions.length === 0 ? (
-                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No student OMR sheets scanned yet for this exam.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {existingSubmissions.map((sub) => {
-                    const student = students.find(s => s.id === sub.studentId);
-                    const cleanName = student ? student.name.split('/')[0].trim() : 'Unknown Candidate';
-                    const rollNo = student ? student.studentNum : 'N/A';
+            <button 
+              onClick={() => setShowScannedSheetsFullScreen(false)}
+              style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '34px', height: '34px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              ✕
+            </button>
+          </div>
 
-                    return (
-                      <div 
-                        key={`sub-item-${sub.id}`}
-                        style={{ padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#ebf8ff', color: '#2b6cb0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                            {cleanName.charAt(0)}
-                          </div>
-                          <div>
-                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{cleanName}</h4>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll: {rollNo} | Score: <strong>{sub.score.toFixed(1)} pts</strong></span>
-                          </div>
+          <div style={{ padding: '16px', maxWidth: '800px', margin: '0 auto', width: '100%', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            
+            {/* Search Input */}
+            <div style={{ position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search by student name or roll..."
+                value={scannedSheetSearch}
+                onChange={(e) => setScannedSheetSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 42px',
+                  borderRadius: '12px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontSize: '0.92rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Student Scanned List */}
+            {filteredSubmissions.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                <FileText size={40} className="mb-2" style={{ opacity: 0.4 }} />
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>No scanned student sheets found.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {filteredSubmissions.map((sub) => {
+                  const student = students.find(s => s.id === sub.studentId);
+                  const cleanName = student ? student.name.split('/')[0].trim() : 'Unknown Candidate';
+                  const rollNo = student ? student.studentNum : 'N/A';
+
+                  return (
+                    <div 
+                      key={`sub-full-${sub.id}`}
+                      style={{ padding: '14px 18px', borderRadius: '14px', border: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#ebf8ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.05rem' }}>
+                          {cleanName.charAt(0)}
                         </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)' }}>{cleanName}</h4>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll: {rollNo} | Booklet Set: {sub.bookletSet || 'A'}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ padding: '4px 10px', background: '#def7ec', color: '#03543f', borderRadius: '16px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle size={14} /> ∑ {sub.score.toFixed(1)} Pts
+                        </span>
 
                         {sub.omrImageUrl ? (
                           <button
                             type="button"
                             onClick={() => setViewingOmrModalUrl({ name: cleanName, url: sub.omrImageUrl!, score: sub.score })}
-                            style={{ padding: '6px 14px', borderRadius: '8px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            style={{ padding: '8px 14px', borderRadius: '10px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                           >
-                            <Eye size={14} /> View Scanned Sheet
+                            <Eye size={15} /> View Sheet
                           </button>
                         ) : (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Image on device</span>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Saved on device</span>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
           </div>
         </div>
       )}
 
-      {/* FULL IMAGE VIEWER MODAL */}
+      {/* FULL IMAGE VIEWER OVERLAY */}
       {viewingOmrModalUrl && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#ffffff', marginBottom: '12px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📄 {viewingOmrModalUrl.name}'s Scanned OMR Sheet</h3>

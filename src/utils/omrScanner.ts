@@ -1,6 +1,8 @@
 // OMR Scanner Computer Vision utility using OpenCV.js (NEET 200-Question Layout)
 // Warped page resolution: 1000 x 1414 (A4 aspect ratio)
 
+import { scanOMRSheetPureJS } from './jsOMRScanner';
+
 export interface ScanResult {
   studentNum: string;
   answers: Record<number, string>;
@@ -69,8 +71,9 @@ export async function scanOMRSheet(
   sections: any[] = []
 ): Promise<ScanResult> {
   const cv = window.cv;
-  if (!cv) {
-    throw new Error('OpenCV.js is not loaded yet');
+  if (!cv || typeof cv.Mat !== 'function') {
+    // Pure JS Canvas OMR Engine fallback (Instant 0ms execution on mobile devices)
+    return scanOMRSheetPureJS(sourceImage, numQuestions, rollNoDigits, examSetsCount, sections);
   }
 
   // 1. Read source image into Mat

@@ -863,6 +863,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', background: cvLoaded ? '#dcfce7' : '#e0e7ff', color: cvLoaded ? '#15803d' : '#3730a3', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                    ⚡ {cvLoaded ? 'OpenCV' : 'Pure JS'} Engine Ready
+                  </span>
                   <button 
                     type="button"
                     className="btn-primary"
@@ -1185,7 +1188,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <button 
                 className="btn-primary" 
                 style={{ padding: '10px 20px', borderRadius: '6px' }}
-                disabled={!selectedFileId || isScanning || !cvLoaded}
+                disabled={!selectedFileId || isScanning}
                 onClick={() => runOMRScan()}
               >
                 {isScanning ? <RefreshCw className="spin" size={16} /> : 'Scan'}

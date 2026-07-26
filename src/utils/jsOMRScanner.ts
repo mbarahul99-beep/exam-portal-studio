@@ -135,17 +135,23 @@ export function scanOMRSheetPureJS(
   }
 
   // 2. Read Booklet Set Code (A, B, C, D)
-  let bookletSet = "A";
+  let bookletSet: string | undefined = undefined;
   const setNames = ["A", "B", "C", "D"];
-  let maxSetFill = 0.25;
+  let maxSetFill = 0.42; // Require genuinely shaded bubble
+  let bestSetIndex = -1;
+
   for (let s = 0; s < 4; s++) {
     const sx = 580 + s * 25;
     const sy = 240;
     const fill = getBubbleFill(sx, sy, 7);
     if (fill > maxSetFill) {
       maxSetFill = fill;
-      bookletSet = setNames[s];
+      bestSetIndex = s;
     }
+  }
+
+  if (bestSetIndex !== -1) {
+    bookletSet = setNames[bestSetIndex];
   }
 
   // 3. Read Answers

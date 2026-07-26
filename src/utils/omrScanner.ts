@@ -329,31 +329,30 @@ export async function scanOMRSheet(
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
     // 5.5. Scan Booklet Code Set
-    let bookletSet = 'A';
-    if (examSetsCount > 1) {
-      const setIntensities: number[] = [];
-      for (let idx = 0; idx < examSetsCount; idx++) {
-        const x = 610 + idx * 45;
-        const y = OMR_CONFIG.studentId.yStart + bestDy;
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
-        setIntensities.push(avgGray);
+    let bookletSet: string | undefined = undefined;
+    const setIntensities: number[] = [];
+    const checkCount = Math.min(4, Math.max(1, examSetsCount));
+    for (let idx = 0; idx < checkCount; idx++) {
+      const x = 580 + idx * 25;
+      const y = OMR_CONFIG.studentId.yStart + bestDy;
+      const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
+      setIntensities.push(avgGray);
+    }
+    let minVal = 256;
+    let maxVal = -1;
+    let minIdx = -1;
+    for (let idx = 0; idx < checkCount; idx++) {
+      const val = setIntensities[idx];
+      if (val < minVal) {
+        minVal = val;
+        minIdx = idx;
       }
-      let minVal = 256;
-      let maxVal = -1;
-      let minIdx = 0;
-      for (let idx = 0; idx < examSetsCount; idx++) {
-        const val = setIntensities[idx];
-        if (val < minVal) {
-          minVal = val;
-          minIdx = idx;
-        }
-        if (val > maxVal) {
-          maxVal = val;
-        }
+      if (val > maxVal) {
+        maxVal = val;
       }
-      if (maxVal - minVal > 40 && minVal < 155) {
-        bookletSet = String.fromCharCode(65 + minIdx);
-      }
+    }
+    if (minIdx !== -1 && maxVal - minVal > 45 && minVal < 140) {
+      bookletSet = String.fromCharCode(65 + minIdx);
     }
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)

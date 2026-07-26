@@ -778,14 +778,19 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your camera for live auto-scan or upload image files (JPG, PNG)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '320px' }}>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer' }}>
+                  <Camera size={20} /> 📱 Snap Photo (Phone Camera)
+                  <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
+                </label>
+
                 <button 
                   type="button"
-                  className="btn-primary" 
+                  className="btn-secondary" 
                   onClick={() => setShowCameraModal(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '12px 16px', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 'bold', cursor: 'pointer', border: '1.5px solid var(--border-color)', background: '#ffffff' }}
                 >
-                  <Camera size={20} /> 📷 Open Live Camera Scanner
+                  <Camera size={18} /> 📷 Web Live Camera
                 </button>
 
                 <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
@@ -806,10 +811,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label className="btn-primary" style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    <Camera size={16} /> 📱 Snap Photo
+                    <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  </label>
                   <button 
                     type="button"
-                    className="btn-primary"
+                    className="btn-secondary"
                     onClick={() => setShowCameraModal(true)}
                     style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold' }}
                   >

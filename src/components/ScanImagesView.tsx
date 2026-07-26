@@ -92,22 +92,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     });
   };
 
-  const handleSimulateAdd = () => {
-    // Generate a mock simulated scan item
-    const mockItem: ScanFileItem = {
-      id: `sim-${Date.now()}`,
-      name: `simulated-sheet-${exam.title.toLowerCase().replace(/\s+/g, '-')}.jpg`,
-      previewUrl: '', // Will be drawn in canvas when selected
-      status: 'Pending'
-    };
-
-    setFileList(prev => {
-      const updated = [...prev, mockItem];
-      setSelectedFileId(mockItem.id);
-      return updated;
-    });
-  };
-
   const getSelectedFile = () => {
     return fileList.find(f => f.id === selectedFileId);
   };
@@ -601,14 +585,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Select images to Scan</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Supported file formats (jpg, jpeg and png)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '10px 16px', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
                   <Upload size={16} /> Select Images
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
-                <button className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={handleSimulateAdd}>
-                  <RefreshCw size={14} /> Simulate scan sheet
-                </button>
               </div>
             </div>
           ) : (

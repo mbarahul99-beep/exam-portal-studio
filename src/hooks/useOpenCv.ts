@@ -26,6 +26,14 @@ export function useOpenCv() {
       },
     };
 
+    // Check periodically with fast 100ms interval for preloaded OpenCV.js script in index.html
+    const interval = setInterval(() => {
+      if (window.cv && window.cv.Mat) {
+        setLoaded(true);
+        clearInterval(interval);
+      }
+    }, 100);
+
     // Check if script is already injected
     const existingScript = document.getElementById('opencv-script');
     if (!existingScript) {
@@ -34,7 +42,6 @@ export function useOpenCv() {
       script.src = 'https://docs.opencv.org/4.5.5/opencv.js';
       script.async = true;
       script.onload = () => {
-        // Fallback check if onRuntimeInitialized doesn't fire or script was loaded
         if (window.cv && window.cv.Mat) {
           setLoaded(true);
         }
@@ -43,16 +50,9 @@ export function useOpenCv() {
         setError(true);
       };
       document.body.appendChild(script);
-    } else {
-      // Script exists but not loaded yet, check periodically
-      const interval = setInterval(() => {
-        if (window.cv && window.cv.Mat) {
-          setLoaded(true);
-          clearInterval(interval);
-        }
-      }, 500);
-      return () => clearInterval(interval);
     }
+
+    return () => clearInterval(interval);
   }, []);
 
   return { loaded, error };

@@ -328,182 +328,9 @@ export default function App() {
   // Selected Student Profile State for Reports
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
-  // Populate Mock Data Helper
-  const handleSeedData = async (silent = false) => {
-    try {
-      // 1. Clear existing
-      await db.students.clear();
-      await db.exams.clear();
-      await db.submissions.clear();
-      await db.classes.clear();
-
-      // 2. Add mock classes
-      const mockClasses = [
-        { name: 'NEET 1', state: 'Synced' as const, createdAt: new Date() },
-        { name: 'NEET', state: 'Synced' as const, createdAt: new Date() }
-      ];
-      for (const cls of mockClasses) {
-        await db.classes.add(cls);
-      }
-
-      // 3. Add mock students
-      const mockStudents: Student[] = [
-        { studentNum: '1000000001', name: 'Aarav Sharma', className: 'NEET', phone: '9876543210', email: 'aarav@appexjind.in' },
-        { studentNum: '1000000002', name: 'Diya Patel', className: 'NEET', phone: '9876543211', email: 'diya@appexjind.in' },
-        { studentNum: '1000000003', name: 'Kabir Mehta', className: 'NEET', phone: '9876543212', email: 'kabir@appexjind.in' },
-        { studentNum: '1000000004', name: 'Ananya Rao', className: 'NEET 1', phone: '9876543213', email: 'ananya@appexjind.in' },
-        { studentNum: '1000000005', name: 'Rohan Gupta', className: 'NEET 1', phone: '9876543214', email: 'rohan@appexjind.in' }
-      ];
-      for (const s of mockStudents) {
-        await db.students.add(s);
-      }
-
-      // 3. Add a mock exam
-      const key: Record<number, string> = {};
-      const options = ['A', 'B', 'C', 'D'];
-      for (let i = 1; i <= 200; i++) {
-        // Random correct answer for mock exam key
-        key[i] = options[Math.floor(Math.sin(i) * 2 + 2) % 4];
-      }
-
-      const examId = await db.exams.add({
-        title: 'NEET Practice Test 1 (200 Qs)',
-        className: 'NEET',
-        date: '2026-07-14',
-        status: 'private',
-        numQuestions: 200,
-        answerKey: key,
-        correctMarks: 4,
-        incorrectMarks: -1,
-        unansweredMarks: 0,
-        rollNoDigits: 10,
-        examSetsCount: 1,
-        subjects: [
-          { name: 'Physics', numSections: 1 },
-          { name: 'Chemistry', numSections: 1 },
-          { name: 'Botany', numSections: 1 },
-          { name: 'Zoology', numSections: 1 }
-        ],
-        sections: [
-          { subjectName: 'Physics', sectionName: 'Section 1', qStart: 1, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-          { subjectName: 'Chemistry', sectionName: 'Section 1', qStart: 51, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-          { subjectName: 'Botany', sectionName: 'Section 1', qStart: 101, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-          { subjectName: 'Zoology', sectionName: 'Section 1', qStart: 151, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 }
-        ],
-        answerKeys: {
-          'A': key
-        },
-        createdAt: new Date()
-      });
-
-      // 4. Add mock submissions
-      const sub1: Record<number, string> = { ...key }; // 200/200 correct -> 800 marks
-      
-      const sub2: Record<number, string> = { ...key }; // 190 correct, 10 incorrect -> 750 marks
-      for (let i = 1; i <= 10; i++) {
-        const q = i * 15;
-        sub2[q] = sub2[q] === 'A' ? 'B' : 'A';
-      }
-
-      const sub3: Record<number, string> = { ...key }; // 165 correct, 35 incorrect -> 625 marks
-      for (let i = 1; i <= 35; i++) {
-        const q = i * 5;
-        sub3[q] = sub3[q] === 'A' ? 'B' : 'A';
-      }
-
-      const dbStudents = await db.students.toArray();
-      
-      await db.submissions.add({
-        examId,
-        studentId: dbStudents[0].id!, // Aarav (800 marks)
-        score: 800,
-        answers: sub1,
-        scannedAt: new Date(Date.now() - 3600000)
-      });
-
-      await db.submissions.add({
-        examId,
-        studentId: dbStudents[1].id!, // Diya (750 marks)
-        score: 750,
-        answers: sub2,
-        scannedAt: new Date(Date.now() - 1800000)
-      });
-
-      await db.submissions.add({
-        examId,
-        studentId: dbStudents[2].id!, // Kabir (625 marks)
-        score: 625,
-        answers: sub3,
-        scannedAt: new Date()
-      });
-
-      if (!silent) {
-        confetti({ particleCount: 80, spread: 60 });
-        alert('Mock data loaded! 5 Students, 1 NEET Exam (200 Qs), and 3 scan results created.');
-      }
-    } catch (err: any) {
-      if (!silent) {
-        alert(`Error loading mock data: ${err.message}`);
-      }
-    }
-  };
-
-  // Auto-seed database if empty on startup (silent load)
+  // Production startup: Synchronize clean database with Hostinger MySQL
   useEffect(() => {
-    const autoSeed = async () => {
-      try {
-        const classCount = await db.classes.count();
-        const studentCount = await db.students.count();
-        const examCount = await db.exams.count();
-        
-        if (classCount === 0 || studentCount === 0 || examCount === 0) {
-          console.log("Database looks empty or incomplete on startup. Auto-seeding mock data...");
-          await handleSeedData(true);
-        } else {
-          // Auto-upgrade legacy mock exams if subjects/sections are missing or truncated
-          const defaultExam = await db.exams
-            .where('title')
-            .equals('NEET Practice Test 1 (200 Qs)')
-            .first();
-            
-          if (defaultExam && (!defaultExam.rollNoDigits || !defaultExam.subjects || defaultExam.numQuestions === 15)) {
-            console.log("Upgrading legacy NEET mock exam in IndexedDB...");
-            
-            const key: Record<number, string> = {};
-            const options = ['A', 'B', 'C', 'D'];
-            for (let i = 1; i <= 200; i++) {
-              key[i] = options[Math.floor(Math.sin(i) * 2 + 2) % 4];
-            }
-            
-            await db.exams.update(defaultExam.id!, {
-              numQuestions: 200,
-              answerKey: key,
-              rollNoDigits: 10,
-              examSetsCount: 1,
-              subjects: [
-                { name: 'Physics', numSections: 1 },
-                { name: 'Chemistry', numSections: 1 },
-                { name: 'Botany', numSections: 1 },
-                { name: 'Zoology', numSections: 1 }
-              ],
-              sections: [
-                { subjectName: 'Physics', sectionName: 'Section 1', qStart: 1, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-                { subjectName: 'Chemistry', sectionName: 'Section 1', qStart: 51, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-                { subjectName: 'Botany', sectionName: 'Section 1', qStart: 101, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 },
-                { subjectName: 'Zoology', sectionName: 'Section 1', qStart: 151, qCount: 50, questionType: '4 option', correctMarks: 4, incorrectMarks: -1, allowPartialMarks: false, allowOptionalAttempts: false, maxAttempts: 50 }
-              ],
-              answerKeys: {
-                'A': key
-              }
-            });
-            console.log("Legacy NEET mock exam upgraded successfully.");
-          }
-        }
-      } catch (e) {
-        console.error("Auto-seeding check failed:", e);
-      }
-    };
-    autoSeed();
+    pullCloudUpdatesToIndexedDB();
   }, []);
 
   const cleanWhatsAppNumber = (num: string): string => {
@@ -2235,10 +2062,10 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Seed Data Utility in sidebar */}
+          {/* Cloud Sync Utility in sidebar */}
           <div className="sidebar-footer">
-            <button className="btn-seed" onClick={() => handleSeedData(false)} style={{ width: '100%', marginBottom: '8px' }}>
-              <RefreshCw size={14} /> Load Demo Setup
+            <button className="btn-seed" onClick={() => pullCloudUpdatesToIndexedDB()} style={{ width: '100%', marginBottom: '8px' }}>
+              <RefreshCw size={14} /> Sync Cloud Database
             </button>
             
             <div className="cv-status">

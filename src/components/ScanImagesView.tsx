@@ -13,6 +13,7 @@ import {
 import { db, type Exam, type Student } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
+import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface ScanImagesViewProps {
   exam: Exam;
@@ -538,7 +539,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         await db.submissions.delete(duplicate.id!);
       }
 
-      await db.submissions.add({
+      const subId = await db.submissions.add({
         examId: exam.id!,
         studentId: detectedStudentId,
         score: activeResult.score,
@@ -546,6 +547,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         bookletSet: activeResult.bookletSet,
         scannedAt: new Date()
       });
+
+      const savedSub = await db.submissions.get(subId);
+      if (savedSub) {
+        await syncSubmissionToCloud(savedSub);
+      }
+      pullCloudUpdatesToIndexedDB();
 
       alert('Student score successfully saved to database!');
       

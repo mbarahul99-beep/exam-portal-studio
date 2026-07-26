@@ -76,7 +76,11 @@ export async function pullCloudUpdatesToIndexedDB() {
         if (!existing) {
           await db.students.add(st);
         } else {
-          await db.students.update(existing.id!, st);
+          const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
+          await db.students.update(existing.id!, {
+            ...st,
+            faceDescriptor
+          });
         }
       }
     }
@@ -103,11 +107,15 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     if (data.submissions && Array.isArray(data.submissions)) {
       for (const sub of data.submissions) {
-        const existing = await db.submissions.get(sub.id);
+        const existing = await db.submissions
+          .where('[examId+studentId]')
+          .equals([sub.examId, sub.studentId])
+          .first();
+
         if (!existing) {
           await db.submissions.add(sub);
         } else {
-          await db.submissions.update(sub.id, sub);
+          await db.submissions.update(existing.id!, sub);
         }
       }
     }

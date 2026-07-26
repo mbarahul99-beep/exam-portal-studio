@@ -152,9 +152,11 @@ const initDatabase = async () => {
         answers JSON,
         scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         omrImageUrl TEXT,
-        accessToken VARCHAR(255)
+        accessToken VARCHAR(255),
+        UNIQUE KEY unique_exam_student (examId, studentId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    try { await conn.query('ALTER TABLE submissions ADD UNIQUE KEY unique_exam_student (examId, studentId)'); } catch {}
 
     // 7. Pending Registrations Table for Student Invite Links
     await conn.query(`
@@ -453,24 +455,22 @@ app.post('/api/questions', async (req, res) => {
 // Upsert Submission API (Save student scores & graded responses in Hostinger MySQL)
 app.post('/api/submissions', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { id, examId, studentId, score, answers, omrImageUrl, accessToken } = req.body;
+  const { examId, studentId, score, answers, omrImageUrl, accessToken } = req.body;
+  if (!examId || !studentId) return res.status(400).json({ error: 'Missing examId or studentId' });
   try {
     const ansJson = typeof answers === 'object' ? JSON.stringify(answers) : answers;
-    if (id) {
-      const query = `
-        UPDATE submissions SET score = ?, answers = ?, omrImageUrl = COALESCE(?, omrImageUrl), accessToken = COALESCE(?, accessToken)
-        WHERE id = ?;
-      `;
-      await pool.query(query, [score, ansJson, omrImageUrl, accessToken, id]);
-      res.json({ success: true, id });
-    } else {
-      const query = `
-        INSERT INTO submissions (examId, studentId, score, answers, omrImageUrl, accessToken)
-        VALUES (?, ?, ?, ?, ?, ?);
-      `;
-      const [result] = await pool.query(query, [examId, studentId, score, ansJson, omrImageUrl, accessToken]);
-      res.json({ success: true, id: result.insertId });
-    }
+    const token = accessToken || Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const query = `
+      INSERT INTO submissions (examId, studentId, score, answers, omrImageUrl, accessToken)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        score = VALUES(score),
+        answers = VALUES(answers),
+        omrImageUrl = COALESCE(VALUES(omrImageUrl), omrImageUrl),
+        accessToken = COALESCE(VALUES(accessToken), accessToken);
+    `;
+    const [result] = await pool.query(query, [examId, studentId, score, ansJson, omrImageUrl || null, token]);
+    res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
     console.error("Submission save error:", err);
     res.status(500).json({ error: err.message });

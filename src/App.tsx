@@ -1929,6 +1929,8 @@ export default function App() {
         }
       }
 
+      pullCloudUpdatesToIndexedDB();
+
       confetti({ particleCount: 100, spread: 80 });
       alert(`Score of ${scanResult.score} saved successfully for ${scanResult.studentName}!`);
       

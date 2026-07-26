@@ -3,6 +3,7 @@ import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Calendar, Users, Check, X, Clock, Download, CheckSquare, Camera, Trash2 } from 'lucide-react';
 import jsQR from 'jsqr';
+import { syncStudentToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface AttendancePortalProps {
   classes: ClassEntity[];
@@ -289,6 +290,16 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     if (window.confirm(`Are you sure you want to remove the registered face record for ${primaryName}?`)) {
       try {
         await db.students.update(student.id!, { faceDescriptor: undefined });
+        try {
+          await fetch(`/api/students/${student.id}/face`, { method: 'DELETE' });
+        } catch (e) {
+          console.warn("Delete face API warning:", e);
+        }
+        const updatedStudent = await db.students.get(student.id!);
+        if (updatedStudent) {
+          await syncStudentToCloud(updatedStudent);
+        }
+        pullCloudUpdatesToIndexedDB();
         alert(`Face record removed for ${primaryName}. You can enroll a fresh face photo anytime.`);
       } catch (err) {
         console.error("Failed to remove face descriptor:", err);
@@ -355,6 +366,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       
       try {
         await db.students.update(enrollingStudent.id!, { faceDescriptor: biometrics });
+        const updatedStudent = await db.students.get(enrollingStudent.id!);
+        if (updatedStudent) {
+          await syncStudentToCloud(updatedStudent);
+        }
+        pullCloudUpdatesToIndexedDB();
         playBeep();
         const primaryName = enrollingStudent.name.split('/')[0].trim();
         if ('speechSynthesis' in window) {
@@ -362,7 +378,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const utterance = new SpeechSynthesisUtterance(`Face Enrolled for ${primaryName}`);
           window.speechSynthesis.speak(utterance);
         }
-        setEnrollMsg(`✅ Face Biometric successfully registered for ${primaryName}!`);
+        setEnrollMsg(`✅ Face Biometric successfully registered & synced for ${primaryName}!`);
         setTimeout(() => {
           stopEnrollmentCamera();
         }, 1500);

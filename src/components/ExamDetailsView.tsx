@@ -22,7 +22,8 @@ import {
   Send,
   Printer,
   Download,
-  UserX
+  UserX,
+  Eye
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
@@ -57,6 +58,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl: string } | null>(null);
   const [editableKeys, setEditableKeys] = useState<Record<number, string>>(() => ({ ...(exam.answerKey || {}) }));
   const [isSavingKey, setIsSavingKey] = useState(false);
 
@@ -733,6 +735,33 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <Check size={14} />
                       </div>
 
+                      {row.omrImageUrl && (
+                        <button 
+                          type="button"
+                          title="View Scanned OMR Sheet Image"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingScannedOmr({ studentName: row.studentName, omrUrl: row.omrImageUrl! });
+                          }}
+                          style={{
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '16px',
+                            padding: '4px 10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer',
+                            marginLeft: '8px'
+                          }}
+                        >
+                          <Eye size={13} /> Sheet
+                        </button>
+                      )}
+
                       <button 
                         type="button"
                         title="Delete Scanned OMR Sheet Record"
@@ -1219,6 +1248,32 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             Object.assign(exam, updated);
           }}
         />
+      )}
+
+      {/* SCANNED OMR IMAGE MODAL OVERLAY */}
+      {viewingScannedOmr && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#ffffff', marginBottom: '12px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📄 {viewingScannedOmr.studentName}'s Scanned OMR Sheet</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Exam: {exam.title}</p>
+            </div>
+            <button 
+              onClick={() => setViewingScannedOmr(null)}
+              style={{ background: '#334155', color: '#ffffff', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
+            <img 
+              src={viewingScannedOmr.omrUrl} 
+              alt="Scanned OMR Sheet" 
+              style={{ maxHeight: '85vh', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
+            />
+          </div>
+        </div>
       )}
 
     </div>

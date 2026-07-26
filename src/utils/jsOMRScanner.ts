@@ -34,11 +34,14 @@ export function scanOMRSheetPureJS(
     return Math.round(data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
   };
 
+  const W = canvas.width;
+  const H = canvas.height;
+
   // Find 4 corner anchors (black square blocks near corners)
-  const findAnchorInRegion = (rxStart: number, rxEnd: number, ryStart: number, ryEnd: number) => {
+  const findAnchorInRegion = (rxStart: number, rxEnd: number, ryStart: number, ryEnd: number, defaultX: number, defaultY: number) => {
     let minSum = Infinity;
-    let bestX = (rxStart + rxEnd) / 2;
-    let bestY = (ryStart + ryEnd) / 2;
+    let bestX = defaultX;
+    let bestY = defaultY;
     let foundDarkBlock = false;
 
     const step = 4;
@@ -57,28 +60,24 @@ export function scanOMRSheetPureJS(
           minSum = avg;
           bestX = x;
           bestY = y;
-          if (avg < 165) {
+          if (avg < 130) {
             foundDarkBlock = true;
           }
         }
       }
     }
 
-    if (!foundDarkBlock || minSum > 165) {
-      // Fallback to region center if low contrast
-      bestX = (rxStart + rxEnd) / 2;
-      bestY = (ryStart + ryEnd) / 2;
+    if (!foundDarkBlock || minSum > 130) {
+      // Fallback to exact outer page corner if no distinct black anchor block
+      return { x: defaultX, y: defaultY };
     }
     return { x: bestX, y: bestY };
   };
 
-  const W = canvas.width;
-  const H = canvas.height;
-
-  const tl = findAnchorInRegion(0, W * 0.35, 0, H * 0.30);
-  const tr = findAnchorInRegion(W * 0.65, W, 0, H * 0.30);
-  const bl = findAnchorInRegion(0, W * 0.35, H * 0.70, H);
-  const br = findAnchorInRegion(W * 0.65, W, H * 0.70, H);
+  const tl = findAnchorInRegion(0, W * 0.20, 0, H * 0.20, 0, 0);
+  const tr = findAnchorInRegion(W * 0.80, W, 0, H * 0.20, W, 0);
+  const bl = findAnchorInRegion(0, W * 0.20, H * 0.80, H, 0, H);
+  const br = findAnchorInRegion(W * 0.80, W, H * 0.80, H, W, H);
 
   // Build clean, sharp, un-corrupted 4-corner cropped canvas preview
   const debugWarpedCanvas = document.createElement('canvas');

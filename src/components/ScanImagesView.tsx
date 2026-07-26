@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
   Upload, 
   RotateCcw, 
@@ -8,9 +8,7 @@ import {
   ChevronRight, 
   FileText,
   RefreshCw,
-  Image as ImageIcon,
-  Camera,
-  ArrowLeft
+  Image as ImageIcon
 } from 'lucide-react';
 import { db, type Exam, type Student } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
@@ -37,173 +35,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [syncToCloud, setSyncToCloud] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-
-  // Camera & Auto-Snap states
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const activeStreamRef = useRef<MediaStream | null>(null);
-
-  const playShutterSound = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.08);
-    } catch {}
-  };
-
-  const stopCameraStream = () => {
-    if (activeStreamRef.current) {
-      activeStreamRef.current.getTracks().forEach(track => track.stop());
-      activeStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  // Enumerate video input devices and prioritize Mobile Rear Camera
-  useEffect(() => {
-    if (showCameraModal) {
-      navigator.mediaDevices.enumerateDevices().then(devices => {
-        const videoDevices = devices.filter(d => d.kind === 'videoinput');
-        setCameraDevices(videoDevices);
-
-        // Find Rear/Back camera on Android or iPhone
-        const rearCamera = videoDevices.find(d => 
-          d.label.toLowerCase().includes('back') || 
-          d.label.toLowerCase().includes('rear') || 
-          d.label.toLowerCase().includes('environment')
-        );
-
-        if (rearCamera && !selectedCameraId) {
-          setSelectedCameraId(rearCamera.deviceId);
-        } else if (videoDevices.length > 0 && !selectedCameraId) {
-          setSelectedCameraId(videoDevices[0].deviceId);
-        }
-      });
-    } else {
-      stopCameraStream();
-    }
-    return () => {
-      stopCameraStream();
-    };
-  }, [showCameraModal]);
-
-  // Request rear camera stream (facingMode: environment)
-  useEffect(() => {
-    if (showCameraModal) {
-      const constraints: MediaStreamConstraints = {
-        video: selectedCameraId ? 
-          { deviceId: { exact: selectedCameraId } } : 
-          { facingMode: { ideal: 'environment' } }
-      };
-
-      const startStream = async (stream: MediaStream) => {
-        activeStreamRef.current = stream;
-
-        // Enable continuous camera auto-focus & exposure on hardware tracks
-        const track = stream.getVideoTracks()[0];
-        if (track && 'applyConstraints' in track) {
-          try {
-            await track.applyConstraints({
-              advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }]
-            } as any);
-          } catch {
-            // Ignore devices without hardware autofocus API support
-          }
-        }
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          try {
-            await videoRef.current.play();
-          } catch (e) {
-            console.log('Mobile video play exception handled:', e);
-          }
-        } else {
-          // Retry after microtask if video element ref mounted asynchronously
-          setTimeout(async () => {
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              try { await videoRef.current.play(); } catch {}
-            }
-          }, 100);
-        }
-      };
-
-      navigator.mediaDevices.getUserMedia(constraints).then(startStream).catch(() => {
-        // Fallback for devices that fail exact constraints
-        navigator.mediaDevices.getUserMedia({ video: true }).then(startStream).catch(fallbackErr => {
-          alert(`Could not access camera: ${fallbackErr.message}`);
-          setShowCameraModal(false);
-        });
-      });
-    }
-
-    return () => {
-      stopCameraStream();
-    };
-  }, [selectedCameraId, showCameraModal]);
-
-  // Stop camera stream when component unmounts or exits view
-  useEffect(() => {
-    return () => {
-      stopCameraStream();
-    };
-  }, []);
-
-  const captureCameraPhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    playShutterSound();
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const width = video.videoWidth || 1920;
-    const height = video.videoHeight || 1080;
-
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.drawImage(video, 0, 0, width, height);
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-
-      const timeStamp = Date.now();
-      const fileName = `camera-scan-${timeStamp}.jpg`;
-      const fileObj = new File([blob], fileName, { type: 'image/jpeg' });
-      const objectUrl = URL.createObjectURL(fileObj);
-
-      const newItem: ScanFileItem = {
-        id: `cam-${timeStamp}`,
-        name: fileName,
-        file: fileObj,
-        previewUrl: objectUrl,
-        status: 'Pending'
-      };
-
-      setFileList(prev => [...prev, newItem]);
-      setSelectedFileId(newItem.id);
-
-      // Stop camera stream & close camera modal cleanly
-      stopCameraStream();
-      setShowCameraModal(false);
-    }, 'image/jpeg', 0.92);
-  };
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -776,16 +607,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </svg>
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your camera for live auto-scan or upload image files (JPG, PNG)</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Upload image files of OMR answer sheets (JPG, PNG) to begin grading.</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer' }}>
-                  <Camera size={20} /> 📱 Snap Photo (Phone Camera)
-                  <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
-
-                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
-                  <Upload size={18} /> Select / Upload Image Files
+              <div style={{ width: '100%', maxWidth: '320px' }}>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
+                  <Upload size={20} /> Select / Upload Image Files
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
@@ -802,13 +628,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div>
                   <label className="btn-primary" style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    <Camera size={16} /> 📱 Snap Photo
-                    <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Upload size={16} /> Upload Files
+                    <Upload size={16} /> + Upload Files
                     <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                   </label>
                 </div>

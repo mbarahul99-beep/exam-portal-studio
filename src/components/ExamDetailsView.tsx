@@ -127,6 +127,36 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     }
   };
 
+  const handleDeleteSubmission = async (e: React.MouseEvent, submissionId: number | undefined, studentName: string) => {
+    e.stopPropagation();
+    if (!submissionId) return;
+    if (!window.confirm(`Are you sure you want to delete the scanned OMR sheet record for student: ${studentName}?`)) {
+      return;
+    }
+
+    try {
+      const sub = examSubs.find(s => s.id === submissionId);
+      await db.submissions.delete(submissionId);
+      
+      if (sub) {
+        try {
+          await fetch('/api/admin/delete-submission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ examId: sub.examId, studentId: sub.studentId })
+          });
+        } catch (err) {
+          console.warn("Cloud submission deletion error:", err);
+        }
+      }
+
+      alert(`OMR sheet record for "${studentName}" deleted successfully.`);
+      pullCloudUpdatesToIndexedDB();
+    } catch (err: any) {
+      alert(`Failed to delete submission record: ${err.message || err}`);
+    }
+  };
+
   // Compute student map & dense ranks for reports
   const studentMap = new Map(students.map(s => [s.id, s]));
   const rankedLeaderboard = examSubs.map(sub => {
@@ -694,6 +724,27 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                       <div className="stat-verified-check">
                         <Check size={14} />
                       </div>
+
+                      <button 
+                        type="button"
+                        title="Delete Scanned OMR Sheet Record"
+                        onClick={(e) => handleDeleteSubmission(e, row.id, row.studentName)}
+                        style={{
+                          background: '#fff5f5',
+                          color: '#e53e3e',
+                          border: '1px solid #fed7d7',
+                          borderRadius: '50%',
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          marginLeft: '8px'
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 );

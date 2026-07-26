@@ -665,6 +665,18 @@ app.post('/api/upload-omr', async (req, res) => {
   }
 });
 
+// Delete Student OMR Submission Record API
+app.post('/api/admin/delete-submission', async (req, res) => {
+  const { examId, studentId } = req.body;
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM submissions WHERE examId = ? AND studentId = ?', [examId, studentId]);
+    res.json({ success: true, message: 'Submission record deleted successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin Purge Demo Data API
 app.post('/api/admin/purge-demo-data', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });

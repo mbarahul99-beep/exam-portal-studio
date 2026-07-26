@@ -10,6 +10,7 @@ import {
   ChevronRight, 
   FileText,
   RefreshCw,
+  Trash2,
   Image as ImageIcon
 } from 'lucide-react';
 import { db, type Exam, type Student } from '../db';
@@ -367,6 +368,64 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       return updated;
     });
     e.target.value = '';
+  };
+
+  // Delete student's OMR sheet record
+  const handleDeleteFile = async (fileId: string) => {
+    const target = fileList.find(f => f.id === fileId);
+    if (!target) return;
+
+    const studentInfo = target.result 
+      ? (target.result.studentName !== 'Unknown Candidate' ? `${target.result.studentName} (${target.result.detectedStudentNum})` : `Roll: ${target.result.detectedStudentNum}`)
+      : target.name;
+
+    if (!window.confirm(`Are you sure you want to delete this OMR sheet record?\n\nFile/Student: ${studentInfo}`)) {
+      return;
+    }
+
+    try {
+      // If studentId exists, remove submission record from IndexedDB & Cloud Database
+      if (target.result && target.result.studentId) {
+        await db.submissions.where({ examId: exam.id, studentId: target.result.studentId }).delete();
+        
+        try {
+          await fetch('/api/admin/delete-submission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ examId: exam.id, studentId: target.result.studentId })
+          });
+        } catch (e) {
+          console.warn("Cloud deletion warning:", e);
+        }
+      }
+
+      // Remove from fileList state
+      setFileList(prev => {
+        const updated = prev.filter(f => f.id !== fileId);
+        if (selectedFileId === fileId) {
+          const nextSelected = updated.length > 0 ? updated[updated.length - 1].id : null;
+          setSelectedFileId(nextSelected);
+          if (nextSelected) {
+            const nextItem = updated.find(item => item.id === nextSelected);
+            if (nextItem && nextItem.status === 'Scanned' && nextItem.result) {
+              setActiveResult(nextItem.result);
+              setDetectedStudentId(nextItem.result.studentId || null);
+            } else {
+              setActiveResult(null);
+              setDetectedStudentId(null);
+            }
+          } else {
+            setActiveResult(null);
+            setDetectedStudentId(null);
+          }
+        }
+        return updated;
+      });
+
+      alert(`OMR sheet record deleted successfully.`);
+    } catch (err: any) {
+      alert(`Failed to delete record: ${err.message || err}`);
+    }
   };
 
   const getSelectedFile = () => {
@@ -989,6 +1048,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <th style={{ width: '30px' }}><input type="checkbox" readOnly /></th>
                       <th>Name/Rollnumber</th>
                       <th>Status</th>
+                      <th style={{ width: '40px', textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1026,6 +1086,30 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           <span className={`pill ${f.status === 'Scanned' ? 'pass' : f.status === 'Failed' ? 'fail' : 'pending'}`}>
                             {f.status}
                           </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFile(f.id);
+                            }}
+                            style={{
+                              background: '#fff5f5',
+                              color: '#e53e3e',
+                              border: '1px solid #fed7d7',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="Delete OMR Sheet Record"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1256,7 +1340,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </div>
               </div>
 
-              <div className="scan-diag-actions" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+              <div className="scan-diag-actions" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {selectedFileId && (
+                  <button 
+                    type="button"
+                    style={{ background: '#fff5f5', color: '#e53e3e', border: '1px solid #feb2b2', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }} 
+                    onClick={() => handleDeleteFile(selectedFileId)}
+                  >
+                    <Trash2 size={15} /> Delete Record
+                  </button>
+                )}
                 <button className="btn-secondary" onClick={() => setActiveResult(null)}>Close Results</button>
                 <button className="btn-primary" onClick={handleSaveResult}>Save Scanned Score</button>
               </div>

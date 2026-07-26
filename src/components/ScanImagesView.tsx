@@ -1257,7 +1257,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </button>
             </div>
 
-            <div className="camera-fullscreen-viewport">
+            <div className="camera-fullscreen-viewport" style={{ overflow: 'hidden', touchAction: 'none' }}>
               {pendingSnapUrl ? (
                 <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
                   <img src={pendingSnapUrl} alt="Captured OMR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -1268,11 +1268,24 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ) : (
                 <>
                   <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
+
+                  {/* Top Orientation Guide */}
+                  <div className="camera-orientation-tag">Top</div>
+
+                  {/* 4 Blue Guide Target Boxes */}
+                  <div className={`guide-target-box tl ${isPaperDetected ? 'active' : ''}`} />
+                  <div className={`guide-target-box tr ${isPaperDetected ? 'active' : ''}`} />
+                  <div className={`guide-target-box bl ${isPaperDetected ? 'active' : ''}`} />
+                  <div className={`guide-target-box br ${isPaperDetected ? 'active' : ''}`} />
+
+                  {/* Center Processing Spinner */}
+                  {isScanning && (
+                    <div className="camera-center-spinner-box">
+                      <div className="camera-center-spinner-arc" />
+                    </div>
+                  )}
+
                   <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
-                    <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
-                    <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />
-                    <div className={`marker-box bl ${isPaperDetected ? 'active' : ''}`} />
-                    <div className={`marker-box br ${isPaperDetected ? 'active' : ''}`} />
                     <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.75)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
                       {autoSnapStatus}
                     </div>

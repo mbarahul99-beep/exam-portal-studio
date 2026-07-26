@@ -119,7 +119,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         setFileList(prev => [...prev, newItem]);
         setSelectedFileId(newItem.id);
-        processFile(newItem);
+        setTimeout(() => {
+          runOMRScan();
+        }, 150);
       }
     }
   };

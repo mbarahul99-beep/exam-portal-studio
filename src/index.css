@@ -2946,11 +2946,11 @@ button {
 /* Blue Corner Guide Target Boxes */
 .guide-target-box {
   position: absolute !important;
-  width: 60px !important;
-  height: 60px !important;
+  width: 44px !important;
+  height: 44px !important;
   border: 2.5px solid #2563eb !important;
-  border-radius: 4px !important;
-  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.4) !important;
   transition: all 0.2s ease !important;
   pointer-events: none !important;
   z-index: 100000 !important;
@@ -2962,10 +2962,10 @@ button {
   box-shadow: 0 0 16px #22c55e, inset 0 0 8px #22c55e !important;
 }
 
-.guide-target-box.tl { top: 18% !important; left: 6% !important; }
-.guide-target-box.tr { top: 18% !important; right: 6% !important; }
-.guide-target-box.bl { bottom: 12% !important; left: 6% !important; }
-.guide-target-box.br { bottom: 12% !important; right: 6% !important; }
+.guide-target-box.tl { top: 8% !important; left: 7% !important; }
+.guide-target-box.tr { top: 8% !important; right: 7% !important; }
+.guide-target-box.bl { bottom: 10% !important; left: 7% !important; }
+.guide-target-box.br { bottom: 10% !important; right: 7% !important; }
 
 /* Top Orientation Tag */
 .camera-orientation-tag {

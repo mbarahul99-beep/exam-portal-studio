@@ -1253,7 +1253,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     }}
                     disabled={isScanning}
                   >
-                    {isScanning ? <RefreshCw className="spin" size={20} /> : '📸 Snap & Grade OMR Sheet'}
+                    {isScanning ? <RefreshCw className="spin" size={20} /> : '📸 Snap'}
                   </button>
                 </div>
 

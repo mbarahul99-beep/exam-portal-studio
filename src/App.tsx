@@ -1422,12 +1422,17 @@ export default function App() {
     }
   }, [selectedCameraId, useWebcam]);
 
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true);
+  const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
+  const [isPaperDetected, setIsPaperDetected] = useState(false);
+
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
+      playShutterSound();
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -1435,6 +1440,78 @@ export default function App() {
       }
     }
   };
+
+  // Real-time Live Camera Corner Anchor & Paper Stability Auto-Snap Tracker
+  useEffect(() => {
+    if (!useWebcam || !isAutoSnapEnabled || isScanning) return;
+
+    let consecutiveHits = 0;
+    let cooldown = false;
+
+    const interval = setInterval(() => {
+      if (cooldown || isScanning || !videoRef.current || !window.cv) return;
+
+      try {
+        const video = videoRef.current;
+        if (!video.videoWidth) return;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 320;
+        tempCanvas.height = 240;
+        const ctx = tempCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(video, 0, 0, 320, 240);
+
+        const cv = window.cv;
+        const src = cv.imread(tempCanvas);
+        const gray = new cv.Mat();
+        const thresh = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
+
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let squareCount = 0;
+        for (let i = 0; i < contours.size(); i++) {
+          const cnt = contours.get(i);
+          const rect = cv.boundingRect(cnt);
+          const aspect = rect.width / (rect.height || 1);
+          const area = rect.width * rect.height;
+          if (aspect >= 0.7 && aspect <= 1.4 && area > 35 && area < 3000) {
+            squareCount++;
+          }
+        }
+
+        src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+
+        if (squareCount >= 4) {
+          setIsPaperDetected(true);
+          consecutiveHits++;
+          setAutoSnapStatus(`Paper Detected! Holding Steady (${consecutiveHits}/2)...`);
+
+          if (consecutiveHits >= 2) {
+            consecutiveHits = 0;
+            cooldown = true;
+            setAutoSnapStatus("📸 Auto-Snapping & Grading...");
+            capturePhoto();
+            setTimeout(() => { cooldown = false; }, 3000);
+          }
+        } else {
+          setIsPaperDetected(false);
+          consecutiveHits = 0;
+          setAutoSnapStatus("Align all 4 corners of the OMR paper inside the screen frame.");
+        }
+      } catch {
+        // Ignore frame errors
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [useWebcam, isAutoSnapEnabled, isScanning]);
 
   // Edit Scan verification parameters before saving
   const handleVerifyAnswerChange = (q: number, option: string) => {
@@ -1496,23 +1573,16 @@ export default function App() {
   const handleSaveScanResult = async () => {
     if (!scanResult || !scannerExamId) return;
     if (!scanResult.studentId) {
-      alert('Please associate this scan with a registered student first.');
+      alert('⚠️ Roll Number Validation Failed: The scanned OMR sheet roll number bubbles are incomplete or do not match any enrolled student. Please select the correct student from the dropdown menu before saving.');
       return;
     }
 
     try {
-      // Check if duplicate submission exists
+      // Check if duplicate submission exists for this student & exam
       const duplicate = await db.submissions
         .where('[examId+studentId]')
         .equals([scannerExamId, scanResult.studentId])
         .first();
-
-      if (duplicate) {
-        if (!confirm('This student already has a submission saved for this exam. Overwrite?')) {
-          return;
-        }
-        await db.submissions.delete(duplicate.id!);
-      }
 
       let finalOmrUrl: string | undefined = undefined;
       if (scanResult.warpedCanvas) {
@@ -1535,26 +1605,39 @@ export default function App() {
         }
       }
 
-      const subId = await db.submissions.add({
-        examId: scannerExamId,
-        studentId: scanResult.studentId,
-        score: scanResult.score,
-        answers: scanResult.answers,
-        omrImageUrl: finalOmrUrl,
-        scannedAt: new Date()
-      });
-
-      // Sync submission to Hostinger MySQL
-      const savedSub = await db.submissions.get(subId);
-      if (savedSub) {
-        try {
+      if (duplicate) {
+        // UPDATE existing submission (no duplicate entries)
+        await db.submissions.update(duplicate.id!, {
+          score: scanResult.score,
+          answers: scanResult.answers,
+          omrImageUrl: finalOmrUrl || duplicate.omrImageUrl,
+          scannedAt: new Date()
+        });
+        const updatedSub = await db.submissions.get(duplicate.id!);
+        if (updatedSub) {
+          await fetch('/api/submissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedSub)
+          }).catch(console.warn);
+        }
+      } else {
+        // INSERT new submission
+        const subId = await db.submissions.add({
+          examId: scannerExamId,
+          studentId: scanResult.studentId,
+          score: scanResult.score,
+          answers: scanResult.answers,
+          omrImageUrl: finalOmrUrl,
+          scannedAt: new Date()
+        });
+        const savedSub = await db.submissions.get(subId);
+        if (savedSub) {
           await fetch('/api/submissions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(savedSub)
-          });
-        } catch (err) {
-          console.warn("MySQL submission sync warning:", err);
+          }).catch(console.warn);
         }
       }
 
@@ -2774,38 +2857,63 @@ export default function App() {
                       <p>Select an exam to enable scanning inputs.</p>
                     </div>
                   ) : useWebcam ? (
-                    /* Webcam Capture UI */
-                    <div className="camera-view-container">
-                      <div className="camera-select-row">
-                        <label>Camera Source</label>
-                        <select 
-                          value={selectedCameraId}
-                          onChange={(e) => setSelectedCameraId(e.target.value)}
+                    /* Fullscreen Webcam Scanner UI */
+                    <div className="camera-fullscreen-overlay">
+                      <div className="camera-fullscreen-header">
+                        <div className="camera-fullscreen-title">
+                          📷 {exams.find(e => e.id === scannerExamId)?.title} - Fullscreen Scanner
+                        </div>
+                        <button 
+                          className="camera-close-btn" 
+                          onClick={() => setUseWebcam(false)}
+                          title="Exit Fullscreen Scanner"
                         >
-                          {cameraDevices.map(d => (
-                            <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
-                          ))}
-                        </select>
+                          <X size={24} />
+                        </button>
                       </div>
 
-                      <div className="video-viewport">
+                      <div className="camera-fullscreen-viewport">
                         <video ref={videoRef} autoPlay playsInline muted className="live-stream"></video>
-                        <div className="alignment-overlay">
-                          <div className="marker-box tl" />
-                          <div className="marker-box tr" />
-                          <div className="marker-box bl" />
-                          <div className="marker-box br" />
-                          <p className="overlay-instructions">Align the 4 black corners of the paper inside the viewport and hold steady.</p>
+                        <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
+                          <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
+                          <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />
+                          <div className={`marker-box bl ${isPaperDetected ? 'active' : ''}`} />
+                          <div className={`marker-box br ${isPaperDetected ? 'active' : ''}`} />
+                          <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.7)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
+                            {autoSnapStatus}
+                          </div>
                         </div>
                       </div>
 
-                      <button 
-                        onClick={capturePhoto} 
-                        className="btn-primary w-full capture-btn"
-                        disabled={isScanning}
-                      >
-                        {isScanning ? <RefreshCw className="spin" /> : 'Snap Photo & Scan'}
-                      </button>
+                      <div className="camera-fullscreen-controls">
+                        <button 
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setIsAutoSnapEnabled(!isAutoSnapEnabled)}
+                          style={{ background: isAutoSnapEnabled ? 'rgba(34, 197, 94, 0.85)' : 'rgba(100, 116, 139, 0.85)', color: '#fff', border: 'none', borderRadius: '20px', padding: '8px 18px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          ⚡ Auto-Snap: {isAutoSnapEnabled ? 'ON' : 'OFF'}
+                        </button>
+                        {cameraDevices.length > 1 && (
+                          <select 
+                            value={selectedCameraId}
+                            onChange={(e) => setSelectedCameraId(e.target.value)}
+                            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '8px 14px' }}
+                          >
+                            {cameraDevices.map(d => (
+                              <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                            ))}
+                          </select>
+                        )}
+                        <button 
+                          onClick={capturePhoto} 
+                          className="btn-primary capture-btn"
+                          style={{ padding: '12px 28px', fontSize: '1rem', borderRadius: '30px', boxShadow: '0 4px 15px rgba(16,88,202,0.6)' }}
+                          disabled={isScanning}
+                        >
+                          {isScanning ? <RefreshCw className="spin" /> : '📸 Manual Snap'}
+                        </button>
+                      </div>
                       <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
                     </div>
                   ) : (

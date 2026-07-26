@@ -506,22 +506,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!activeResult || !selectedFileId) return;
 
     if (!detectedStudentId) {
-      alert('Please associate this scan with a student record before saving.');
+      alert('⚠️ Roll Number Validation Failed: The scanned OMR sheet roll number bubbles are incomplete or do not match any enrolled student. Please select the correct student from the dropdown menu before saving.');
       return;
     }
 
     try {
+      // Check if student already has a graded submission for this exam
       const duplicate = await db.submissions
         .where('[examId+studentId]')
         .equals([exam.id!, detectedStudentId])
         .first();
-
-      if (duplicate) {
-        if (!confirm('This student already has a graded submission. Do you want to overwrite it?')) {
-          return;
-        }
-        await db.submissions.delete(duplicate.id!);
-      }
 
       // Upload OMR image file to Hostinger server & save image URL in database
       const selectedFile = getSelectedFile();
@@ -547,20 +541,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      const subId = await db.submissions.add({
-        examId: exam.id!,
-        studentId: detectedStudentId,
-        score: activeResult.score,
-        answers: activeResult.answers,
-        bookletSet: activeResult.bookletSet,
-        omrImageUrl: finalOmrUrl,
-        scannedAt: new Date()
-      });
-
-      const savedSub = await db.submissions.get(subId);
-      if (savedSub) {
-        await syncSubmissionToCloud(savedSub);
+      if (duplicate) {
+        // UPDATE existing student record seamlessly (no duplicate entries)
+        await db.submissions.update(duplicate.id!, {
+          score: activeResult.score,
+          answers: activeResult.answers,
+          bookletSet: activeResult.bookletSet,
+          omrImageUrl: finalOmrUrl,
+          scannedAt: new Date()
+        });
+        const updatedSub = await db.submissions.get(duplicate.id!);
+        if (updatedSub) await syncSubmissionToCloud(updatedSub);
+      } else {
+        // INSERT new student submission
+        const subId = await db.submissions.add({
+          examId: exam.id!,
+          studentId: detectedStudentId,
+          score: activeResult.score,
+          answers: activeResult.answers,
+          bookletSet: activeResult.bookletSet,
+          omrImageUrl: finalOmrUrl,
+          scannedAt: new Date()
+        });
+        const savedSub = await db.submissions.get(subId);
+        if (savedSub) await syncSubmissionToCloud(savedSub);
       }
+
       pullCloudUpdatesToIndexedDB();
 
       alert('Student score successfully saved to database!');

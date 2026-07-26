@@ -244,7 +244,20 @@ export async function scanOMRSheet(
     }
 
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      throw new Error("Could not locate the OMR sheet. Please make sure the entire sheet (with all 4 black square corner anchors) is flat and fully visible inside the image.");
+      throw new Error("Could not locate the OMR sheet. Please make sure the entire sheet (with all 4 black square corner anchors) is flat and fully visible inside the camera frame.");
+    }
+
+    // Validate paper geometry aspect ratio (Standard A4 ratio is ~1.41)
+    const topWidth = Math.hypot(trMarker.center.x - tlMarker.center.x, trMarker.center.y - tlMarker.center.y);
+    const leftHeight = Math.hypot(blMarker.center.x - tlMarker.center.x, blMarker.center.y - tlMarker.center.y);
+    const paperAspectRatio = leftHeight / (topWidth || 1);
+
+    if (paperAspectRatio < 1.0 || paperAspectRatio > 2.0) {
+      throw new Error("Sheet Layout Mismatch: The detected sheet aspect ratio does not match the standard OMR template.");
+    }
+
+    if (numQuestions > 200) {
+      throw new Error(`Sheet Layout Mismatch: Exam is set for ${numQuestions} questions, but standard template supports up to 200 questions.`);
     }
 
     // 5. Perspective Warp to standard A4 (1000 x 1414)

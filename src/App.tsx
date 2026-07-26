@@ -2124,50 +2124,52 @@ export default function App() {
               <div className="dashboard-content">
                 <div className="glass-card recent-scans">
                   <h3>Recent Graded Exams</h3>
-                  {submissions.length === 0 ? (
-                    <div className="empty-state">
-                      <p>No scans completed yet. Go to OMR Scanner to scan your first sheet.</p>
-                    </div>
-                  ) : (
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <table className="app-table">
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th>Student</th>
-                            <th>Exam</th>
-                            <th>Score</th>
-                            <th>Result</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {submissions.slice(-5).reverse().map((sub) => {
-                            const s = students.find(std => std.id === sub.studentId);
-                            const e = exams.find(ex => ex.id === sub.examId);
-                            return (
-                              <tr key={`recent-${sub.id}`}>
-                                <td>{new Date(sub.scannedAt).toLocaleDateString()}</td>
-                                <td><strong>{s ? s.name : 'Unknown'}</strong></td>
-                                <td>{e ? e.title : 'Deleted Exam'}</td>
-                                <td>{sub.score} / {e ? e.numQuestions * (e.correctMarks ?? 4) : 0}</td>
-                                <td>
-                                  {(() => {
-                                    const totalPossible = e ? e.numQuestions * (e.correctMarks ?? 4) : 1;
-                                    const pct = totalPossible > 0 ? Math.max(0, Math.round((sub.score / totalPossible) * 100)) : 0;
-                                    return (
-                                      <span className={`pill ${pct >= 50 ? 'pass' : 'fail'}`}>
-                                        {pct}%
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  {(() => {
+                    const validSubmissions = submissions.filter(sub => exams.some(e => e.id === sub.examId));
+                    if (validSubmissions.length === 0) {
+                      return (
+                        <div className="empty-state">
+                          <p>No scans completed yet. Go to OMR Scanner to scan your first sheet.</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                        <table className="app-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Student</th>
+                              <th>Exam</th>
+                              <th>Score</th>
+                              <th>Result</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {validSubmissions.slice(-5).reverse().map((sub) => {
+                              const s = students.find(std => std.id === sub.studentId);
+                              const e = exams.find(ex => ex.id === sub.examId)!;
+                              const totalPossible = e ? e.numQuestions * (e.correctMarks ?? 4) : 0;
+                              const pct = totalPossible > 0 ? Math.max(0, Math.round((sub.score / totalPossible) * 100)) : 0;
+                              return (
+                                <tr key={`recent-${sub.id}`}>
+                                  <td>{new Date(sub.scannedAt).toLocaleDateString()}</td>
+                                  <td><strong>{s ? s.name : 'Unknown'}</strong></td>
+                                  <td>{e.title}</td>
+                                  <td>{sub.score} / {totalPossible}</td>
+                                  <td>
+                                    <span className={`pill ${pct >= 50 ? 'pass' : 'fail'}`}>
+                                      {pct}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

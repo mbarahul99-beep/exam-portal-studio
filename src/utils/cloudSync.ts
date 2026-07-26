@@ -237,6 +237,21 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
+    // Purge local orphaned submissions for deleted exams
+    try {
+      const activeExams = await db.exams.toArray();
+      const activeExamIds = new Set(activeExams.map(e => e.id).filter(Boolean));
+      const allSubmissions = await db.submissions.toArray();
+      for (const sub of allSubmissions) {
+        if (!activeExamIds.has(sub.examId)) {
+          await db.submissions.delete(sub.id!);
+          try {
+            await fetch(`/api/submissions/${sub.id}`, { method: 'DELETE' });
+          } catch {}
+        }
+      }
+    } catch {}
+
     // 5. Sync Questions
     if (data.questions && Array.isArray(data.questions)) {
       for (const q of data.questions) {

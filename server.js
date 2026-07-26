@@ -350,6 +350,11 @@ app.post('/api/students', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
   try {
+    if (className) {
+      try {
+        await pool.query('INSERT IGNORE INTO classes (name, state) VALUES (?, ?)', [className, 'Synced']);
+      } catch {}
+    }
     const faceJson = faceDescriptor ? (typeof faceDescriptor === 'object' ? JSON.stringify(faceDescriptor) : faceDescriptor) : null;
     const query = `
       INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto)

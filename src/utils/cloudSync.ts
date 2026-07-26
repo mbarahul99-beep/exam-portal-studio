@@ -70,96 +70,150 @@ export async function pullCloudUpdatesToIndexedDB() {
     if (!res.ok) return;
     const data = await res.json();
 
+    // 1. Sync Students
     if (data.students && Array.isArray(data.students)) {
       for (const st of data.students) {
-        const existing = await db.students.where('studentNum').equals(st.studentNum).first();
-        if (!existing) {
-          await db.students.add(st);
-        } else {
-          const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
-          const facePhoto = st.facePhoto || existing.facePhoto;
-          await db.students.update(existing.id!, {
-            ...st,
-            faceDescriptor,
-            facePhoto
-          });
+        try {
+          const { id: mysqlId, ...studentFields } = st;
+          const existing = await db.students.where('studentNum').equals(st.studentNum).first();
+          if (!existing) {
+            await db.students.add(studentFields);
+          } else {
+            const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
+            const facePhoto = st.facePhoto || existing.facePhoto;
+            await db.students.update(existing.id!, {
+              ...studentFields,
+              faceDescriptor,
+              facePhoto
+            });
+          }
+        } catch (err) {
+          console.warn("Error syncing student item:", err);
         }
       }
     }
 
+    // 2. Sync Classes
     if (data.classes && Array.isArray(data.classes)) {
       for (const cls of data.classes) {
-        const existing = await db.classes.where('name').equalsIgnoreCase(cls.name).first();
-        if (!existing) {
-          await db.classes.add(cls);
+        try {
+          const { id: mysqlId, ...classFields } = cls;
+          const existing = await db.classes.where('name').equalsIgnoreCase(cls.name).first();
+          if (!existing) {
+            await db.classes.add(classFields);
+          } else {
+            await db.classes.update(existing.id!, classFields);
+          }
+        } catch (err) {
+          console.warn("Error syncing class item:", err);
         }
       }
     }
 
+    // Auto-create any class in IndexedDB that exists on student records
+    if (data.students && Array.isArray(data.students)) {
+      const studentClassNames = Array.from(new Set(data.students.map((s: any) => s.className).filter(Boolean)));
+      for (const clsName of studentClassNames) {
+        try {
+          const existing = await db.classes.where('name').equalsIgnoreCase(clsName as string).first();
+          if (!existing) {
+            await db.classes.add({ name: clsName as string, state: 'Synced', createdAt: new Date() });
+          }
+        } catch {}
+      }
+    }
+
+    // 3. Sync Exams
     if (data.exams && Array.isArray(data.exams)) {
       for (const ex of data.exams) {
-        let existing = await db.exams.get(ex.id);
-        if (!existing) {
-          existing = await db.exams.where('title').equalsIgnoreCase(ex.title).first();
-        }
-        if (!existing) {
-          await db.exams.add(ex);
-        } else {
-          await db.exams.update(existing.id!, ex);
+        try {
+          const { id: mysqlId, ...examFields } = ex;
+          let existing = await db.exams.where('title').equalsIgnoreCase(ex.title).first();
+          if (!existing && ex.id) {
+            existing = await db.exams.get(ex.id);
+          }
+          if (!existing) {
+            await db.exams.add(examFields);
+          } else {
+            await db.exams.update(existing.id!, examFields);
+          }
+        } catch (err) {
+          console.warn("Error syncing exam item:", err);
         }
       }
     }
 
+    // 4. Sync Submissions
     if (data.submissions && Array.isArray(data.submissions)) {
       for (const sub of data.submissions) {
-        const existing = await db.submissions
-          .where('[examId+studentId]')
-          .equals([sub.examId, sub.studentId])
-          .first();
+        try {
+          const { id: mysqlId, ...subFields } = sub;
+          const existing = await db.submissions
+            .where('[examId+studentId]')
+            .equals([sub.examId, sub.studentId])
+            .first();
 
-        if (!existing) {
-          await db.submissions.add(sub);
-        } else {
-          await db.submissions.update(existing.id!, sub);
+          if (!existing) {
+            await db.submissions.add(subFields);
+          } else {
+            await db.submissions.update(existing.id!, subFields);
+          }
+        } catch (err) {
+          console.warn("Error syncing submission item:", err);
         }
       }
     }
 
+    // 5. Sync Questions
     if (data.questions && Array.isArray(data.questions)) {
       for (const q of data.questions) {
-        const existing = await db.questions.get(q.id);
-        if (!existing) {
-          await db.questions.add(q);
-        } else {
-          await db.questions.update(q.id, q);
+        try {
+          const { id: mysqlId, ...qFields } = q;
+          const existing = await db.questions.get(q.id);
+          if (!existing) {
+            await db.questions.add(qFields);
+          } else {
+            await db.questions.update(existing.id!, qFields);
+          }
+        } catch (err) {
+          console.warn("Error syncing question item:", err);
         }
       }
     }
 
+    // 6. Sync Teachers
     if (data.teachers && Array.isArray(data.teachers)) {
       for (const t of data.teachers) {
-        const existing = await db.teachers.where('userId').equals(t.userId).first();
-        if (!existing) {
-          await db.teachers.add(t);
-        } else {
-          await db.teachers.update(existing.id!, t);
+        try {
+          const { id: mysqlId, ...tFields } = t;
+          const existing = await db.teachers.where('userId').equals(t.userId).first();
+          if (!existing) {
+            await db.teachers.add(tFields);
+          } else {
+            await db.teachers.update(existing.id!, tFields);
+          }
+        } catch (err) {
+          console.warn("Error syncing teacher item:", err);
         }
       }
     }
 
-    // Pull pending registrations from MySQL
+    // 7. Sync Pending Registrations
     try {
       const pendingRes = await fetch('/api/pending-registrations');
       if (pendingRes.ok) {
         const pendingData = await pendingRes.json();
         if (Array.isArray(pendingData)) {
           for (const reg of pendingData) {
-            const existing = await db.pendingRegistrations.get(reg.id);
-            if (!existing) {
-              await db.pendingRegistrations.add(reg);
-            } else {
-              await db.pendingRegistrations.update(reg.id, reg);
-            }
+            try {
+              const { id: mysqlId, ...regFields } = reg;
+              const existing = await db.pendingRegistrations.get(reg.id);
+              if (!existing) {
+                await db.pendingRegistrations.add(regFields);
+              } else {
+                await db.pendingRegistrations.update(existing.id!, regFields);
+              }
+            } catch {}
           }
         }
       }

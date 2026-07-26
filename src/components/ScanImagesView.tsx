@@ -43,7 +43,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(false); // Manual snap by default for total accuracy
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true); // Active tracking by default
   const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -169,10 +169,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         stopCameraStream();
         setShowCameraModal(false);
 
-        // Run OMR grading scan immediately
-        setTimeout(() => {
-          runOMRScan();
-        }, 150);
+        // Run OMR grading scan immediately with target newItem
+        runOMRScan(newItem);
       }
     }
   };
@@ -309,8 +307,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   };
 
   // Run the OMR scanner on the active image
-  const runOMRScan = async () => {
-    const current = getSelectedFile();
+  const runOMRScan = async (targetItem?: ScanFileItem) => {
+    const current = targetItem || getSelectedFile();
     if (!current) return;
 
     setIsScanning(true);
@@ -1180,7 +1178,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 className="btn-primary" 
                 style={{ padding: '10px 20px', borderRadius: '6px' }}
                 disabled={!selectedFileId || isScanning || !cvLoaded}
-                onClick={runOMRScan}
+                onClick={() => runOMRScan()}
               >
                 {isScanning ? <RefreshCw className="spin" size={16} /> : 'Scan'}
               </button>

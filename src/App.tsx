@@ -1458,7 +1458,7 @@ export default function App() {
     };
   }, [selectedCameraId, useWebcam]);
 
-  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(false); // Manual snap default for precision
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true); // Active tracking by default
   const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
 

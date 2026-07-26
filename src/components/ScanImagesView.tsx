@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
   RotateCcw, 
@@ -8,7 +8,9 @@ import {
   ChevronRight, 
   FileText,
   RefreshCw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Camera,
+  X
 } from 'lucide-react';
 import { db, type Exam, type Student } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
@@ -36,6 +38,163 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [syncToCloud, setSyncToCloud] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
+
+  // Camera & Auto-Snap states
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true);
+  const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
+  const [isPaperDetected, setIsPaperDetected] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const playShutterSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (showCameraModal) {
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        setCameraDevices(videoDevices);
+        if (videoDevices.length > 0 && !selectedCameraId) {
+          setSelectedCameraId(videoDevices[0].deviceId);
+        }
+      });
+    } else {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }
+  }, [showCameraModal, selectedCameraId]);
+
+  useEffect(() => {
+    if (showCameraModal && selectedCameraId) {
+      navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: selectedCameraId }, width: 1280, height: 720 }
+      }).then(stream => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }).catch(err => {
+        alert(`Error opening camera: ${err.message}`);
+        setShowCameraModal(false);
+      });
+    }
+  }, [selectedCameraId, showCameraModal]);
+
+  const captureCameraPhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      playShutterSound();
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        const newItem: ScanFileItem = {
+          id: `cam-${Date.now()}`,
+          name: `camera-scan-${Date.now()}.jpg`,
+          previewUrl: dataUrl,
+          status: 'Pending'
+        };
+
+        setFileList(prev => [...prev, newItem]);
+        setSelectedFileId(newItem.id);
+        processFile(newItem);
+      }
+    }
+  };
+
+  // Real-time Live Camera Corner Anchor & Paper Stability Auto-Snap Tracker
+  useEffect(() => {
+    if (!showCameraModal || !isAutoSnapEnabled || isScanning) return;
+
+    let consecutiveHits = 0;
+    let cooldown = false;
+
+    const interval = setInterval(() => {
+      if (cooldown || isScanning || !videoRef.current || !(window as any).cv) return;
+
+      try {
+        const video = videoRef.current;
+        if (!video.videoWidth) return;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 320;
+        tempCanvas.height = 240;
+        const ctx = tempCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(video, 0, 0, 320, 240);
+
+        const cv = (window as any).cv;
+        const src = cv.imread(tempCanvas);
+        const gray = new cv.Mat();
+        const thresh = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
+
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let squareCount = 0;
+        for (let i = 0; i < contours.size(); i++) {
+          const cnt = contours.get(i);
+          const rect = cv.boundingRect(cnt);
+          const aspect = rect.width / (rect.height || 1);
+          const area = rect.width * rect.height;
+          if (aspect >= 0.7 && aspect <= 1.4 && area > 35 && area < 3000) {
+            squareCount++;
+          }
+        }
+
+        src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+
+        if (squareCount >= 4) {
+          setIsPaperDetected(true);
+          consecutiveHits++;
+          setAutoSnapStatus(`Paper Detected! Holding Steady (${consecutiveHits}/2)...`);
+
+          if (consecutiveHits >= 2) {
+            consecutiveHits = 0;
+            cooldown = true;
+            setAutoSnapStatus("📸 Auto-Snapping & Grading...");
+            captureCameraPhoto();
+            setTimeout(() => { cooldown = false; }, 3000);
+          }
+        } else {
+          setIsPaperDetected(false);
+          consecutiveHits = 0;
+          setAutoSnapStatus("Align all 4 corners of the OMR paper inside the screen frame.");
+        }
+      } catch {
+        // Ignore frame errors
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [showCameraModal, isAutoSnapEnabled, isScanning]);
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -613,12 +772,21 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   <path d="M25,28 C28,32 30,30 35,40" fill="none" stroke="#ecc94b" strokeWidth="1.5" strokeDasharray="2,2" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Select images to Scan</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Supported file formats (jpg, jpeg and png)</p>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your camera for live auto-scan or upload image files (JPG, PNG)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
-                  <Upload size={16} /> Select Images
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
+                <button 
+                  type="button"
+                  className="btn-primary" 
+                  onClick={() => setShowCameraModal(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer' }}
+                >
+                  <Camera size={20} /> 📷 Open Live Camera Scanner
+                </button>
+
+                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
+                  <Upload size={18} /> Select / Upload Image Files
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
@@ -632,13 +800,23 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <ImageIcon size={20} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total</h4>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
                   </div>
                 </div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Choose files
-                  <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button 
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => setShowCameraModal(true)}
+                    style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Camera size={14} /> Live Camera
+                  </button>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
+                    + Upload Files
+                    <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  </label>
+                </div>
               </div>
 
               {/* Files Table List */}
@@ -959,6 +1137,73 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
 
       </div>
+
+      {/* Fullscreen Camera Modal Overlay */}
+      {showCameraModal && (
+        <div className="camera-fullscreen-overlay">
+          <div className="camera-fullscreen-header">
+            <div className="camera-fullscreen-title">
+              📷 {exam.title} - Fullscreen Live Camera Scanner
+            </div>
+            <button 
+              type="button"
+              className="camera-close-btn" 
+              onClick={() => setShowCameraModal(false)}
+              title="Exit Camera Scanner"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="camera-fullscreen-viewport">
+            <video ref={videoRef} autoPlay playsInline muted className="live-stream"></video>
+            <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
+              <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
+              <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />
+              <div className={`marker-box bl ${isPaperDetected ? 'active' : ''}`} />
+              <div className={`marker-box br ${isPaperDetected ? 'active' : ''}`} />
+              <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.75)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
+                {autoSnapStatus}
+              </div>
+            </div>
+          </div>
+
+          <div className="camera-fullscreen-controls">
+            <button 
+              type="button"
+              className="btn-secondary"
+              onClick={() => setIsAutoSnapEnabled(!isAutoSnapEnabled)}
+              style={{ background: isAutoSnapEnabled ? 'rgba(34, 197, 94, 0.85)' : 'rgba(100, 116, 139, 0.85)', color: '#fff', border: 'none', borderRadius: '20px', padding: '8px 18px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              ⚡ Auto-Snap: {isAutoSnapEnabled ? 'ON' : 'OFF'}
+            </button>
+
+            {cameraDevices.length > 1 && (
+              <select 
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '8px 14px' }}
+              >
+                {cameraDevices.map(d => (
+                  <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                ))}
+              </select>
+            )}
+
+            <button 
+              type="button"
+              onClick={captureCameraPhoto} 
+              className="btn-primary capture-btn"
+              style={{ padding: '12px 28px', fontSize: '1rem', borderRadius: '30px', boxShadow: '0 4px 15px rgba(16,88,202,0.6)' }}
+              disabled={isScanning}
+            >
+              {isScanning ? <RefreshCw className="spin" /> : '📸 Manual Snap'}
+            </button>
+          </div>
+
+          <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+        </div>
+      )}
     </div>
   );
 };

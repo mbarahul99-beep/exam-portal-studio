@@ -225,12 +225,18 @@ initDatabase();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Ensure Uploads folder exists for scanned OMR images & face photos
-const uploadsDir = path.join(__dirname, 'uploads', 'omr_scans');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// Ensure Uploads folder structure exists for scanned OMR images & face photos
+const uploadsDir = path.join(__dirname, 'uploads');
+const omrScansDir = path.join(__dirname, 'uploads', 'omr_scans');
+
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  if (!fs.existsSync(omrScansDir)) fs.mkdirSync(omrScansDir, { recursive: true });
+} catch (e) {
+  console.warn("Uploads directory creation notice:", e);
 }
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use('/uploads', express.static(uploadsDir));
 
 // Serve Production React Bundle from dist
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -644,14 +650,6 @@ app.post('/api/approve-registration', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const uploadsDir = path.join(__dirname, 'uploads');
-const omrScansDir = path.join(__dirname, 'uploads', 'omr_scans');
-
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-if (!fs.existsSync(omrScansDir)) fs.mkdirSync(omrScansDir, { recursive: true });
-
-app.use('/uploads', express.static(uploadsDir));
 
 // Save Scanned OMR Sheet Image API
 app.post('/api/upload-omr', async (req, res) => {

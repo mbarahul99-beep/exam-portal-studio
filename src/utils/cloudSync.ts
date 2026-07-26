@@ -221,15 +221,19 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const sub of data.submissions) {
         try {
           const { id: mysqlId, ...subFields } = sub;
-          const existing = await db.submissions
+          const matchingSubs = await db.submissions
             .where('[examId+studentId]')
             .equals([sub.examId, sub.studentId])
-            .first();
+            .toArray();
 
-          if (!existing) {
+          if (matchingSubs.length === 0) {
             await db.submissions.add(subFields);
           } else {
-            await db.submissions.update(existing.id!, subFields);
+            // Update the primary submission record & remove any duplicate local rows
+            await db.submissions.update(matchingSubs[0].id!, subFields);
+            for (let i = 1; i < matchingSubs.length; i++) {
+              await db.submissions.delete(matchingSubs[i].id!);
+            }
           }
         } catch (err) {
           console.warn("Error syncing submission item:", err);

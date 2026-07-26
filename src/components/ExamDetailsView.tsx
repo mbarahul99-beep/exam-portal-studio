@@ -67,8 +67,16 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [broadcastLog, setBroadcastLog] = useState<{ name: string; status: 'success' | 'warning' | 'error'; details: string }[]>([]);
   const [isCancelRequested, setIsCancelRequested] = useState(false);
 
-  // Submissions and class statistics
-  const examSubs = submissions.filter(s => s.examId === exam.id);
+  // Submissions and class statistics (Deduplicated by studentId to guarantee exactly 1 record per student)
+  const rawExamSubs = submissions.filter(s => s.examId === exam.id);
+  const examSubsMap = new Map<number, ExamSubmission>();
+  rawExamSubs.forEach(sub => {
+    if (!examSubsMap.has(sub.studentId) || (sub.id && sub.id > (examSubsMap.get(sub.studentId)?.id || 0))) {
+      examSubsMap.set(sub.studentId, sub);
+    }
+  });
+  const examSubs = Array.from(examSubsMap.values());
+
   const classStudents = students.filter(s => s.className === exam.className);
   const totalClassCount = classStudents.length > 0 ? classStudents.length : Math.max(examSubs.length, 1);
   const scannedPercentage = Math.min(100, Math.round((examSubs.length / totalClassCount) * 100));

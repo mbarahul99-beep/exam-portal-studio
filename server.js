@@ -159,6 +159,15 @@ const initDatabase = async () => {
         UNIQUE KEY unique_exam_student (examId, studentId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    // Purge any existing duplicate submissions in MySQL before enforcing UNIQUE constraint
+    try {
+      await conn.query(`
+        DELETE s1 FROM submissions s1
+        INNER JOIN submissions s2 
+        ON s1.examId = s2.examId AND s1.studentId = s2.studentId AND s1.id < s2.id
+      `);
+    } catch (e) {}
+
     try { await conn.query('ALTER TABLE submissions ADD UNIQUE KEY unique_exam_student (examId, studentId)'); } catch {}
     try { await conn.query('ALTER TABLE submissions MODIFY COLUMN omrImageUrl LONGTEXT'); } catch {}
 

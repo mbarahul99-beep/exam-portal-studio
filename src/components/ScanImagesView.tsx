@@ -869,16 +869,19 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
-      const duplicate = await db.submissions
+      // Find and purge any pre-existing submission records for this student on this exam
+      const existingSubs = await db.submissions
         .where('[examId+studentId]')
         .equals([exam.id!, detectedStudentId])
-        .first();
+        .toArray();
 
-      if (duplicate) {
-        if (!confirm('This student already has a graded submission. Do you want to overwrite it?')) {
-          return;
+      if (existingSubs.length > 0) {
+        // Delete all old submission records for this student so no duplicates remain
+        for (const oldSub of existingSubs) {
+          if (oldSub.id) {
+            await db.submissions.delete(oldSub.id);
+          }
         }
-        await db.submissions.delete(duplicate.id!);
       }
 
       // Upload OMR image file to Hostinger server & save image URL in database

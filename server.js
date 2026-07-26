@@ -55,14 +55,17 @@ const initDatabase = async () => {
         email VARCHAR(255),
         phone VARCHAR(50),
         whatsappNumber VARCHAR(50),
-        faceDescriptor JSON,
+        faceDescriptor LONGTEXT,
+        facePhoto LONGTEXT,
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // Ensure fatherName exists if table was previously created
+    // Ensure columns exist if table was previously created
     try { await conn.query('ALTER TABLE students ADD COLUMN fatherName VARCHAR(255)'); } catch {}
     try { await conn.query('ALTER TABLE pending_registrations ADD COLUMN fatherName VARCHAR(255)'); } catch {}
+    try { await conn.query('ALTER TABLE students ADD COLUMN facePhoto LONGTEXT'); } catch {}
+    try { await conn.query('ALTER TABLE students MODIFY COLUMN faceDescriptor LONGTEXT'); } catch {}
 
     // 2. Classes Table
     await conn.query(`
@@ -151,12 +154,13 @@ const initDatabase = async () => {
         score FLOAT NOT NULL,
         answers JSON,
         scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        omrImageUrl TEXT,
+        omrImageUrl LONGTEXT,
         accessToken VARCHAR(255),
         UNIQUE KEY unique_exam_student (examId, studentId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     try { await conn.query('ALTER TABLE submissions ADD UNIQUE KEY unique_exam_student (examId, studentId)'); } catch {}
+    try { await conn.query('ALTER TABLE submissions MODIFY COLUMN omrImageUrl LONGTEXT'); } catch {}
 
     // 7. Pending Registrations Table for Student Invite Links
     await conn.query(`
@@ -344,12 +348,12 @@ app.post('/api/teacher-login', async (req, res) => {
 // Upsert Student API
 app.post('/api/students', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor } = req.body;
+  const { studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
   try {
-    const faceJson = faceDescriptor ? JSON.stringify(faceDescriptor) : null;
+    const faceJson = faceDescriptor ? (typeof faceDescriptor === 'object' ? JSON.stringify(faceDescriptor) : faceDescriptor) : null;
     const query = `
-      INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         name = VALUES(name),
         fatherName = VALUES(fatherName),
@@ -357,11 +361,13 @@ app.post('/api/students', async (req, res) => {
         email = VALUES(email),
         phone = VALUES(phone),
         whatsappNumber = VALUES(whatsappNumber),
-        faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor);
+        faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor),
+        facePhoto = COALESCE(VALUES(facePhoto), facePhoto);
     `;
-    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email, phone, whatsappNumber, faceJson]);
+    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null]);
     res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
+    console.error("Student save error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -371,8 +377,8 @@ app.delete('/api/students/:id/face', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const studentId = req.params.id;
   try {
-    await pool.query('UPDATE students SET faceDescriptor = NULL WHERE id = ?', [studentId]);
-    res.json({ success: true, message: 'Face descriptor removed' });
+    await pool.query('UPDATE students SET faceDescriptor = NULL, facePhoto = NULL WHERE id = ?', [studentId]);
+    res.json({ success: true, message: 'Face record removed' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -406,7 +412,13 @@ app.post('/api/exams', async (req, res) => {
     const answerKeysJson = typeof answerKeys === 'object' ? JSON.stringify(answerKeys) : answerKeys;
     const sectionsMarkingJson = typeof sectionsMarking === 'object' ? JSON.stringify(sectionsMarking) : sectionsMarking;
 
+    let existingExam = null;
     if (id) {
+      const [rows] = await pool.query('SELECT id FROM exams WHERE id = ?', [id]);
+      if (rows.length > 0) existingExam = rows[0];
+    }
+
+    if (existingExam) {
       const query = `
         UPDATE exams SET
           title = ?, className = ?, date = ?, status = ?, numQuestions = ?, answerKey = ?,

@@ -3,6 +3,7 @@ import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'luc
 import { db } from '../db';
 import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 import { MathRenderer } from './MathRenderer';
+import { syncExamToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface ExamWizardProps {
   classes: ClassEntity[];
@@ -525,16 +526,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         const savedExam = await db.exams.get(finalExamId);
         if (savedExam) {
           try {
-            await fetch('/api/exams', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(savedExam)
-            });
+            await syncExamToCloud(savedExam);
           } catch (err) {
             console.warn("MySQL exam sync warning:", err);
           }
         }
       }
+      pullCloudUpdatesToIndexedDB();
 
       // Write questions if online
       if (examMode === 'online' && finalExamId) {

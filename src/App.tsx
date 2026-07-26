@@ -19,7 +19,7 @@ import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt, isAppInstalled } from './components/InstallPWAPrompt';
-import { pullCloudUpdatesToIndexedDB } from './utils/cloudSync';
+import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud } from './utils/cloudSync';
 import { 
   Users,
   UserCheck, 
@@ -534,21 +534,25 @@ export default function App() {
 
         if (num.length === 10 && !isNaN(Number(num))) {
           try {
-            await db.students.add({ 
+            const newStId = await db.students.add({ 
               studentNum: num, 
               name, 
               className: cls,
               whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined
             });
+            const newSt = await db.students.get(newStId);
+            if (newSt) await syncStudentToCloud(newSt);
             
             // Auto-register class if it doesn't exist
             const classExists = await db.classes.where('name').equalsIgnoreCase(cls).first();
             if (!classExists) {
-              await db.classes.add({
+              const newClsId = await db.classes.add({
                 name: cls,
                 state: 'Synced',
                 createdAt: new Date()
               });
+              const newCls = await db.classes.get(newClsId);
+              if (newCls) await syncClassToCloud(newCls);
             }
             imported++;
           } catch {
@@ -561,6 +565,7 @@ export default function App() {
         failed++;
       }
     }
+    pullCloudUpdatesToIndexedDB();
     setCsvText('');
     alert(`CSV Import Complete: ${imported} students imported, ${failed} failed.`);
   };
@@ -576,11 +581,14 @@ export default function App() {
         return;
       }
 
-      await db.classes.add({
+      const clsId = await db.classes.add({
         name: newClassName.trim(),
         state: 'Synced',
         createdAt: new Date()
       });
+      const newCls = await db.classes.get(clsId);
+      if (newCls) await syncClassToCloud(newCls);
+      pullCloudUpdatesToIndexedDB();
 
       setNewClassName('');
       setShowAddClassModal(false);
@@ -635,16 +643,13 @@ export default function App() {
         const savedSt = await db.students.get(savedStudentId);
         if (savedSt) {
           try {
-            await fetch('/api/students', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(savedSt)
-            });
+            await syncStudentToCloud(savedSt);
           } catch (err) {
             console.warn("MySQL student sync warning:", err);
           }
         }
       }
+      pullCloudUpdatesToIndexedDB();
 
       setDrawerRollNo('');
       setDrawerName('');

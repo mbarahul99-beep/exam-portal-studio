@@ -10,6 +10,7 @@ export interface Student {
   phone?: string;
   whatsappNumber?: string; // e.g. "919876543210"
   faceDescriptor?: number[]; // Vector embedding for facial biometrics
+  facePhoto?: string; // Base64 or image URL for face biometric image
 }
 
 export interface QuestionBank {

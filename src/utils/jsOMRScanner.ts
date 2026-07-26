@@ -37,8 +37,8 @@ export function scanOMRSheetPureJS(
   // Find 4 corner anchors (black squares near top-left, top-right, bottom-left, bottom-right)
   const findAnchorInRegion = (rxStart: number, rxEnd: number, ryStart: number, ryEnd: number) => {
     let minSum = Infinity;
-    let bestX = (rxStart + rxEnd) / 2;
-    let bestY = (ryStart + ryEnd) / 2;
+    let bestX = -1;
+    let bestY = -1;
 
     const step = 4;
     for (let y = ryStart; y < ryEnd; y += step) {
@@ -59,16 +59,24 @@ export function scanOMRSheetPureJS(
         }
       }
     }
+
+    if (minSum > 115 || bestX === -1) {
+      return null;
+    }
     return { x: bestX, y: bestY };
   };
 
   const W = canvas.width;
   const H = canvas.height;
 
-  const tl = findAnchorInRegion(0, W * 0.25, 0, H * 0.20);
-  const tr = findAnchorInRegion(W * 0.75, W, 0, H * 0.20);
-  const bl = findAnchorInRegion(0, W * 0.25, H * 0.80, H);
-  const br = findAnchorInRegion(W * 0.75, W, H * 0.80, H);
+  const tl = findAnchorInRegion(0, W * 0.30, 0, H * 0.25);
+  const tr = findAnchorInRegion(W * 0.70, W, 0, H * 0.25);
+  const bl = findAnchorInRegion(0, W * 0.30, H * 0.75, H);
+  const br = findAnchorInRegion(W * 0.70, W, H * 0.75, H);
+
+  if (!tl || !tr || !bl || !br) {
+    throw new Error("⚠️ No valid OMR sheet detected. Please ensure all 4 black square corner anchors are clearly visible.");
+  }
 
   // Map normalized coordinates from target A4 template (1000x1414) to detected paper canvas
   const mapPoint = (tx: number, ty: number) => {

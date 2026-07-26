@@ -189,11 +189,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       // Stop camera stream & close camera modal cleanly
       stopCameraStream();
       setShowCameraModal(false);
-
-      // Run OMR scan on the file using exact same pipeline as uploaded files
-      setTimeout(() => {
-        runOMRScan(newItem);
-      }, 50);
     }, 'image/jpeg', 0.92);
   };
 

@@ -37,7 +37,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [syncToCloud, setSyncToCloud] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [cvLoaded, setCvLoaded] = useState(false);
 
   // Camera & Auto-Snap states
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -204,35 +203,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     return exam.numQuestions * (exam.correctMarks ?? 4);
   };
 
-  // Check OpenCV loaded with automatic 2s Pure JS fallback
-  useEffect(() => {
-    let timer: any = null;
-    const maxWait = setTimeout(() => {
-      // Auto-fallback after 2s so user is never stuck
-      setCvLoaded(true);
-    }, 2000);
 
-    const checkCV = () => {
-      const cv = (window as any).cv;
-      if (cv && (typeof cv.Mat === 'function' || typeof cv.imread === 'function')) {
-        clearTimeout(maxWait);
-        setCvLoaded(true);
-      } else {
-        if (cv && typeof cv === 'object') {
-          cv.onRuntimeInitialized = () => {
-            clearTimeout(maxWait);
-            setCvLoaded(true);
-          };
-        }
-        timer = setTimeout(checkCV, 100);
-      }
-    };
-    checkCV();
-    return () => {
-      if (timer) clearTimeout(timer);
-      clearTimeout(maxWait);
-    };
-  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -495,11 +466,15 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      // Update file list status
+      // Extract 4-point perspective warped & cropped OMR sheet URL
+      const croppedSheetUrl = cvResult.debugWarpedCanvas ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.9) : null;
+
+      // Update file list status and replace preview with clean cropped sheet
       setFileList(prev => prev.map(f => {
-        if (f.id === selectedFileId) {
+        if (f.id === current.id) {
           return {
             ...f,
+            previewUrl: croppedSheetUrl || f.previewUrl,
             status: 'Scanned',
             result: scanResultData
           };
@@ -798,9 +773,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </div>
             </div>
           ) : (
-            /* Files Loaded List Layout (Screenshot 1) */
+            /* Files Loaded List Layout */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
                     <ImageIcon size={20} />
@@ -810,19 +785,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', background: cvLoaded ? '#dcfce7' : '#e0e7ff', color: cvLoaded ? '#15803d' : '#3730a3', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                    ⚡ {cvLoaded ? 'OpenCV' : 'Pure JS'} Engine Ready
-                  </span>
                   <button 
                     type="button"
                     className="btn-primary"
                     onClick={() => setShowCameraModal(true)}
-                    style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold' }}
                   >
-                    <Camera size={14} /> Live Camera
+                    <Camera size={16} /> Live Camera
                   </button>
-                  <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
-                    + Upload Files
+                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={16} /> Upload Files
                     <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                   </label>
                 </div>

@@ -66,6 +66,13 @@ export async function syncPendingRegistrationToCloud(reg: PendingRegistration) {
 
 export async function pullCloudUpdatesToIndexedDB() {
   try {
+    // Purge legacy local demo entries if present
+    try {
+      await db.students.filter(s => !!(s.email && s.email.includes('@appexjind.in')) || ['1000000001','1000000002','1000000003','1000000004','1000000005'].includes(s.studentNum)).delete();
+      await db.exams.filter(e => e.title.includes('NEET Practice Test 1')).delete();
+      await db.classes.filter(c => ['JEE', 'Grade 12-A', 'NEET 1'].includes(c.name)).delete();
+    } catch {}
+
     const res = await fetch('/api/sync/all');
     if (!res.ok) return;
     const data = await res.json();

@@ -191,6 +191,27 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Automatic cleanup of legacy demo data from MySQL
+    try {
+      await conn.query(`
+        DELETE FROM students 
+        WHERE email LIKE '%@appexjind.in' 
+           OR studentNum IN ('1000000001','1000000002','1000000003','1000000004','1000000005');
+      `);
+      await conn.query(`
+        DELETE FROM exams 
+        WHERE title LIKE '%NEET Practice Test 1%';
+      `);
+      await conn.query(`
+        DELETE FROM classes 
+        WHERE name IN ('JEE', 'Grade 12-A', 'NEET 1') 
+          AND name NOT IN (SELECT DISTINCT className FROM students);
+      `);
+      console.log('✅ Legacy demo data automatically purged from Hostinger MySQL!');
+    } catch (e) {
+      console.warn('Demo data cleanup notice:', e.message);
+    }
+
     conn.release();
     console.log('✅ Hostinger MySQL Database Schema verified & auto-created successfully!');
   } catch (err) {
@@ -561,6 +582,19 @@ app.post('/api/upload-omr', async (req, res) => {
     await fs.promises.writeFile(filePath, base64Data, 'base64');
     const publicUrl = `/uploads/omr_scans/${fileName}`;
     res.json({ success: true, url: publicUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Purge Demo Data API
+app.post('/api/admin/purge-demo-data', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    await pool.query("DELETE FROM students WHERE email LIKE '%@appexjind.in' OR studentNum IN ('1000000001','1000000002','1000000003','1000000004','1000000005')");
+    await pool.query("DELETE FROM exams WHERE title LIKE '%NEET Practice Test 1%'");
+    await pool.query("DELETE FROM classes WHERE name IN ('JEE', 'Grade 12-A', 'NEET 1') AND name NOT IN (SELECT DISTINCT className FROM students)");
+    res.json({ success: true, message: 'All demo data permanently purged from MySQL database.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

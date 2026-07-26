@@ -677,11 +677,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                   <label>Class Name</label>
                   <select value={className} onChange={(e) => setClassName(e.target.value)}>
                     {classes.length === 0 ? (
-                      <>
-                        <option value="NEET">NEET</option>
-                        <option value="JEE">JEE</option>
-                        <option value="Grade 12-A">Grade 12-A</option>
-                      </>
+                      <option value="">-- No Classes Created Yet --</option>
                     ) : (
                       classes.map(c => (
                         <option key={`wiz-opt-c-${c.id}`} value={c.name}>{c.name}</option>

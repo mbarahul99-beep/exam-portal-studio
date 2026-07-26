@@ -34,11 +34,12 @@ export function scanOMRSheetPureJS(
     return Math.round(data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
   };
 
-  // Find 4 corner anchors (black squares near top-left, top-right, bottom-left, bottom-right)
+  // Find 4 corner anchors (black square blocks near corners)
   const findAnchorInRegion = (rxStart: number, rxEnd: number, ryStart: number, ryEnd: number) => {
     let minSum = Infinity;
-    let bestX = -1;
-    let bestY = -1;
+    let bestX = (rxStart + rxEnd) / 2;
+    let bestY = (ryStart + ryEnd) / 2;
+    let foundDarkBlock = false;
 
     const step = 4;
     for (let y = ryStart; y < ryEnd; y += step) {
@@ -56,12 +57,17 @@ export function scanOMRSheetPureJS(
           minSum = avg;
           bestX = x;
           bestY = y;
+          if (avg < 165) {
+            foundDarkBlock = true;
+          }
         }
       }
     }
 
-    if (minSum > 115 || bestX === -1) {
-      return null;
+    if (!foundDarkBlock || minSum > 165) {
+      // Fallback to region center if low contrast
+      bestX = (rxStart + rxEnd) / 2;
+      bestY = (ryStart + ryEnd) / 2;
     }
     return { x: bestX, y: bestY };
   };
@@ -69,42 +75,72 @@ export function scanOMRSheetPureJS(
   const W = canvas.width;
   const H = canvas.height;
 
-  const tl = findAnchorInRegion(0, W * 0.30, 0, H * 0.25);
-  const tr = findAnchorInRegion(W * 0.70, W, 0, H * 0.25);
-  const bl = findAnchorInRegion(0, W * 0.30, H * 0.75, H);
-  const br = findAnchorInRegion(W * 0.70, W, H * 0.75, H);
+  const tl = findAnchorInRegion(0, W * 0.35, 0, H * 0.30);
+  const tr = findAnchorInRegion(W * 0.65, W, 0, H * 0.30);
+  const bl = findAnchorInRegion(0, W * 0.35, H * 0.70, H);
+  const br = findAnchorInRegion(W * 0.65, W, H * 0.70, H);
 
-  if (!tl || !tr || !bl || !br) {
-    throw new Error("⚠️ No valid OMR sheet detected. Please ensure all 4 black square corner anchors are clearly visible.");
+  // Build clean 1000x1414 4-point perspective-warped canvas for auto-cropping and grading
+  const debugWarpedCanvas = document.createElement('canvas');
+  debugWarpedCanvas.width = 1000;
+  debugWarpedCanvas.height = 1414;
+  const dCtx = debugWarpedCanvas.getContext('2d');
+  if (dCtx) {
+    const warpedData = dCtx.createImageData(1000, 1414);
+    const dst = warpedData.data;
+
+    for (let wy = 0; wy < 1414; wy++) {
+      const v = wy / 1414;
+      
+      for (let wx = 0; wx < 1000; wx++) {
+        const u = wx / 1000;
+        const tx = tl.x + u * (tr.x - tl.x);
+        const ty = tl.y + u * (tr.y - tl.y);
+        const bx = bl.x + u * (br.x - bl.x);
+        const by = bl.y + u * (br.y - bl.y);
+
+        const srcX = Math.round(tx + v * (bx - tx));
+        const srcY = Math.round(ty + v * (by - ty));
+
+        const clampedX = Math.max(0, Math.min(W - 1, srcX));
+        const clampedY = Math.max(0, Math.min(H - 1, srcY));
+
+        const srcIdx = (clampedY * W + clampedX) * 4;
+        const dstIdx = (wy * 1000 + wx) * 4;
+
+        dst[dstIdx] = data[srcIdx];
+        dst[dstIdx + 1] = data[srcIdx + 1];
+        dst[dstIdx + 2] = data[srcIdx + 2];
+        dst[dstIdx + 3] = 255;
+      }
+    }
+    dCtx.putImageData(warpedData, 0, 0);
   }
 
-  // Map normalized coordinates from target A4 template (1000x1414) to detected paper canvas
-  const mapPoint = (tx: number, ty: number) => {
-    const u = tx / 1000;
-    const v = ty / 1414;
+  // Get warped pixel data helper for fast bubble grading
+  const warpedCtx = debugWarpedCanvas.getContext('2d');
+  const warpedImgData = warpedCtx ? warpedCtx.getImageData(0, 0, 1000, 1414) : null;
+  const warpedPixels = warpedImgData ? warpedImgData.data : null;
 
-    const topX = tl.x + u * (tr.x - tl.x);
-    const topY = tl.y + u * (tr.y - tl.y);
-    const botX = bl.x + u * (br.x - bl.x);
-    const botY = bl.y + u * (br.y - bl.y);
-
-    const realX = topX + v * (botX - topX);
-    const realY = topY + v * (botY - topY);
-
-    return { x: realX, y: realY };
+  const getWarpedGray = (wx: number, wy: number): number => {
+    if (!warpedPixels) return 255;
+    const px = Math.floor(wx);
+    const py = Math.floor(wy);
+    if (px < 0 || px >= 1000 || py < 0 || py >= 1414) return 255;
+    const idx = (py * 1000 + px) * 4;
+    return Math.round(warpedPixels[idx] * 0.299 + warpedPixels[idx + 1] * 0.587 + warpedPixels[idx + 2] * 0.114);
   };
 
-  // Helper to measure bubble fill intensity
-  const getBubbleFill = (tx: number, ty: number, radius: number = 7): number => {
-    const pt = mapPoint(tx, ty);
+  // Helper to measure bubble fill intensity directly on warped grid
+  const getBubbleFill = (wx: number, wy: number, radius: number = 7): number => {
     let darkCount = 0;
     let totalCount = 0;
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx * dx + dy * dy <= radius * radius) {
-          const val = getGray(pt.x + dx, pt.y + dy);
-          if (val < 130) {
+          const val = getWarpedGray(wx + dx, wy + dy);
+          if (val < 140) {
             darkCount++;
           }
           totalCount++;
@@ -235,24 +271,6 @@ export function scanOMRSheetPureJS(
         answers[q] = pickedOpt;
       }
     }
-  }
-
-  // Generate 4-corner auto-cropped warped OMR sheet preview
-  const debugWarpedCanvas = document.createElement('canvas');
-  debugWarpedCanvas.width = 1000;
-  debugWarpedCanvas.height = 1414;
-  const dCtx = debugWarpedCanvas.getContext('2d');
-  if (dCtx) {
-    const minX = Math.max(0, Math.min(tl.x, bl.x) - 15);
-    const maxX = Math.min(canvas.width, Math.max(tr.x, br.x) + 15);
-    const minY = Math.max(0, Math.min(tl.y, tr.y) - 15);
-    const maxY = Math.min(canvas.height, Math.max(bl.y, br.y) + 15);
-    const cropW = Math.max(10, maxX - minX);
-    const cropH = Math.max(10, maxY - minY);
-
-    dCtx.imageSmoothingEnabled = true;
-    dCtx.imageSmoothingQuality = 'high';
-    dCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, 1000, 1414);
   }
 
   return {

@@ -488,11 +488,15 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      // Update file list status (preserving original clean sharp photo previewUrl)
+      // Extract clean 4-corner perspective-warped OMR sheet URL
+      const croppedSheetUrl = cvResult.debugWarpedCanvas ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) : null;
+
+      // Update file list status and set preview to clean auto-cropped sheet
       setFileList(prev => prev.map(f => {
         if (f.id === current.id) {
           return {
             ...f,
+            previewUrl: croppedSheetUrl || f.previewUrl,
             status: 'Scanned',
             result: scanResultData
           };

@@ -170,10 +170,10 @@ export async function scanOMRSheet(
                 if (avgW === 0) continue;
                 const ratio = avgH / avgW;
 
-                // Validate A4-like anchor ratio (~1.34) and parallelism/equality of opposite sides
-                const isRatioValid = ratio >= 1.05 && ratio <= 1.65;
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.22;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.22;
+                // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
+                const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
+                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.35;
+                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.35;
 
                 if (isRatioValid && isWidthSimilar && isHeightSimilar) {
                   const quadArea = avgW * avgH;
@@ -223,7 +223,7 @@ export async function scanOMRSheet(
         const pageArea = srcWidth * srcHeight;
 
         const isCorrectSize = area > pageArea * 0.00003 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.6 && aspectRatio <= 1.5;
+        const isSquare = aspectRatio >= 0.5 && aspectRatio <= 1.8;
 
         if (isCorrectSize && isSquare) {
           const center = {
@@ -247,13 +247,24 @@ export async function scanOMRSheet(
       throw new Error("Could not locate the OMR sheet. Please make sure the entire sheet (with all 4 black square corner anchors) is flat and fully visible inside the image.");
     }
 
-    // 5. Perspective Warp to standard A4 (1000 x 1414)
-    let srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-      tlMarker.center.x, tlMarker.center.y,
-      trMarker.center.x, trMarker.center.y,
-      brMarker.center.x, brMarker.center.y,
-      blMarker.center.x, blMarker.center.y
-    ]);
+    // 5. Automatic Orientation Auto-Correction (Handles 0°, 90°, 180°, 270° horizontal/vertical photos)
+    const basePts = [
+      tlMarker.center,
+      trMarker.center,
+      brMarker.center,
+      blMarker.center
+    ];
+
+    // 4 Possible Rotations (0°, 90°, 180°, 270°)
+    const candidateRotations = [
+      [basePts[0], basePts[1], basePts[2], basePts[3]], // 0°
+      [basePts[3], basePts[0], basePts[1], basePts[2]], // 90° CW
+      [basePts[2], basePts[3], basePts[0], basePts[1]], // 180°
+      [basePts[1], basePts[2], basePts[3], basePts[0]]  // 270° CW
+    ];
+
+    let bestWarpedMat: any = null;
+    let maxOrientationContrast = -1;
 
     let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
       OMR_CONFIG.anchors.tl.x, OMR_CONFIG.anchors.tl.y,
@@ -262,10 +273,54 @@ export async function scanOMRSheet(
       OMR_CONFIG.anchors.bl.x, OMR_CONFIG.anchors.bl.y
     ]);
 
-    let M = cv.getPerspectiveTransform(srcPts, dstPts);
-    let warped = new cv.Mat();
-    let warpedSize = new cv.Size(OMR_CONFIG.width, OMR_CONFIG.height);
-    cv.warpPerspective(src, warped, M, warpedSize);
+    const warpedSize = new cv.Size(OMR_CONFIG.width, OMR_CONFIG.height);
+
+    for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
+      const rot = candidateRotations[rotIdx];
+      const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        rot[0].x, rot[0].y,
+        rot[1].x, rot[1].y,
+        rot[2].x, rot[2].y,
+        rot[3].x, rot[3].y
+      ]);
+
+      const M_temp = cv.getPerspectiveTransform(srcPts, dstPts);
+      const tempWarped = new cv.Mat();
+      cv.warpPerspective(src, tempWarped, M_temp, warpedSize);
+
+      const tempGray = new cv.Mat();
+      cv.cvtColor(tempWarped, tempGray, cv.COLOR_RGBA2GRAY);
+
+      // Evaluate candidate roll number area (y: 216-416) for valid header/roll box structure
+      let contrastScore = 0;
+      const sidConf = OMR_CONFIG.studentId;
+      for (let col = 0; col < Math.min(5, rollNoDigits); col++) {
+        const x = sidConf.xStart + col * sidConf.xStep;
+        let cMin = 256, cMax = -1;
+        for (let row = 0; row < 10; row++) {
+          const y = sidConf.yStart + row * sidConf.yStep;
+          const g = calculateBubbleAverageGray(tempGray, x, y, 4.5);
+          if (g < cMin) cMin = g;
+          if (g > cMax) cMax = g;
+        }
+        contrastScore += (cMax - cMin);
+      }
+
+      if (contrastScore > maxOrientationContrast || !bestWarpedMat) {
+        maxOrientationContrast = contrastScore;
+        if (bestWarpedMat) bestWarpedMat.delete();
+        bestWarpedMat = tempWarped;
+      } else {
+        tempWarped.delete();
+      }
+
+      tempGray.delete();
+      M_temp.delete();
+      srcPts.delete();
+    }
+
+    dstPts.delete();
+    let warped = bestWarpedMat;
 
     // Convert warped image to grayscale for bubble average intensity scan
     warpedGray = new cv.Mat();
@@ -447,9 +502,6 @@ export async function scanOMRSheet(
     thresh.delete();
     contours.delete();
     hierarchy.delete();
-    srcPts.delete();
-    dstPts.delete();
-    M.delete();
     warped.delete();
     warpedGray.delete();
 

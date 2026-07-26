@@ -43,7 +43,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [pendingSnapUrl, setPendingSnapUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -164,35 +163,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setPendingSnapUrl(dataUrl);
+
+        const newItem: ScanFileItem = {
+          id: `cam-${Date.now()}`,
+          name: `camera-scan-${Date.now()}.jpg`,
+          previewUrl: dataUrl,
+          status: 'Pending'
+        };
+
+        setFileList(prev => [...prev, newItem]);
+        setSelectedFileId(newItem.id);
+        
+        // Stop stream and close camera modal after photo capture
+        stopCameraStream();
+        setShowCameraModal(false);
+
+        // Run OMR grading scan immediately with target newItem
+        runOMRScan(newItem);
       }
     }
-  };
-
-  const handleConfirmPendingSnap = () => {
-    if (!pendingSnapUrl) return;
-
-    const newItem: ScanFileItem = {
-      id: `cam-${Date.now()}`,
-      name: `camera-scan-${Date.now()}.jpg`,
-      previewUrl: pendingSnapUrl,
-      status: 'Pending'
-    };
-
-    setFileList(prev => [...prev, newItem]);
-    setSelectedFileId(newItem.id);
-    setPendingSnapUrl(null);
-    
-    // Stop stream and close camera modal after photo confirmation
-    stopCameraStream();
-    setShowCameraModal(false);
-
-    // Run OMR grading scan immediately with target newItem
-    runOMRScan(newItem);
-  };
-
-  const handleRetakeSnap = () => {
-    setPendingSnapUrl(null);
   };
 
   // Canvas View Controls
@@ -1158,27 +1147,26 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       </div>
 
-      {/* Clean Reference-App Camera Modal Overlay */}
+      {/* Original Simple Camera Modal Overlay */}
       {showCameraModal && (
         <div className="camera-fullscreen-overlay">
-          {/* Top Clean App Bar */}
+          {/* Top App Bar */}
           <div className="clean-app-bar">
             <div className="clean-app-bar-left">
               <button 
                 type="button"
                 className="clean-back-btn" 
                 onClick={() => {
-                  setPendingSnapUrl(null);
                   stopCameraStream();
                   setShowCameraModal(false);
                 }}
-                title="Back to Exam Portal"
+                title="Exit Camera Scanner"
               >
                 <ArrowLeft size={22} />
               </button>
               <div className="clean-app-bar-titles">
-                <h3>{exam.title}</h3>
-                <p>{exam.className || 'Exam Scanner'}</p>
+                <h3>📷 {exam.title}</h3>
+                <p>{exam.className || 'Camera Scanner'}</p>
               </div>
             </div>
 
@@ -1195,76 +1183,34 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             )}
           </div>
 
-          {/* Camera Viewport */}
+          {/* Live Camera Viewport */}
           <div className="clean-camera-viewport">
-            {pendingSnapUrl ? (
-              <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                <img src={pendingSnapUrl} alt="Captured OMR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                
-                {/* Bottom Confirmation Bar */}
-                <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '16px', zIndex: 20 }}>
-                  <button 
-                    type="button"
-                    onClick={handleRetakeSnap}
-                    style={{ padding: '12px 24px', fontSize: '1rem', borderRadius: '30px', background: '#475569', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}
-                  >
-                    🔄 Retake
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={handleConfirmPendingSnap}
-                    style={{ padding: '12px 36px', fontSize: '1.1rem', borderRadius: '30px', background: '#22c55e', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 20px rgba(34,197,94,0.6)' }}
-                  >
-                    ✅ OK (Grade Sheet)
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
 
-                {/* Top Orientation Text */}
-                <div className="camera-orientation-tag">Top</div>
-
-                {/* 4 Corner Guide Target Boxes */}
-                <div className="guide-target-box tl" />
-                <div className="guide-target-box tr" />
-                <div className="guide-target-box bl" />
-                <div className="guide-target-box br" />
-
-                {/* Bottom Snap Action Button */}
-                <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
-                  <button 
-                    type="button"
-                    onClick={captureCameraPhoto}
-                    style={{ 
-                      padding: '14px 36px', 
-                      fontSize: '1.1rem', 
-                      borderRadius: '32px', 
-                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
-                      color: '#ffffff', 
-                      border: 'none', 
-                      fontWeight: 'bold', 
-                      cursor: 'pointer', 
-                      boxShadow: '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}
-                    disabled={isScanning}
-                  >
-                    {isScanning ? <RefreshCw className="spin" size={20} /> : '📸 Snap'}
-                  </button>
-                </div>
-
-                {/* Center Circular White Spinner (during processing) */}
-                {isScanning && (
-                  <div className="camera-center-spinner-box">
-                    <div className="camera-center-spinner-arc" />
-                  </div>
-                )}
-              </>
-            )}
+            {/* Bottom Capture Action Button */}
+            <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
+              <button 
+                type="button"
+                onClick={captureCameraPhoto}
+                style={{ 
+                  padding: '14px 36px', 
+                  fontSize: '1.1rem', 
+                  borderRadius: '32px', 
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
+                  color: '#ffffff', 
+                  border: 'none', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  boxShadow: '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}
+                disabled={isScanning}
+              >
+                {isScanning ? <RefreshCw className="spin" size={20} /> : '📷 Capture & Scan Photo'}
+              </button>
+            </div>
           </div>
 
           <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>

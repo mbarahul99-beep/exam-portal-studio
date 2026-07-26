@@ -208,11 +208,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     let cooldown = false;
 
     const interval = setInterval(() => {
-      if (cooldown || isScanning || !videoRef.current || !(window as any).cv) return;
+      if (cooldown || isScanning || !videoRef.current) return;
 
       try {
         const video = videoRef.current;
-        if (!video.videoWidth) return;
+        if (!video.videoWidth || !video.videoHeight) return;
 
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = 320;
@@ -222,37 +222,71 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         ctx.drawImage(video, 0, 0, 320, 240);
 
-        const cv = (window as any).cv;
-        const src = cv.imread(tempCanvas);
-        const gray = new cv.Mat();
-        const thresh = new cv.Mat();
+        let detectedAnchors = 0;
 
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
+        // Pass 1: Try OpenCV contours if available
+        if ((window as any).cv && (window as any).cv.Mat) {
+          try {
+            const cv = (window as any).cv;
+            const src = cv.imread(tempCanvas);
+            const gray = new cv.Mat();
+            const thresh = new cv.Mat();
 
-        const contours = new cv.MatVector();
-        const hierarchy = new cv.Mat();
-        cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
 
-        let squareCount = 0;
-        for (let i = 0; i < contours.size(); i++) {
-          const cnt = contours.get(i);
-          const rect = cv.boundingRect(cnt);
-          const aspect = rect.width / (rect.height || 1);
-          const area = rect.width * rect.height;
-          if (aspect >= 0.8 && aspect <= 1.3 && area > 120 && area < 2500) {
-            squareCount++;
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            for (let i = 0; i < contours.size(); i++) {
+              const cnt = contours.get(i);
+              const rect = cv.boundingRect(cnt);
+              const aspect = rect.width / (rect.height || 1);
+              const area = rect.width * rect.height;
+              if (aspect >= 0.7 && aspect <= 1.4 && area > 60 && area < 3000) {
+                detectedAnchors++;
+              }
+            }
+
+            src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+          } catch {
+            detectedAnchors = 0;
           }
         }
 
-        src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+        // Pass 2: Pure JS Canvas 2D fallback anchor inspection in 4 corner regions
+        if (detectedAnchors < 3) {
+          detectedAnchors = 0;
+          const imgData = ctx.getImageData(0, 0, 320, 240);
+          const data = imgData.data;
 
-        if (squareCount >= 4) {
+          const checkRegion = (startX: number, endX: number, startY: number, endY: number) => {
+            let darkPixels = 0;
+            let total = 0;
+            for (let y = startY; y < endY; y += 4) {
+              for (let x = startX; x < endX; x += 4) {
+                const idx = (y * 320 + x) * 4;
+                const lum = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+                if (lum < 95) darkPixels++;
+                total++;
+              }
+            }
+            return (darkPixels / (total || 1)) > 0.04;
+          };
+
+          if (checkRegion(10, 100, 10, 80)) detectedAnchors++;   // Top-Left
+          if (checkRegion(220, 310, 10, 80)) detectedAnchors++;  // Top-Right
+          if (checkRegion(10, 100, 160, 230)) detectedAnchors++; // Bottom-Left
+          if (checkRegion(220, 310, 160, 230)) detectedAnchors++;// Bottom-Right
+        }
+
+        if (detectedAnchors >= 3) {
           setIsPaperDetected(true);
           consecutiveHits++;
-          setAutoSnapStatus(`Paper Detected! Hold Steady (${consecutiveHits}/4)...`);
+          setAutoSnapStatus(`Paper Detected! Hold Steady (${consecutiveHits}/2)...`);
 
-          if (consecutiveHits >= 4) {
+          if (consecutiveHits >= 2) {
             consecutiveHits = 0;
             cooldown = true;
             setAutoSnapStatus("📸 Auto-Snapping & Grading...");
@@ -267,10 +301,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       } catch {
         // Ignore frame errors
       }
-    }, 250);
+    }, 200);
 
     return () => clearInterval(interval);
-  }, [showCameraModal, isAutoSnapEnabled, isScanning]);
+  }, [showCameraModal, isAutoSnapEnabled, isScanning, pendingSnapUrl]);
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);

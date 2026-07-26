@@ -2194,15 +2194,6 @@ export default function App() {
               <BookOpen size={18} /> Question Banks
             </button>
             <button 
-              className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('analysis');
-                setMobileMenuOpen(false);
-              }}
-            >
-              <Award size={18} /> Reports
-            </button>
-            <button 
               className={`nav-item ${activeTab === 'whatsapp-settings' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('whatsapp-settings');

@@ -29,6 +29,7 @@ import { ScanImagesView } from './ScanImagesView';
 import { ResponseAnalysisView } from './ResponseAnalysisView';
 import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
+import { deleteExamFromCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface ExamDetailsViewProps {
   exam: Exam;
@@ -260,9 +261,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const handleDeleteExam = async () => {
     if (confirm(`Are you sure you want to delete "${exam.title}"? This will permanently delete the exam layout, correct answer keys, and all student graded submissions.`)) {
       try {
+        if (exam.id) await deleteExamFromCloud(exam.id);
         await db.exams.delete(exam.id!);
         await db.submissions.where('examId').equals(exam.id!).delete();
         await db.questions.where('examId').equals(exam.id!).delete();
+        await pullCloudUpdatesToIndexedDB();
         onClose();
       } catch (err: any) {
         alert(`Failed to delete exam: ${err.message}`);

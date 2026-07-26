@@ -19,7 +19,7 @@ import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt, isAppInstalled } from './components/InstallPWAPrompt';
-import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud } from './utils/cloudSync';
+import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
   Users,
   UserCheck, 
@@ -328,9 +328,13 @@ export default function App() {
   // Selected Student Profile State for Reports
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
-  // Production startup: Synchronize clean database with Hostinger MySQL
+  // Real-time sync: Synchronize database with Hostinger MySQL on mount & every 3s background interval
   useEffect(() => {
     pullCloudUpdatesToIndexedDB();
+    const interval = setInterval(() => {
+      pullCloudUpdatesToIndexedDB();
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const cleanWhatsAppNumber = (num: string): string => {
@@ -2265,22 +2269,39 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Right Side: View Students Link & Green Checkmark Badge */}
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                              <span style={{ color: '#2563eb', fontWeight: 700, fontSize: '0.95rem' }}>
-                                View Students
-                              </span>
-                              <div style={{
-                                width: '20px',
-                                height: '20px',
-                                borderRadius: '50%',
-                                background: '#16a34a',
-                                color: '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}>
-                                <Check size={12} strokeWidth={3} />
+                            {/* Right Side: View Students Link & Delete Action */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Are you sure you want to delete class "${cls.name}"?`)) {
+                                    await deleteClassFromCloud(cls.name);
+                                    await db.classes.where('name').equalsIgnoreCase(cls.name).delete();
+                                    pullCloudUpdatesToIndexedDB();
+                                  }
+                                }}
+                                title="Delete Class"
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', color: '#dc2626', display: 'flex', alignItems: 'center' }}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                                <span style={{ color: '#2563eb', fontWeight: 700, fontSize: '0.95rem' }}>
+                                  View Students
+                                </span>
+                                <div style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '50%',
+                                  background: '#16a34a',
+                                  color: '#ffffff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  <Check size={12} strokeWidth={3} />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2577,8 +2598,11 @@ export default function App() {
                                             onClick={async () => {
                                               setStudentMenuOpenId(null);
                                               if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
+                                                if (s.id) await deleteStudentFromCloud(s.id);
+                                                await deleteStudentFromCloud(s.studentNum);
                                                 await db.students.delete(s.id!);
                                                 await db.submissions.where('studentId').equals(s.id!).delete();
+                                                pullCloudUpdatesToIndexedDB();
                                               }
                                             }}
                                             style={{

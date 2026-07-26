@@ -410,6 +410,82 @@ app.delete('/api/students/:id/face', async (req, res) => {
   }
 });
 
+// Delete Student Record API
+app.delete('/api/students/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM attendance WHERE studentId = ?', [id]);
+    await pool.query('DELETE FROM submissions WHERE studentId = ?', [id]);
+    await pool.query('DELETE FROM students WHERE id = ? OR studentNum = ?', [id, id]);
+    res.json({ success: true, message: 'Student deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Exam API
+app.delete('/api/exams/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM questions WHERE examId = ?', [id]);
+    await pool.query('DELETE FROM submissions WHERE examId = ?', [id]);
+    await pool.query('DELETE FROM exams WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Exam deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Class API
+app.delete('/api/classes/:name', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { name } = req.params;
+  try {
+    await pool.query('DELETE FROM classes WHERE name = ?', [name]);
+    res.json({ success: true, message: 'Class deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Submission API
+app.delete('/api/submissions/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM submissions WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Submission deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Teacher API
+app.delete('/api/teachers/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM teachers WHERE id = ? OR userId = ?', [id, id]);
+    res.json({ success: true, message: 'Teacher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Pending Registration API
+app.delete('/api/pending-registrations/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM pending_registrations WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Pending registration deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Upsert Attendance API
 app.post('/api/attendance', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });

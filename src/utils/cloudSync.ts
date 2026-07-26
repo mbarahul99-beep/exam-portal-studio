@@ -64,21 +64,72 @@ export async function syncPendingRegistrationToCloud(reg: PendingRegistration) {
   }
 }
 
+export async function deleteStudentFromCloud(idOrNum: number | string) {
+  try {
+    await fetch(`/api/students/${idOrNum}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete student cloud sync failed:", err);
+  }
+}
+
+export async function deleteExamFromCloud(id: number) {
+  try {
+    await fetch(`/api/exams/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete exam cloud sync failed:", err);
+  }
+}
+
+export async function deleteClassFromCloud(name: string) {
+  try {
+    await fetch(`/api/classes/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete class cloud sync failed:", err);
+  }
+}
+
+export async function deleteSubmissionFromCloud(id: number) {
+  try {
+    await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete submission cloud sync failed:", err);
+  }
+}
+
+export async function deleteTeacherFromCloud(idOrUserId: number | string) {
+  try {
+    await fetch(`/api/teachers/${idOrUserId}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete teacher cloud sync failed:", err);
+  }
+}
+
+export async function deletePendingRegistrationFromCloud(id: number) {
+  try {
+    await fetch(`/api/pending-registrations/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete pending registration cloud sync failed:", err);
+  }
+}
+
 export async function pullCloudUpdatesToIndexedDB() {
   try {
-    // Purge legacy local demo entries if present (excluding active valid classes)
-    try {
-      await db.students.filter(s => !!(s.email && s.email.includes('@appexjind.in'))).delete();
-      await db.exams.filter(e => e.title.includes('NEET Practice Test 1')).delete();
-      await db.classes.filter(c => ['JEE', 'Grade 12-A'].includes(c.name)).delete();
-    } catch {}
-
     const res = await fetch('/api/sync/all');
     if (!res.ok) return;
     const data = await res.json();
 
-    // 1. Sync Students
+    // 1. Sync Students (Add/Update & Purge Deleted)
     if (data.students && Array.isArray(data.students)) {
+      const serverStudentNums = new Set(data.students.map((s: any) => s.studentNum));
+      
+      // Delete local students no longer on MySQL server
+      const localStudents = await db.students.toArray();
+      for (const ls of localStudents) {
+        if (!serverStudentNums.has(ls.studentNum) && !ls.email?.includes('@appexjind.in')) {
+          await db.students.delete(ls.id!);
+        }
+      }
+
       for (const st of data.students) {
         try {
           const { id: mysqlId, ...studentFields } = st;
@@ -100,8 +151,16 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
-    // 2. Sync Classes
+    // 2. Sync Classes (Add/Update & Purge Deleted)
     if (data.classes && Array.isArray(data.classes)) {
+      const serverClassNames = new Set(data.classes.map((c: any) => c.name));
+      const localClasses = await db.classes.toArray();
+      for (const lc of localClasses) {
+        if (!serverClassNames.has(lc.name) && ['JEE', 'Grade 12-A'].includes(lc.name)) {
+          await db.classes.delete(lc.id!);
+        }
+      }
+
       for (const cls of data.classes) {
         try {
           const { id: mysqlId, ...classFields } = cls;
@@ -130,8 +189,15 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
-    // 3. Sync Exams
+    // 3. Sync Exams (Add/Update & Purge Deleted)
     if (data.exams && Array.isArray(data.exams)) {
+      const serverExamTitles = new Set(data.exams.map((e: any) => e.title));
+      const localExams = await db.exams.toArray();
+      for (const le of localExams) {
+        if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1')) {
+          await db.exams.delete(le.id!);
+        }
+      }
       for (const ex of data.exams) {
         try {
           const { id: mysqlId, ...examFields } = ex;

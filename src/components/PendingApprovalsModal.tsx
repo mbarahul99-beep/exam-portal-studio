@@ -66,6 +66,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
     if (!confirm("Are you sure you want to reject this registration request?")) return;
     try {
       await db.pendingRegistrations.update(id, { status: 'rejected' });
+      await fetch(`/api/pending-registrations/${id}`, { method: 'DELETE' });
     } catch (err: any) {
       alert(`Rejection error: ${err.message}`);
     }

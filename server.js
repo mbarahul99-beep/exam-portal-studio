@@ -645,13 +645,7 @@ app.post('/api/approve-registration', async (req, res) => {
   }
 });
 
-const uploadsDir = path.join(__dirname, 'uploads');
-const omrScansDir = path.join(__dirname, 'uploads', 'omr_scans');
 
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-if (!fs.existsSync(omrScansDir)) fs.mkdirSync(omrScansDir, { recursive: true });
-
-app.use('/uploads', express.static(uploadsDir));
 
 // Save Scanned OMR Sheet Image API
 app.post('/api/upload-omr', async (req, res) => {

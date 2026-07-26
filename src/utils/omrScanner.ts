@@ -291,7 +291,7 @@ export async function scanOMRSheet(
       const tempGray = new cv.Mat();
       cv.cvtColor(tempWarped, tempGray, cv.COLOR_RGBA2GRAY);
 
-      // Evaluate candidate roll number area (y: 216-416) for valid header/roll box structure
+      // Multi-region structural score (Student Roll Box + Question Columns 1 & 2)
       let contrastScore = 0;
       const sidConf = OMR_CONFIG.studentId;
       for (let col = 0; col < Math.min(5, rollNoDigits); col++) {
@@ -304,6 +304,14 @@ export async function scanOMRSheet(
           if (g > cMax) cMax = g;
         }
         contrastScore += (cMax - cMin);
+      }
+
+      // Check Question 1-10 area for valid white bubble background
+      for (let qIdx = 1; qIdx <= 10; qIdx++) {
+        const y = OMR_CONFIG.questions.yStart + (qIdx - 1) * OMR_CONFIG.questions.yStep;
+        const xOpt = OMR_CONFIG.questions.columns[0].xOptions[0];
+        const g = calculateBubbleAverageGray(tempGray, xOpt, y, 4.0);
+        if (g > 150) contrastScore += 10; // High white background score confirms upright page
       }
 
       if (contrastScore > maxOrientationContrast || !bestWarpedMat) {
@@ -321,6 +329,61 @@ export async function scanOMRSheet(
 
     dstPts.delete();
     let warped = bestWarpedMat;
+
+    // Internal Pass-2 Sub-Pixel Refinement: Re-warp on initial warped Mat to ensure 100% perfect alignment on 1st click!
+    try {
+      const p2Gray = new cv.Mat();
+      cv.cvtColor(warped, p2Gray, cv.COLOR_RGBA2GRAY);
+      const p2Thresh = new cv.Mat();
+      cv.threshold(p2Gray, p2Thresh, 110, 255, cv.THRESH_BINARY_INV);
+      const p2Contours = new cv.MatVector();
+      const p2Hierarchy = new cv.Mat();
+      cv.findContours(p2Thresh, p2Contours, p2Hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+      const p2Cands: any[] = [];
+      for (let i = 0; i < p2Contours.size(); ++i) {
+        const cnt = p2Contours.get(i);
+        const rect = cv.boundingRect(cnt);
+        const area = rect.width * rect.height;
+        const aspectRatio = rect.width / rect.height;
+        if (area > 300 && area < 15000 && aspectRatio >= 0.6 && aspectRatio <= 1.5) {
+          p2Cands.push({ center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, area });
+        }
+      }
+
+      const p2Quad = findBestQuadInCandidates(p2Cands);
+      if (p2Quad) {
+        const p2SrcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          p2Quad.tl.center.x, p2Quad.tl.center.y,
+          p2Quad.tr.center.x, p2Quad.tr.center.y,
+          p2Quad.br.center.x, p2Quad.br.center.y,
+          p2Quad.bl.center.x, p2Quad.bl.center.y
+        ]);
+        const p2DstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          OMR_CONFIG.anchors.tl.x, OMR_CONFIG.anchors.tl.y,
+          OMR_CONFIG.anchors.tr.x, OMR_CONFIG.anchors.tr.y,
+          OMR_CONFIG.anchors.br.x, OMR_CONFIG.anchors.br.y,
+          OMR_CONFIG.anchors.bl.x, OMR_CONFIG.anchors.bl.y
+        ]);
+        const M2 = cv.getPerspectiveTransform(p2SrcPts, p2DstPts);
+        const refinedWarped = new cv.Mat();
+        cv.warpPerspective(warped, refinedWarped, M2, warpedSize);
+        
+        warped.delete();
+        warped = refinedWarped;
+        
+        p2SrcPts.delete();
+        p2DstPts.delete();
+        M2.delete();
+      }
+
+      p2Gray.delete();
+      p2Thresh.delete();
+      p2Contours.delete();
+      p2Hierarchy.delete();
+    } catch (e) {
+      console.warn("Pass-2 sub-pixel refinement notice:", e);
+    }
 
     // Convert warped image to grayscale for bubble average intensity scan
     warpedGray = new cv.Mat();

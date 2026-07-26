@@ -37,7 +37,7 @@ export function scanOMRSheetPureJS(
   const W = canvas.width;
   const H = canvas.height;
 
-  // Find 4 corner anchors (black square blocks near corners)
+  // Find 4 corner anchors (black square blocks near corners of the paper)
   const findAnchorInRegion = (rxStart: number, rxEnd: number, ryStart: number, ryEnd: number, defaultX: number, defaultY: number) => {
     let minSum = Infinity;
     let bestX = defaultX;
@@ -45,8 +45,8 @@ export function scanOMRSheetPureJS(
     let foundDarkBlock = false;
 
     const step = 4;
-    for (let y = ryStart; y < ryEnd; y += step) {
-      for (let x = rxStart; x < rxEnd; x += step) {
+    for (let y = Math.floor(ryStart); y < Math.floor(ryEnd); y += step) {
+      for (let x = Math.floor(rxStart); x < Math.floor(rxEnd); x += step) {
         let sum = 0;
         let count = 0;
         for (let dy = -6; dy <= 6; dy += 2) {
@@ -60,35 +60,37 @@ export function scanOMRSheetPureJS(
           minSum = avg;
           bestX = x;
           bestY = y;
-          if (avg < 130) {
+          if (avg < 145) {
             foundDarkBlock = true;
           }
         }
       }
     }
 
-    if (!foundDarkBlock || minSum > 130) {
-      // Fallback to exact outer page corner if no distinct black anchor block
+    if (!foundDarkBlock || minSum > 145) {
       return { x: defaultX, y: defaultY };
     }
     return { x: bestX, y: bestY };
   };
 
-  const tl = findAnchorInRegion(0, W * 0.20, 0, H * 0.20, 0, 0);
-  const tr = findAnchorInRegion(W * 0.80, W, 0, H * 0.20, W, 0);
-  const bl = findAnchorInRegion(0, W * 0.20, H * 0.80, H, 0, H);
-  const br = findAnchorInRegion(W * 0.80, W, H * 0.80, H, W, H);
+  // Expanded search quadrants to find black corner square anchors even when photo has wide margins
+  const tl = findAnchorInRegion(0, W * 0.45, 0, H * 0.35, W * 0.05, H * 0.05);
+  const tr = findAnchorInRegion(W * 0.55, W, 0, H * 0.35, W * 0.95, H * 0.05);
+  const bl = findAnchorInRegion(0, W * 0.45, H * 0.65, H, W * 0.05, H * 0.95);
+  const br = findAnchorInRegion(W * 0.55, W, H * 0.65, H, W * 0.95, H * 0.95);
 
-  // Build clean, sharp, un-corrupted 4-corner cropped canvas preview
+  // Build clean, sharp 4-corner cropped canvas preview (crops out floor/extra background)
   const debugWarpedCanvas = document.createElement('canvas');
   debugWarpedCanvas.width = 1000;
   debugWarpedCanvas.height = 1414;
   const dCtx = debugWarpedCanvas.getContext('2d');
   if (dCtx) {
-    const minX = Math.max(0, Math.min(tl.x, bl.x) - 15);
-    const maxX = Math.min(canvas.width, Math.max(tr.x, br.x) + 15);
-    const minY = Math.max(0, Math.min(tl.y, tr.y) - 15);
-    const maxY = Math.min(canvas.height, Math.max(bl.y, br.y) + 15);
+    const padX = Math.round(W * 0.03);
+    const padY = Math.round(H * 0.03);
+    const minX = Math.max(0, Math.min(tl.x, bl.x) - padX);
+    const maxX = Math.min(canvas.width, Math.max(tr.x, br.x) + padX);
+    const minY = Math.max(0, Math.min(tl.y, tr.y) - padY);
+    const maxY = Math.min(canvas.height, Math.max(bl.y, br.y) + padY);
     const cropW = Math.max(10, maxX - minX);
     const cropH = Math.max(10, maxY - minY);
 
@@ -97,10 +99,11 @@ export function scanOMRSheetPureJS(
     dCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, 1000, 1414);
   }
 
-  // Map target A4 template (1000x1414) grid points to exact source image coordinates
+  // Map target A4 template coordinates (1000x1414) accurately relative to detected 4 anchor squares
   const mapPoint = (tx: number, ty: number) => {
-    const u = tx / 1000;
-    const v = ty / 1414;
+    // Template anchors are at (30,30), (970,30), (30,1384), (970,1384)
+    const u = (tx - 30) / 940;
+    const v = (ty - 30) / 1354;
 
     const topX = tl.x + u * (tr.x - tl.x);
     const topY = tl.y + u * (tr.y - tl.y);

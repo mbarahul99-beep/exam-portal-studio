@@ -269,14 +269,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
   // Check OpenCV loaded
   useEffect(() => {
+    let timer: any = null;
     const checkCV = () => {
-      if ((window as any).cv) {
+      const cv = (window as any).cv;
+      if (cv && typeof cv.Mat === 'function') {
         setCvLoaded(true);
       } else {
-        setTimeout(checkCV, 100);
+        if (cv && typeof cv === 'object') {
+          cv.onRuntimeInitialized = () => setCvLoaded(true);
+        }
+        timer = setTimeout(checkCV, 100);
       }
     };
     checkCV();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

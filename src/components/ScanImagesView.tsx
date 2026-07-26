@@ -47,6 +47,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
 
+  // Registered students in this exam's class limit validation
+  const classStudents = students.filter(s => s.className === exam.className);
+  const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
+  const isClassLimitReached = maxClassSheets !== Infinity && fileList.length >= maxClassSheets;
+
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -149,6 +154,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   // Capture photo from live camera & process with the EXACT SAME OMR PIPELINE!
   const captureCameraPhoto = async () => {
     if (!videoRef.current || !cvLoaded || isScanning) return;
+
+    if (maxClassSheets !== Infinity && fileList.length >= maxClassSheets) {
+      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+      setShowCameraModal(false);
+      return;
+    }
 
     playShutterSound();
     setIsScanning(true);
@@ -319,9 +330,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const currentCount = fileList.length;
+    const incomingCount = e.target.files.length;
+
+    if (maxClassSheets !== Infinity && currentCount >= maxClassSheets) {
+      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+      e.target.value = '';
+      return;
+    }
+
+    let allowedCount = incomingCount;
+    if (maxClassSheets !== Infinity && currentCount + incomingCount > maxClassSheets) {
+      allowedCount = maxClassSheets - currentCount;
+      alert(`⚠️ Selection Adjusted!\n\nClass "${exam.className}" has ${maxClassSheets} registered student(s). Only ${allowedCount} sheet(s) could be added to reach the maximum limit of ${maxClassSheets}.`);
+    }
+
     const newFiles: ScanFileItem[] = [];
-    for (let i = 0; i < e.target.files.length; i++) {
+    for (let i = 0; i < allowedCount; i++) {
       const f = e.target.files[i];
       newFiles.push({
         id: `file-${Date.now()}-${i}`,
@@ -339,6 +366,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       }
       return updated;
     });
+    e.target.value = '';
   };
 
   const getSelectedFile = () => {
@@ -879,48 +907,76 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </svg>
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your live camera to scan OMR sheets or upload image files (JPG, PNG)</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 16px 0' }}>
+                Class <strong>{exam.className}</strong> ({maxClassSheets !== Infinity ? `${classStudents.length} Registered Student(s)` : 'No Limit'})
+              </p>
+
+              {isClassLimitReached && (
+                <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '8px', color: '#c53030', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
+                  ⚠️ Registered Limit Reached! Class "{exam.className}" has only {maxClassSheets} registered student(s). No extra sheets can be scanned.
+                </div>
+              )}
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
                 <button 
                   type="button"
                   className="btn-primary" 
-                  onClick={() => setShowCameraModal(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
+                  disabled={isClassLimitReached}
+                  onClick={() => {
+                    if (isClassLimitReached) {
+                      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+                      return;
+                    }
+                    setShowCameraModal(true);
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, width: '100%', boxSizing: 'border-box' }}
                 >
                   <Camera size={20} /> 📷 Live Camera Scanner
                 </button>
 
-                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
+                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
                   <Upload size={18} /> Select / Upload Image Files
-                  <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  <input type="file" multiple accept="image/*" disabled={isClassLimitReached} onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
             </div>
           ) : (
             /* Files Loaded List Layout */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {isClassLimitReached && (
+                <div style={{ marginBottom: '10px', padding: '8px 12px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', color: '#c53030', fontSize: '0.8rem', fontWeight: '600', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>⚠️ Registered Limit Reached ({fileList.length} / {maxClassSheets} Students)</span>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>Class: {exam.className}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
                     <ImageIcon size={20} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files ({maxClassSheets !== Infinity ? `Max ${maxClassSheets}` : 'No Limit'})</h4>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button 
                     type="button"
                     className="btn-primary" 
-                    onClick={() => setShowCameraModal(true)}
-                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+                    disabled={isClassLimitReached}
+                    onClick={() => {
+                      if (isClassLimitReached) {
+                        alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
+                        return;
+                      }
+                      setShowCameraModal(true);
+                    }}
+                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1 }}
                   >
                     <Camera size={16} /> 📷 Live Camera
                   </button>
-                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Upload size={16} /> Upload Files
-                    <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                    <input type="file" multiple accept="image/*" disabled={isClassLimitReached} onChange={handleFileSelect} style={{ display: 'none' }} />
                   </label>
                 </div>
               </div>

@@ -13,33 +13,40 @@ export function useOpenCv() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    // If already loaded
+    // Check if already loaded
     if (window.cv && window.cv.Mat) {
       setLoaded(true);
       return;
     }
 
-    // Set up runtime initialized callback
-    window.Module = {
-      onRuntimeInitialized: () => {
-        setLoaded(true);
-      },
+    // Set up Emscripten Module callback
+    window.Module = window.Module || {};
+    const previousCallback = window.Module.onRuntimeInitialized;
+    window.Module.onRuntimeInitialized = () => {
+      if (previousCallback) previousCallback();
+      setLoaded(true);
     };
 
-    // Check periodically with fast 100ms interval for preloaded OpenCV.js script in index.html
+    // Fast polling loop to detect when OpenCV initialization completes
     const interval = setInterval(() => {
       if (window.cv && window.cv.Mat) {
         setLoaded(true);
         clearInterval(interval);
+      } else if (window.cv && typeof window.cv === 'function') {
+        window.cv().then((cvInst: any) => {
+          window.cv = cvInst;
+          setLoaded(true);
+          clearInterval(interval);
+        }).catch(() => {});
       }
     }, 100);
 
-    // Check if script is already injected
+    // Fallback script injector if script tag is missing
     const existingScript = document.getElementById('opencv-script');
     if (!existingScript) {
       const script = document.createElement('script');
       script.id = 'opencv-script';
-      script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-1/opencv.js';
+      script.src = 'https://docs.opencv.org/4.5.5/opencv.js';
       script.async = true;
       script.onload = () => {
         if (window.cv && window.cv.Mat) {
@@ -47,15 +54,7 @@ export function useOpenCv() {
         }
       };
       script.onerror = () => {
-        // Fallback to Cloudflare CDN if jsDelivr fails
-        const fallbackScript = document.createElement('script');
-        fallbackScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/opencv/4.7.0/opencv.js';
-        fallbackScript.async = true;
-        fallbackScript.onload = () => {
-          if (window.cv && window.cv.Mat) setLoaded(true);
-        };
-        fallbackScript.onerror = () => setError(true);
-        document.body.appendChild(fallbackScript);
+        setError(true);
       };
       document.body.appendChild(script);
     }

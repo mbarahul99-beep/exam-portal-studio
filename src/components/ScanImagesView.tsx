@@ -488,15 +488,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      // Extract 4-point perspective warped & cropped OMR sheet URL
-      const croppedSheetUrl = cvResult.debugWarpedCanvas ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.9) : null;
-
-      // Update file list status and replace preview with clean cropped sheet
+      // Update file list status (preserving original clean sharp photo previewUrl)
       setFileList(prev => prev.map(f => {
         if (f.id === current.id) {
           return {
             ...f,
-            previewUrl: croppedSheetUrl || f.previewUrl,
             status: 'Scanned',
             result: scanResultData
           };
@@ -778,20 +774,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your camera for live auto-scan or upload image files (JPG, PNG)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '320px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
                 <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer' }}>
                   <Camera size={20} /> 📱 Snap Photo (Phone Camera)
                   <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
-
-                <button 
-                  type="button"
-                  className="btn-secondary" 
-                  onClick={() => setShowCameraModal(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '12px 16px', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 'bold', cursor: 'pointer', border: '1.5px solid var(--border-color)', background: '#ffffff' }}
-                >
-                  <Camera size={18} /> 📷 Web Live Camera
-                </button>
 
                 <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
                   <Upload size={18} /> Select / Upload Image Files
@@ -816,14 +803,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <Camera size={16} /> 📱 Snap Photo
                     <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
                   </label>
-                  <button 
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setShowCameraModal(true)}
-                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold' }}
-                  >
-                    <Camera size={16} /> Live Camera
-                  </button>
                   <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Upload size={16} /> Upload Files
                     <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />

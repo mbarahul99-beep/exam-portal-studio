@@ -152,35 +152,49 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   }, []);
 
   const captureCameraPhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      playShutterSound();
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    if (!videoRef.current || !canvasRef.current) return;
+    playShutterSound();
 
-        const newItem: ScanFileItem = {
-          id: `cam-${Date.now()}`,
-          name: `camera-scan-${Date.now()}.jpg`,
-          previewUrl: dataUrl,
-          status: 'Pending'
-        };
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const width = video.videoWidth || 1920;
+    const height = video.videoHeight || 1080;
 
-        setFileList(prev => [...prev, newItem]);
-        setSelectedFileId(newItem.id);
-        
-        // Stop stream and close camera modal after photo capture
-        stopCameraStream();
-        setShowCameraModal(false);
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-        // Run OMR grading scan immediately with target newItem
+    ctx.drawImage(video, 0, 0, width, height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+
+      const timeStamp = Date.now();
+      const fileName = `camera-scan-${timeStamp}.jpg`;
+      const fileObj = new File([blob], fileName, { type: 'image/jpeg' });
+      const objectUrl = URL.createObjectURL(fileObj);
+
+      const newItem: ScanFileItem = {
+        id: `cam-${timeStamp}`,
+        name: fileName,
+        file: fileObj,
+        previewUrl: objectUrl,
+        status: 'Pending'
+      };
+
+      setFileList(prev => [...prev, newItem]);
+      setSelectedFileId(newItem.id);
+
+      // Stop camera stream & close camera modal cleanly
+      stopCameraStream();
+      setShowCameraModal(false);
+
+      // Run OMR scan on the file using exact same pipeline as uploaded files
+      setTimeout(() => {
         runOMRScan(newItem);
-      }
-    }
+      }, 50);
+    }, 'image/jpeg', 0.92);
   };
 
   // Canvas View Controls

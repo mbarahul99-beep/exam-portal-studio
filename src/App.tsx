@@ -1388,41 +1388,77 @@ export default function App() {
     syncClasses();
   }, [studentsClassNames, classes.length]);
 
-  // Webcam Operations
+  const activeStreamRef = useRef<MediaStream | null>(null);
+
+  const stopCameraStream = () => {
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach(track => track.stop());
+      activeStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  // Enumerate video input devices and prioritize Mobile Rear Camera
   useEffect(() => {
     if (useWebcam) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         setCameraDevices(videoDevices);
-        if (videoDevices.length > 0 && !selectedCameraId) {
+
+        // Find Rear/Back camera on Android or iPhone
+        const rearCamera = videoDevices.find(d => 
+          d.label.toLowerCase().includes('back') || 
+          d.label.toLowerCase().includes('rear') || 
+          d.label.toLowerCase().includes('environment')
+        );
+
+        if (rearCamera && !selectedCameraId) {
+          setSelectedCameraId(rearCamera.deviceId);
+        } else if (videoDevices.length > 0 && !selectedCameraId) {
           setSelectedCameraId(videoDevices[0].deviceId);
         }
       });
     } else {
-      // stop stream
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
+      stopCameraStream();
     }
-  }, [useWebcam, selectedCameraId]);
+    return () => {
+      stopCameraStream();
+    };
+  }, [useWebcam]);
 
+  // Request rear camera stream (facingMode: environment)
   useEffect(() => {
-    if (useWebcam && selectedCameraId) {
-      navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: selectedCameraId }, width: 1280, height: 720 }
-      }).then(stream => {
+    if (useWebcam) {
+      const constraints: MediaStreamConstraints = {
+        video: selectedCameraId ? 
+          { deviceId: { exact: selectedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : 
+          { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        activeStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-      }).catch(err => {
-        alert(`Error opening camera: ${err.message}`);
-        setUseWebcam(false);
+      }).catch(() => {
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+          activeStreamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        }).catch(fallbackErr => {
+          alert(`Error opening camera: ${fallbackErr.message}`);
+          setUseWebcam(false);
+        });
       });
     }
+
+    return () => {
+      stopCameraStream();
+    };
   }, [selectedCameraId, useWebcam]);
 
-  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true);
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(false); // Manual snap default for precision
   const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
 
@@ -1436,6 +1472,8 @@ export default function App() {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        stopCameraStream();
+        setUseWebcam(false);
         processImageForOMR(canvas);
       }
     }
@@ -1481,7 +1519,7 @@ export default function App() {
           const rect = cv.boundingRect(cnt);
           const aspect = rect.width / (rect.height || 1);
           const area = rect.width * rect.height;
-          if (aspect >= 0.7 && aspect <= 1.4 && area > 35 && area < 3000) {
+          if (aspect >= 0.8 && aspect <= 1.3 && area > 120 && area < 2500) {
             squareCount++;
           }
         }
@@ -1491,9 +1529,9 @@ export default function App() {
         if (squareCount >= 4) {
           setIsPaperDetected(true);
           consecutiveHits++;
-          setAutoSnapStatus(`Paper Detected! Holding Steady (${consecutiveHits}/2)...`);
+          setAutoSnapStatus(`Paper Detected! Hold Steady (${consecutiveHits}/4)...`);
 
-          if (consecutiveHits >= 2) {
+          if (consecutiveHits >= 4) {
             consecutiveHits = 0;
             cooldown = true;
             setAutoSnapStatus("📸 Auto-Snapping & Grading...");

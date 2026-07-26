@@ -2943,3 +2943,34 @@ button {
   box-shadow: 0 0 15px #22c55e, inset 0 0 10px #22c55e !important;
 }
 
+@media (max-width: 768px) {
+  .camera-fullscreen-overlay {
+    height: 100dvh !important;
+  }
+  .camera-fullscreen-header {
+    top: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+  }
+  .camera-fullscreen-title {
+    font-size: 0.85rem !important;
+    padding: 6px 12px !important;
+    max-width: 70vw !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .camera-fullscreen-controls {
+    bottom: 16px !important;
+    width: 92% !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .camera-fullscreen-controls button,
+  .camera-fullscreen-controls select {
+    font-size: 0.85rem !important;
+    padding: 10px 16px !important;
+  }
+}
+

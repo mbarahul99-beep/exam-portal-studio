@@ -43,11 +43,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true);
+  const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(false); // Manual snap by default for total accuracy
   const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const activeStreamRef = useRef<MediaStream | null>(null);
 
   const playShutterSound = () => {
     try {
@@ -66,37 +67,81 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     } catch {}
   };
 
+  const stopCameraStream = () => {
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach(track => track.stop());
+      activeStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  // Enumerate video input devices and prioritize Mobile Rear Camera
   useEffect(() => {
     if (showCameraModal) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         setCameraDevices(videoDevices);
-        if (videoDevices.length > 0 && !selectedCameraId) {
+
+        // Find Rear/Back camera on Android or iPhone
+        const rearCamera = videoDevices.find(d => 
+          d.label.toLowerCase().includes('back') || 
+          d.label.toLowerCase().includes('rear') || 
+          d.label.toLowerCase().includes('environment')
+        );
+
+        if (rearCamera && !selectedCameraId) {
+          setSelectedCameraId(rearCamera.deviceId);
+        } else if (videoDevices.length > 0 && !selectedCameraId) {
           setSelectedCameraId(videoDevices[0].deviceId);
         }
       });
     } else {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
+      stopCameraStream();
     }
-  }, [showCameraModal, selectedCameraId]);
+    return () => {
+      stopCameraStream();
+    };
+  }, [showCameraModal]);
 
+  // Request rear camera stream (facingMode: environment)
   useEffect(() => {
-    if (showCameraModal && selectedCameraId) {
-      navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: selectedCameraId }, width: 1280, height: 720 }
-      }).then(stream => {
+    if (showCameraModal) {
+      const constraints: MediaStreamConstraints = {
+        video: selectedCameraId ? 
+          { deviceId: { exact: selectedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : 
+          { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        activeStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-      }).catch(err => {
-        alert(`Error opening camera: ${err.message}`);
-        setShowCameraModal(false);
+      }).catch(() => {
+        // Fallback for devices that fail exact constraints
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+          activeStreamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        }).catch(fallbackErr => {
+          alert(`Could not access camera: ${fallbackErr.message}`);
+          setShowCameraModal(false);
+        });
       });
     }
+
+    return () => {
+      stopCameraStream();
+    };
   }, [selectedCameraId, showCameraModal]);
+
+  // Stop camera stream when component unmounts or exits view
+  useEffect(() => {
+    return () => {
+      stopCameraStream();
+    };
+  }, []);
 
   const captureCameraPhoto = () => {
     if (videoRef.current && canvasRef.current) {
@@ -119,6 +164,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         setFileList(prev => [...prev, newItem]);
         setSelectedFileId(newItem.id);
+        
+        // Stop stream and close camera modal after photo capture
+        stopCameraStream();
+        setShowCameraModal(false);
+
+        // Run OMR grading scan immediately
         setTimeout(() => {
           runOMRScan();
         }, 150);
@@ -166,7 +217,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           const rect = cv.boundingRect(cnt);
           const aspect = rect.width / (rect.height || 1);
           const area = rect.width * rect.height;
-          if (aspect >= 0.7 && aspect <= 1.4 && area > 35 && area < 3000) {
+          if (aspect >= 0.8 && aspect <= 1.3 && area > 120 && area < 2500) {
             squareCount++;
           }
         }
@@ -176,9 +227,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         if (squareCount >= 4) {
           setIsPaperDetected(true);
           consecutiveHits++;
-          setAutoSnapStatus(`Paper Detected! Holding Steady (${consecutiveHits}/2)...`);
+          setAutoSnapStatus(`Paper Detected! Hold Steady (${consecutiveHits}/4)...`);
 
-          if (consecutiveHits >= 2) {
+          if (consecutiveHits >= 4) {
             consecutiveHits = 0;
             cooldown = true;
             setAutoSnapStatus("📸 Auto-Snapping & Grading...");

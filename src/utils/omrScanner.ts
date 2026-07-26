@@ -118,9 +118,10 @@ export async function scanOMRSheet(
       const aspectRatio = rect.width / rect.height;
 
       const pageArea = srcWidth * srcHeight;
-      // Allow slightly smaller contours (min: 0.00003 * pageArea) to handle skewed/distant photos
-      const isCorrectSize = area > pageArea * 0.00003 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
+      // Ultra-forgiving range for camera distance & angle (0.00001 * pageArea to 0.05 * pageArea)
+      const isCorrectSize = area > pageArea * 0.00001 && area < pageArea * 0.05;
+      // Allow aspect ratios between 0.4 and 2.5 to handle camera tilt angles
+      const isSquare = aspectRatio >= 0.4 && aspectRatio <= 2.5;
 
       if (isCorrectSize && isSquare) {
         const center = {
@@ -132,9 +133,8 @@ export async function scanOMRSheet(
     }
 
     const findBestQuadInCandidates = (cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>) => {
-      // Sort by area descending to ensure we analyze the most prominent squares first
       const sorted = [...cands].sort((a, b) => b.area - a.area);
-      const topCands = sorted.slice(0, 15);
+      const topCands = sorted.slice(0, 25);
       
       let bestQuad: { tl: any; tr: any; bl: any; br: any } | null = null;
       let maxQuadArea = 0;
@@ -146,9 +146,6 @@ export async function scanOMRSheet(
               for (let l = k + 1; l < topCands.length; l++) {
                 const pts = [topCands[i], topCands[j], topCands[k], topCands[l]];
                 
-                // Identify TL, TR, BL, BR
-                // TL: min (x+y), BR: max (x+y)
-                // TR: max (x-y), BL: min (x-y)
                 const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
                 const tl = sortedBySum[0];
                 const br = sortedBySum[3];
@@ -158,7 +155,6 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                // Side lengths
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
                 const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
@@ -170,10 +166,10 @@ export async function scanOMRSheet(
                 if (avgW === 0) continue;
                 const ratio = avgH / avgW;
 
-                // Validate A4-like anchor ratio (~1.34) and parallelism/equality of opposite sides
-                const isRatioValid = ratio >= 1.05 && ratio <= 1.65;
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.22;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.22;
+                // Ultra-forgiving ratio (0.8 to 2.0) and width/height variation (up to 45% perspective tilt)
+                const isRatioValid = ratio >= 0.80 && ratio <= 2.0;
+                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.45;
+                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.45;
 
                 if (isRatioValid && isWidthSimilar && isHeightSimilar) {
                   const quadArea = avgW * avgH;
@@ -203,56 +199,59 @@ export async function scanOMRSheet(
       brMarker = quad.br;
     }
 
-    // Fallback: If markers are not successfully detected using adaptive threshold, try global thresholding
+    // Fallback: If markers are not successfully detected using adaptive threshold, try multi-level global thresholding
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      // Global threshold at 110: pure black anchors stand out cleanly from shadows/wooden table edge
-      cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
+      const fallbackThresholds = [70, 95, 120, 150];
+      for (const threshVal of fallbackThresholds) {
+        cv.threshold(gray, thresh, threshVal, 255, cv.THRESH_BINARY_INV);
 
-      candidates.length = 0;
-      contours.delete();
-      hierarchy.delete();
-      contours = new cv.MatVector();
-      hierarchy = new cv.Mat();
-      cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        candidates.length = 0;
+        contours.delete();
+        hierarchy.delete();
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      for (let i = 0; i < contours.size(); ++i) {
-        const cnt = contours.get(i);
-        const rect = cv.boundingRect(cnt);
-        const area = rect.width * rect.height;
-        const aspectRatio = rect.width / rect.height;
-        const pageArea = srcWidth * srcHeight;
+        for (let i = 0; i < contours.size(); ++i) {
+          const cnt = contours.get(i);
+          const rect = cv.boundingRect(cnt);
+          const area = rect.width * rect.height;
+          const aspectRatio = rect.width / rect.height;
+          const pageArea = srcWidth * srcHeight;
 
-        const isCorrectSize = area > pageArea * 0.00003 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.6 && aspectRatio <= 1.5;
+          const isCorrectSize = area > pageArea * 0.00001 && area < pageArea * 0.05;
+          const isSquare = aspectRatio >= 0.4 && aspectRatio <= 2.5;
 
-        if (isCorrectSize && isSquare) {
-          const center = {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2
-          };
-          candidates.push({ center, area, rect });
+          if (isCorrectSize && isSquare) {
+            const center = {
+              x: rect.x + rect.width / 2,
+              y: rect.y + rect.height / 2
+            };
+            candidates.push({ center, area, rect });
+          }
+        }
+
+        quad = findBestQuadInCandidates(candidates);
+        if (quad) {
+          tlMarker = quad.tl;
+          trMarker = quad.tr;
+          blMarker = quad.bl;
+          brMarker = quad.br;
+          break;
         }
       }
-
-      quad = findBestQuadInCandidates(candidates);
-      if (quad) {
-        tlMarker = quad.tl;
-        trMarker = quad.tr;
-        blMarker = quad.bl;
-        brMarker = quad.br;
-      }
     }
 
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      throw new Error("Could not locate the OMR sheet. Please make sure the entire sheet (with all 4 black square corner anchors) is flat and fully visible inside the camera frame.");
+      throw new Error("Could not locate the 4 corner anchors. Please hold camera directly over the paper and ensure all 4 black square corner anchors are clearly visible.");
     }
 
-    // Validate paper geometry aspect ratio (Standard A4 ratio is ~1.41)
+    // Validate paper geometry aspect ratio (Standard A4 ratio is ~1.41, allow 0.75 to 2.2 for camera perspective tilt)
     const topWidth = Math.hypot(trMarker.center.x - tlMarker.center.x, trMarker.center.y - tlMarker.center.y);
     const leftHeight = Math.hypot(blMarker.center.x - tlMarker.center.x, blMarker.center.y - tlMarker.center.y);
     const paperAspectRatio = leftHeight / (topWidth || 1);
 
-    if (paperAspectRatio < 1.0 || paperAspectRatio > 2.0) {
+    if (paperAspectRatio < 0.75 || paperAspectRatio > 2.2) {
       throw new Error("Sheet Layout Mismatch: The detected sheet aspect ratio does not match the standard OMR template.");
     }
 

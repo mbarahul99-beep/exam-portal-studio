@@ -255,43 +255,63 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           }
         }
 
-        // Pass 2: Pure JS Canvas 2D fallback anchor inspection in 4 corner regions
+        // Pass 2: Pure JS Canvas 2D OMR Paper & Corner Anchor Detection
         if (detectedAnchors < 3) {
           detectedAnchors = 0;
           const imgData = ctx.getImageData(0, 0, 320, 240);
           const data = imgData.data;
 
-          const checkRegion = (startX: number, endX: number, startY: number, endY: number) => {
-            let darkPixels = 0;
-            let total = 0;
-            for (let y = startY; y < endY; y += 4) {
-              for (let x = startX; x < endX; x += 4) {
-                const idx = (y * 320 + x) * 4;
-                const lum = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
-                if (lum < 95) darkPixels++;
-                total++;
-              }
-            }
-            return (darkPixels / (total || 1)) > 0.04;
-          };
+          // 1. Calculate overall frame paper whiteness
+          let whitePixels = 0;
+          const totalPixels = 320 * 240;
+          for (let i = 0; i < data.length; i += 16) {
+            const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            if (lum > 125) whitePixels++;
+          }
+          const whiteRatio = whitePixels / (totalPixels / 4);
 
-          if (checkRegion(10, 100, 10, 80)) detectedAnchors++;   // Top-Left
-          if (checkRegion(220, 310, 10, 80)) detectedAnchors++;  // Top-Right
-          if (checkRegion(10, 100, 160, 230)) detectedAnchors++; // Bottom-Left
-          if (checkRegion(220, 310, 160, 230)) detectedAnchors++;// Bottom-Right
+          // Only proceed if at least 45% of the frame is light white paper background
+          if (whiteRatio >= 0.45) {
+            const checkCornerSquareAnchor = (startX: number, endX: number, startY: number, endY: number) => {
+              let darkPixels = 0;
+              let whiteBorderPixels = 0;
+              let sampleCount = 0;
+
+              for (let y = startY; y < endY; y += 3) {
+                for (let x = startX; x < endX; x += 3) {
+                  const idx = (y * 320 + x) * 4;
+                  const lum = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+                  if (lum < 85) darkPixels++;
+                  else if (lum > 135) whiteBorderPixels++;
+                  sampleCount++;
+                }
+              }
+
+              // Require a distinct dark anchor block surrounded by white paper margin
+              const darkRatio = darkPixels / (sampleCount || 1);
+              const whiteRatioRegion = whiteBorderPixels / (sampleCount || 1);
+              return darkRatio >= 0.05 && darkRatio <= 0.55 && whiteRatioRegion >= 0.25;
+            };
+
+            if (checkCornerSquareAnchor(10, 100, 10, 80)) detectedAnchors++;   // Top-Left
+            if (checkCornerSquareAnchor(220, 310, 10, 80)) detectedAnchors++;  // Top-Right
+            if (checkCornerSquareAnchor(10, 100, 160, 230)) detectedAnchors++; // Bottom-Left
+            if (checkCornerSquareAnchor(220, 310, 160, 230)) detectedAnchors++;// Bottom-Right
+          }
         }
 
+        // Require at least 3 valid corner anchors AND 3 consecutive stable frames
         if (detectedAnchors >= 3) {
           setIsPaperDetected(true);
           consecutiveHits++;
-          setAutoSnapStatus(`Paper Detected! Hold Steady (${consecutiveHits}/2)...`);
+          setAutoSnapStatus(`OMR Sheet Detected! Hold Steady (${consecutiveHits}/3)...`);
 
-          if (consecutiveHits >= 2) {
+          if (consecutiveHits >= 3) {
             consecutiveHits = 0;
             cooldown = true;
-            setAutoSnapStatus("📸 Auto-Snapping & Grading...");
+            setAutoSnapStatus("📸 Auto-Snapping OMR Sheet...");
             captureCameraPhoto();
-            setTimeout(() => { cooldown = false; }, 3000);
+            setTimeout(() => { cooldown = false; }, 3500);
           }
         } else {
           setIsPaperDetected(false);

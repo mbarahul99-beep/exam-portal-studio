@@ -39,7 +39,7 @@ export function useOpenCv() {
     if (!existingScript) {
       const script = document.createElement('script');
       script.id = 'opencv-script';
-      script.src = 'https://docs.opencv.org/4.5.5/opencv.js';
+      script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-1/opencv.js';
       script.async = true;
       script.onload = () => {
         if (window.cv && window.cv.Mat) {
@@ -47,7 +47,15 @@ export function useOpenCv() {
         }
       };
       script.onerror = () => {
-        setError(true);
+        // Fallback to Cloudflare CDN if jsDelivr fails
+        const fallbackScript = document.createElement('script');
+        fallbackScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/opencv/4.7.0/opencv.js';
+        fallbackScript.async = true;
+        fallbackScript.onload = () => {
+          if (window.cv && window.cv.Mat) setLoaded(true);
+        };
+        fallbackScript.onerror = () => setError(true);
+        document.body.appendChild(fallbackScript);
       };
       document.body.appendChild(script);
     }

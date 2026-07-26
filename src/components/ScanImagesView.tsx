@@ -523,12 +523,37 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         await db.submissions.delete(duplicate.id!);
       }
 
+      // Upload OMR image file to Hostinger server & save image URL in database
+      const selectedFile = getSelectedFile();
+      let omrImg = activeResult.warpedCanvas ? activeResult.warpedCanvas.toDataURL('image/jpeg', 0.85) : (selectedFile ? selectedFile.previewUrl : '');
+      let finalOmrUrl = omrImg;
+
+      if (omrImg && omrImg.startsWith('data:image')) {
+        try {
+          const uploadRes = await fetch('/api/upload-omr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageDataBase64: omrImg,
+              filename: `omr_exam_${exam.id}_student_${detectedStudentId}_${Date.now()}.jpg`
+            })
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            if (uploadData.url) finalOmrUrl = uploadData.url;
+          }
+        } catch (err) {
+          console.warn("Upload OMR image to server failed:", err);
+        }
+      }
+
       const subId = await db.submissions.add({
         examId: exam.id!,
         studentId: detectedStudentId,
         score: activeResult.score,
         answers: activeResult.answers,
         bookletSet: activeResult.bookletSet,
+        omrImageUrl: finalOmrUrl,
         scannedAt: new Date()
       });
 

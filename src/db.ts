@@ -101,6 +101,7 @@ export interface ExamSubmission {
   score: number; // calculated score based on marking scheme
   answers: Record<number, string>; // Maps question number to student response ('A', 'B', 'C', 'D', or '' for empty)
   scannedAt: Date;
+  omrImageUrl?: string; // Base64 or public server image URL for scanned OMR sheet
   cheatingAlertsCount?: number; // tab blurs/cheating events
   timeTakenSeconds?: number;
   attemptType?: 'OMR' | 'Online';

@@ -1514,11 +1514,33 @@ export default function App() {
         await db.submissions.delete(duplicate.id!);
       }
 
+      let finalOmrUrl: string | undefined = undefined;
+      if (scanResult.warpedCanvas) {
+        try {
+          const imgBase64 = scanResult.warpedCanvas.toDataURL('image/jpeg', 0.85);
+          const uploadRes = await fetch('/api/upload-omr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageDataBase64: imgBase64,
+              filename: `omr_exam_${scannerExamId}_student_${scanResult.studentId}_${Date.now()}.jpg`
+            })
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            if (uploadData.url) finalOmrUrl = uploadData.url;
+          }
+        } catch (err) {
+          console.warn("Upload OMR image to server failed:", err);
+        }
+      }
+
       const subId = await db.submissions.add({
         examId: scannerExamId,
         studentId: scanResult.studentId,
         score: scanResult.score,
         answers: scanResult.answers,
+        omrImageUrl: finalOmrUrl,
         scannedAt: new Date()
       });
 

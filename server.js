@@ -645,6 +645,14 @@ app.post('/api/approve-registration', async (req, res) => {
   }
 });
 
+const uploadsDir = path.join(__dirname, 'uploads');
+const omrScansDir = path.join(__dirname, 'uploads', 'omr_scans');
+
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(omrScansDir)) fs.mkdirSync(omrScansDir, { recursive: true });
+
+app.use('/uploads', express.static(uploadsDir));
+
 // Save Scanned OMR Sheet Image API
 app.post('/api/upload-omr', async (req, res) => {
   const { imageDataBase64, filename } = req.body;
@@ -653,11 +661,11 @@ app.post('/api/upload-omr', async (req, res) => {
   try {
     const base64Data = imageDataBase64.replace(/^data:image\/\w+;base64,/, '');
     const fileName = filename || `omr_${Date.now()}.jpg`;
-    const filePath = path.join(uploadsDir, fileName);
+    const filePath = path.join(omrScansDir, fileName);
 
     await fs.promises.writeFile(filePath, base64Data, 'base64');
     const publicUrl = `/uploads/omr_scans/${fileName}`;
-    res.json({ success: true, url: publicUrl });
+    res.json({ success: true, url: publicUrl, filename: fileName });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

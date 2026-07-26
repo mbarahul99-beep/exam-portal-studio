@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
+  Camera,
+  ArrowLeft,
   RotateCcw, 
   RotateCw, 
   ZoomIn, 
@@ -37,6 +39,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [isScanning, setIsScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
 
+  // Camera Modal States & Refs
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activeStreamRef = useRef<MediaStream | null>(null);
+
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -68,6 +78,245 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     };
     checkCV();
   }, []);
+
+  // Play shutter sound feedback
+  const playShutterSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } catch {}
+  };
+
+  // Stop active camera stream
+  const stopCameraStream = () => {
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach(track => track.stop());
+      activeStreamRef.current = null;
+    }
+  };
+
+  // Start live camera stream
+  const startCameraStream = async (deviceId?: string) => {
+    stopCameraStream();
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: deviceId 
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      activeStreamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      setCameraDevices(videoInputs);
+      if (videoInputs.length > 0 && !selectedCameraId) {
+        setSelectedCameraId(videoInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.error("Camera access error:", err);
+      alert("Unable to access camera. Please ensure camera permissions are granted.");
+      setShowCameraModal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showCameraModal) {
+      startCameraStream(selectedCameraId || undefined);
+    } else {
+      stopCameraStream();
+    }
+    return () => {
+      stopCameraStream();
+    };
+  }, [showCameraModal, selectedCameraId]);
+
+  // Capture photo from live camera & process with the EXACT SAME OMR PIPELINE!
+  const captureCameraPhoto = async () => {
+    if (!videoRef.current || !cvLoaded || isScanning) return;
+
+    playShutterSound();
+    setIsScanning(true);
+
+    const video = videoRef.current;
+    const vW = video.videoWidth || 1280;
+    const vH = video.videoHeight || 720;
+
+    const snapCanvas = document.createElement('canvas');
+    snapCanvas.width = vW;
+    snapCanvas.height = vH;
+    const sCtx = snapCanvas.getContext('2d');
+    if (!sCtx) return;
+    sCtx.drawImage(video, 0, 0, vW, vH);
+
+    try {
+      // 1. Pass snapshot directly to scanOMRSheet (uses 4-corner auto-crop, orientation correction & 2-pass evaluation)
+      let cvResult = await scanOMRSheet(
+        snapCanvas,
+        exam.numQuestions,
+        exam.rollNoDigits ?? 10,
+        exam.examSetsCount ?? 1,
+        exam.sections ?? []
+      );
+
+      // Auto-Refine pass on cropped canvas
+      if (cvResult.debugWarpedCanvas) {
+        try {
+          const pass2 = await scanOMRSheet(
+            cvResult.debugWarpedCanvas,
+            exam.numQuestions,
+            exam.rollNoDigits ?? 10,
+            exam.examSetsCount ?? 1,
+            exam.sections ?? []
+          );
+          if (pass2 && pass2.answers) cvResult = pass2;
+        } catch {}
+      }
+
+      // Extract clean auto-cropped OMR sheet preview
+      const croppedUrl = cvResult.debugWarpedCanvas 
+        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
+        : snapCanvas.toDataURL('image/jpeg', 0.92);
+
+      // Match student roll
+      const stripLeadingZeros = (val: string) => {
+        const cleaned = val.replace(/^0+/, '');
+        return cleaned === '' ? '0' : cleaned;
+      };
+      const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
+      const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
+      const studentId = matchedStudent ? matchedStudent.id : null;
+
+      // Grade calculations
+      let score = 0;
+      let correctCount = 0;
+      let wrongCount = 0;
+      let unansweredCount = 0;
+
+      const detectedSet = cvResult.bookletSet || 'A';
+      let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+      if (!correctKey || Object.keys(correctKey).length === 0) {
+        correctKey = exam.answerKey;
+      }
+
+      if (exam.sections && exam.sections.length > 0) {
+        exam.sections.forEach((sec: any) => {
+          const secCorrectMarks = sec.correctMarks ?? 4;
+          const secIncorrectMarks = sec.incorrectMarks ?? -1;
+          const secUnansweredMarks = sec.unansweredMarks ?? 0;
+          const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
+
+          if (sec.allowOptionalAttempts && sec.maxAttempts) {
+            const attempted: Array<{ q: number; ans: string }> = [];
+            qNums.forEach(q => {
+              const ans = cvResult.answers[q] || '';
+              if (ans !== '') attempted.push({ q, ans });
+            });
+
+            const evaluated = attempted.slice(0, sec.maxAttempts);
+            evaluated.forEach(item => {
+              const correctAns = correctKey[item.q] || 'A';
+              if (item.ans === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
+              } else {
+                score += secIncorrectMarks;
+                wrongCount++;
+              }
+            });
+
+            const unattemptedCount = sec.qCount - evaluated.length;
+            unansweredCount += unattemptedCount;
+            score += unattemptedCount * secUnansweredMarks;
+          } else {
+            qNums.forEach(q => {
+              const studentAns = cvResult.answers[q] || '';
+              const correctAns = correctKey[q] || 'A';
+              if (studentAns === '') {
+                score += secUnansweredMarks;
+                unansweredCount++;
+              } else if (studentAns === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
+              } else {
+                score += secIncorrectMarks;
+                wrongCount++;
+              }
+            });
+          }
+        });
+      } else {
+        const cMarks = exam.correctMarks ?? 4;
+        const iMarks = exam.incorrectMarks ?? -1;
+        const uMarks = exam.unansweredMarks ?? 0;
+
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          const studentAns = cvResult.answers[q] || '';
+          const correctAns = correctKey[q] || 'A';
+
+          if (studentAns === '') {
+            score += uMarks;
+            unansweredCount++;
+          } else if (studentAns === correctAns) {
+            score += cMarks;
+            correctCount++;
+          } else {
+            score += iMarks;
+            wrongCount++;
+          }
+        }
+      }
+
+      const scanResultData = {
+        studentId,
+        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+        detectedStudentNum: cvResult.studentNum,
+        bookletSet: detectedSet,
+        score,
+        correctCount,
+        wrongCount,
+        unansweredCount,
+        answers: cvResult.answers,
+        warpedCanvas: cvResult.debugWarpedCanvas
+      };
+
+      const newItemId = `cam-${Date.now()}`;
+      const newItem: ScanFileItem = {
+        id: newItemId,
+        name: `Camera Snap - ${cvResult.studentNum || 'OMR'}`,
+        previewUrl: croppedUrl,
+        status: 'Scanned',
+        result: scanResultData
+      };
+
+      setFileList(prev => [...prev, newItem]);
+      setSelectedFileId(newItemId);
+      setActiveResult(scanResultData);
+      setDetectedStudentId(studentId || null);
+
+      confetti({ particleCount: 60, spread: 60 });
+      setShowCameraModal(false);
+    } catch (err: any) {
+      alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Please align sheet inside video frame."));
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -629,32 +878,51 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   <path d="M25,28 C28,32 30,30 35,40" fill="none" stroke="#ecc94b" strokeWidth="1.5" strokeDasharray="2,2" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Select images to Scan</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Supported file formats (jpg, jpeg and png)</p>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Use your live camera to scan OMR sheets or upload image files (JPG, PNG)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
-                  <Upload size={16} /> Select Images
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
+                <button 
+                  type="button"
+                  className="btn-primary" 
+                  onClick={() => setShowCameraModal(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
+                >
+                  <Camera size={20} /> 📷 Live Camera Scanner
+                </button>
+
+                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
+                  <Upload size={18} /> Select / Upload Image Files
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
             </div>
           ) : (
-            /* Files Loaded List Layout (Screenshot 1) */
+            /* Files Loaded List Layout */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
                     <ImageIcon size={20} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total</h4>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
                   </div>
                 </div>
-                <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Choose files
-                  <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button"
+                    className="btn-primary" 
+                    onClick={() => setShowCameraModal(true)}
+                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    <Camera size={16} /> 📷 Live Camera
+                  </button>
+                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={16} /> Upload Files
+                    <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  </label>
+                </div>
               </div>
 
               {/* Files Table List */}
@@ -975,6 +1243,76 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
 
       </div>
+
+      {/* Live Camera Scanner Overlay */}
+      {showCameraModal && (
+        <div className="camera-fullscreen-overlay">
+          {/* Top App Bar */}
+          <div className="clean-app-bar">
+            <div className="clean-app-bar-left">
+              <button 
+                type="button"
+                className="clean-back-btn" 
+                onClick={() => {
+                  stopCameraStream();
+                  setShowCameraModal(false);
+                }}
+                title="Exit Camera Scanner"
+              >
+                <ArrowLeft size={22} />
+              </button>
+              <div className="clean-app-bar-titles">
+                <h3>📷 {exam.title}</h3>
+                <p>{exam.className || 'Live Camera Scanner'}</p>
+              </div>
+            </div>
+
+            {cameraDevices.length > 1 && (
+              <select 
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600 }}
+              >
+                {cameraDevices.map(d => (
+                  <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Live Camera Viewport */}
+          <div className="clean-camera-viewport">
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
+
+            {/* Bottom Capture Action Button */}
+            <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
+              <button 
+                type="button"
+                onClick={captureCameraPhoto}
+                style={{ 
+                  padding: '14px 36px', 
+                  fontSize: '1.1rem', 
+                  borderRadius: '32px', 
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
+                  color: '#ffffff', 
+                  border: 'none', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  boxShadow: '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}
+                disabled={isScanning}
+              >
+                {isScanning ? <RefreshCw className="spin" size={20} /> : '📷 Capture & Scan Photo'}
+              </button>
+            </div>
+          </div>
+
+          <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+        </div>
+      )}
     </div>
   );
 };

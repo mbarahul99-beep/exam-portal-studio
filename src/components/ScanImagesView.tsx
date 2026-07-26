@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Upload, 
-  Camera,
   RotateCcw, 
   RotateCw, 
   ZoomIn, 
@@ -608,43 +607,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   <path d="M25,28 C28,32 30,30 35,40" fill="none" stroke="#ecc94b" strokeWidth="1.5" strokeDasharray="2,2" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Snap a photo using your camera or upload image files (JPG, PNG)</p>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Select images to Scan</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Supported file formats (jpg, jpeg and png)</p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
-                  <Camera size={20} /> 📱 Snap Photo (Camera)
-                  <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
-
-                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
-                  <Upload size={18} /> Select / Upload Image Files
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
+                  <Upload size={16} /> Select Images
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
             </div>
           ) : (
-            /* Files Loaded List Layout */
+            /* Files Loaded List Layout (Screenshot 1) */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
                     <ImageIcon size={20} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total</h4>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label className="btn-primary" style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    <Camera size={16} /> 📱 Snap Photo
-                    <input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Upload size={16} /> Upload Files
-                    <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                </div>
+                <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Choose files
+                  <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                </label>
               </div>
 
               {/* Files Table List */}

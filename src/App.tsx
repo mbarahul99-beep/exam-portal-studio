@@ -1433,20 +1433,31 @@ export default function App() {
     if (useWebcam) {
       const constraints: MediaStreamConstraints = {
         video: selectedCameraId ? 
-          { deviceId: { exact: selectedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : 
-          { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          { deviceId: { exact: selectedCameraId } } : 
+          { facingMode: { ideal: 'environment' } }
       };
 
-      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+      const startStream = async (stream: MediaStream) => {
         activeStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch (e) {
+            console.log('Mobile video play exception handled:', e);
+          }
+        } else {
+          setTimeout(async () => {
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              try { await videoRef.current.play(); } catch {}
+            }
+          }, 100);
         }
-      }).catch(() => {
-        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-          activeStreamRef.current = stream;
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        }).catch(fallbackErr => {
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints).then(startStream).catch(() => {
+        navigator.mediaDevices.getUserMedia({ video: true }).then(startStream).catch(fallbackErr => {
           alert(`Error opening camera: ${fallbackErr.message}`);
           setUseWebcam(false);
         });

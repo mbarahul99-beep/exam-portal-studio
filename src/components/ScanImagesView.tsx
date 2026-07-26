@@ -111,21 +111,33 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (showCameraModal) {
       const constraints: MediaStreamConstraints = {
         video: selectedCameraId ? 
-          { deviceId: { exact: selectedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : 
-          { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          { deviceId: { exact: selectedCameraId } } : 
+          { facingMode: { ideal: 'environment' } }
       };
 
-      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+      const startStream = async (stream: MediaStream) => {
         activeStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch (e) {
+            console.log('Mobile video play exception handled:', e);
+          }
+        } else {
+          // Retry after microtask if video element ref mounted asynchronously
+          setTimeout(async () => {
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              try { await videoRef.current.play(); } catch {}
+            }
+          }, 100);
         }
-      }).catch(() => {
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints).then(startStream).catch(() => {
         // Fallback for devices that fail exact constraints
-        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-          activeStreamRef.current = stream;
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        }).catch(fallbackErr => {
+        navigator.mediaDevices.getUserMedia({ video: true }).then(startStream).catch(fallbackErr => {
           alert(`Could not access camera: ${fallbackErr.message}`);
           setShowCameraModal(false);
         });
@@ -1255,7 +1267,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </div>
               ) : (
                 <>
-                  <video ref={videoRef} autoPlay playsInline muted className="live-stream"></video>
+                  <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
                   <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
                     <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
                     <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />

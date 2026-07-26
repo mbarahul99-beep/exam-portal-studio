@@ -46,6 +46,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [isAutoSnapEnabled, setIsAutoSnapEnabled] = useState(true); // Active tracking by default
   const [autoSnapStatus, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
   const [isPaperDetected, setIsPaperDetected] = useState(false);
+  const [pendingSnapUrl, setPendingSnapUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -154,30 +155,42 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-        const newItem: ScanFileItem = {
-          id: `cam-${Date.now()}`,
-          name: `camera-scan-${Date.now()}.jpg`,
-          previewUrl: dataUrl,
-          status: 'Pending'
-        };
-
-        setFileList(prev => [...prev, newItem]);
-        setSelectedFileId(newItem.id);
-        
-        // Stop stream and close camera modal after photo capture
-        stopCameraStream();
-        setShowCameraModal(false);
-
-        // Run OMR grading scan immediately with target newItem
-        runOMRScan(newItem);
+        setPendingSnapUrl(dataUrl);
       }
     }
   };
 
+  const handleConfirmPendingSnap = () => {
+    if (!pendingSnapUrl) return;
+
+    const newItem: ScanFileItem = {
+      id: `cam-${Date.now()}`,
+      name: `camera-scan-${Date.now()}.jpg`,
+      previewUrl: pendingSnapUrl,
+      status: 'Pending'
+    };
+
+    setFileList(prev => [...prev, newItem]);
+    setSelectedFileId(newItem.id);
+    setPendingSnapUrl(null);
+    
+    // Stop stream and close camera modal after photo confirmation
+    stopCameraStream();
+    setShowCameraModal(false);
+
+    // Run OMR grading scan immediately with target newItem
+    runOMRScan(newItem);
+  };
+
+  const handleRetakeSnap = () => {
+    setPendingSnapUrl(null);
+    setIsPaperDetected(false);
+    setAutoSnapStatus("Align all 4 corners of the OMR paper inside the screen frame.");
+  };
+
   // Real-time Live Camera Corner Anchor & Paper Stability Auto-Snap Tracker
   useEffect(() => {
-    if (!showCameraModal || !isAutoSnapEnabled || isScanning) return;
+    if (!showCameraModal || !isAutoSnapEnabled || isScanning || pendingSnapUrl) return;
 
     let consecutiveHits = 0;
     let cooldown = false;
@@ -1210,70 +1223,110 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       </div>
 
-      {/* Fullscreen Camera Modal Overlay */}
+      {/* Framed Camera Modal Overlay with Margins */}
       {showCameraModal && (
         <div className="camera-fullscreen-overlay">
-          <div className="camera-fullscreen-header">
-            <div className="camera-fullscreen-title">
-              📷 {exam.title} - Fullscreen Live Camera Scanner
-            </div>
-            <button 
-              type="button"
-              className="camera-close-btn" 
-              onClick={() => setShowCameraModal(false)}
-              title="Exit Camera Scanner"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="camera-fullscreen-viewport">
-            <video ref={videoRef} autoPlay playsInline muted className="live-stream"></video>
-            <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
-              <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
-              <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />
-              <div className={`marker-box bl ${isPaperDetected ? 'active' : ''}`} />
-              <div className={`marker-box br ${isPaperDetected ? 'active' : ''}`} />
-              <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.75)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
-                {autoSnapStatus}
+          <div className="camera-frame-container">
+            <div className="camera-fullscreen-header">
+              <div className="camera-fullscreen-title">
+                📷 {exam.title} - OMR Scanner
               </div>
-            </div>
-          </div>
-
-          <div className="camera-fullscreen-controls">
-            <button 
-              type="button"
-              className="btn-secondary"
-              onClick={() => setIsAutoSnapEnabled(!isAutoSnapEnabled)}
-              style={{ background: isAutoSnapEnabled ? 'rgba(34, 197, 94, 0.85)' : 'rgba(100, 116, 139, 0.85)', color: '#fff', border: 'none', borderRadius: '20px', padding: '8px 18px', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              ⚡ Auto-Snap: {isAutoSnapEnabled ? 'ON' : 'OFF'}
-            </button>
-
-            {cameraDevices.length > 1 && (
-              <select 
-                value={selectedCameraId}
-                onChange={(e) => setSelectedCameraId(e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '8px 14px' }}
+              <button 
+                type="button"
+                className="camera-close-btn" 
+                onClick={() => {
+                  setPendingSnapUrl(null);
+                  stopCameraStream();
+                  setShowCameraModal(false);
+                }}
+                title="Exit Camera Scanner"
               >
-                {cameraDevices.map(d => (
-                  <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
-                ))}
-              </select>
-            )}
+                <X size={24} />
+              </button>
+            </div>
 
-            <button 
-              type="button"
-              onClick={captureCameraPhoto} 
-              className="btn-primary capture-btn"
-              style={{ padding: '12px 28px', fontSize: '1rem', borderRadius: '30px', boxShadow: '0 4px 15px rgba(16,88,202,0.6)' }}
-              disabled={isScanning}
-            >
-              {isScanning ? <RefreshCw className="spin" /> : '📸 Manual Snap'}
-            </button>
+            <div className="camera-fullscreen-viewport">
+              {pendingSnapUrl ? (
+                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                  <img src={pendingSnapUrl} alt="Captured OMR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', background: '#22c55e', color: '#fff', padding: '10px 24px', borderRadius: '24px', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 15px rgba(0,0,0,0.4)', zIndex: 20 }}>
+                    📸 Sheet Captured! Tap OK to grade.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <video ref={videoRef} autoPlay playsInline muted className="live-stream"></video>
+                  <div className={`alignment-overlay ${isPaperDetected ? 'detected-paper-active' : ''}`}>
+                    <div className={`marker-box tl ${isPaperDetected ? 'active' : ''}`} />
+                    <div className={`marker-box tr ${isPaperDetected ? 'active' : ''}`} />
+                    <div className={`marker-box bl ${isPaperDetected ? 'active' : ''}`} />
+                    <div className={`marker-box br ${isPaperDetected ? 'active' : ''}`} />
+                    <div className="live-autosnap-banner" style={{ background: isPaperDetected ? '#22c55e' : 'rgba(0,0,0,0.75)', color: '#ffffff', padding: '8px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s ease' }}>
+                      {autoSnapStatus}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="camera-fullscreen-controls">
+              {pendingSnapUrl ? (
+                <div style={{ display: 'flex', gap: '16px', width: '100%', justifyContent: 'center' }}>
+                  <button 
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleRetakeSnap}
+                    style={{ padding: '12px 24px', fontSize: '1rem', borderRadius: '30px', background: '#475569', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    🔄 Retake
+                  </button>
+                  <button 
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleConfirmPendingSnap}
+                    style={{ padding: '12px 36px', fontSize: '1.1rem', borderRadius: '30px', background: '#22c55e', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 20px rgba(34,197,94,0.6)' }}
+                  >
+                    ✅ OK (Grade Sheet)
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button 
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setIsAutoSnapEnabled(!isAutoSnapEnabled)}
+                    style={{ background: isAutoSnapEnabled ? 'rgba(34, 197, 94, 0.85)' : 'rgba(100, 116, 139, 0.85)', color: '#fff', border: 'none', borderRadius: '20px', padding: '8px 18px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    ⚡ Auto-Snap: {isAutoSnapEnabled ? 'ON' : 'OFF'}
+                  </button>
+
+                  {cameraDevices.length > 1 && (
+                    <select 
+                      value={selectedCameraId}
+                      onChange={(e) => setSelectedCameraId(e.target.value)}
+                      style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '8px 14px' }}
+                    >
+                      {cameraDevices.map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <button 
+                    type="button"
+                    onClick={captureCameraPhoto} 
+                    className="btn-primary capture-btn"
+                    style={{ padding: '12px 28px', fontSize: '1rem', borderRadius: '30px', boxShadow: '0 4px 15px rgba(16,88,202,0.6)' }}
+                    disabled={isScanning}
+                  >
+                    {isScanning ? <RefreshCw className="spin" /> : '📸 Manual Snap'}
+                  </button>
+                </>
+              )}
+            </div>
+
+            <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
           </div>
-
-          <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
         </div>
       )}
     </div>

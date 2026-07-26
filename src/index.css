@@ -2860,12 +2860,30 @@ button {
   bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  background: #000000 !important;
+  background: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(8px) !important;
   z-index: 99999 !important;
   display: flex !important;
-  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px 16px !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
+}
+
+.camera-frame-container {
+  position: relative !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  height: calc(100vh - 48px) !important;
+  max-height: 850px !important;
+  background: #ffffff !important;
+  border-radius: 24px !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 0 4px #ffffff !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
 }
 
 .camera-fullscreen-header {

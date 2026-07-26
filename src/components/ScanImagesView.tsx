@@ -896,25 +896,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <FileText size={48} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                       <p style={{ margin: 0, fontSize: '0.9rem' }}>Simulated scan sheet selected. Click <strong>Scan</strong> below to run the OMR scanner.</p>
                     </div>
-                  ) : activeResult?.warpedCanvas ? (
-                    /* Warped preview canvas from scanned result */
-                    <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', maxHeight: '100%', maxWidth: '100%' }}>
-                      <canvas 
-                        ref={(el) => {
-                          if (el && activeResult.warpedCanvas) {
-                            el.width = activeResult.warpedCanvas.width;
-                            el.height = activeResult.warpedCanvas.height;
-                            const ctx = el.getContext('2d');
-                            if (ctx) {
-                              ctx.drawImage(activeResult.warpedCanvas, 0, 0);
-                            }
-                          }
-                        }}
-                        style={{ height: '360px', width: 'auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', borderRadius: '6px' }}
-                      />
-                    </div>
                   ) : getSelectedFile()?.previewUrl ? (
-                    /* Static Uploaded Image Preview */
+                    /* Clean Sharp Image Preview (No Zig-Zag Warp Distortion) */
                     <img 
                       src={getSelectedFile()?.previewUrl} 
                       alt="OMR scan sheet preview" 

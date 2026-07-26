@@ -43,9 +43,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [isAutoSnapEnabled] = useState(true);
-  const [, setAutoSnapStatus] = useState("Align all 4 corners of the OMR paper inside the screen frame.");
-  const [isPaperDetected, setIsPaperDetected] = useState(false);
   const [pendingSnapUrl, setPendingSnapUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -196,135 +193,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
   const handleRetakeSnap = () => {
     setPendingSnapUrl(null);
-    setIsPaperDetected(false);
-    setAutoSnapStatus("Align all 4 corners of the OMR paper inside the screen frame.");
   };
-
-  // Real-time Live Camera Corner Anchor & Paper Stability Auto-Snap Tracker
-  useEffect(() => {
-    if (!showCameraModal || !isAutoSnapEnabled || isScanning || pendingSnapUrl) return;
-
-    let consecutiveHits = 0;
-    let cooldown = false;
-
-    const interval = setInterval(() => {
-      if (cooldown || isScanning || !videoRef.current) return;
-
-      try {
-        const video = videoRef.current;
-        if (!video.videoWidth || !video.videoHeight) return;
-
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 320;
-        tempCanvas.height = 240;
-        const ctx = tempCanvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.drawImage(video, 0, 0, 320, 240);
-
-        let detectedAnchors = 0;
-
-        // Pass 1: Try OpenCV contours if available
-        if ((window as any).cv && (window as any).cv.Mat) {
-          try {
-            const cv = (window as any).cv;
-            const src = cv.imread(tempCanvas);
-            const gray = new cv.Mat();
-            const thresh = new cv.Mat();
-
-            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-            cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
-
-            const contours = new cv.MatVector();
-            const hierarchy = new cv.Mat();
-            cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-            for (let i = 0; i < contours.size(); i++) {
-              const cnt = contours.get(i);
-              const rect = cv.boundingRect(cnt);
-              const aspect = rect.width / (rect.height || 1);
-              const area = rect.width * rect.height;
-              if (aspect >= 0.7 && aspect <= 1.4 && area > 60 && area < 3000) {
-                detectedAnchors++;
-              }
-            }
-
-            src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
-          } catch {
-            detectedAnchors = 0;
-          }
-        }
-
-        // Pass 2: Pure JS Canvas 2D OMR Paper & Corner Anchor Detection
-        if (detectedAnchors < 3) {
-          detectedAnchors = 0;
-          const imgData = ctx.getImageData(0, 0, 320, 240);
-          const data = imgData.data;
-
-          // 1. Calculate overall frame paper whiteness
-          let whitePixels = 0;
-          const totalPixels = 320 * 240;
-          for (let i = 0; i < data.length; i += 16) {
-            const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-            if (lum > 125) whitePixels++;
-          }
-          const whiteRatio = whitePixels / (totalPixels / 4);
-
-          // Only proceed if at least 45% of the frame is light white paper background
-          if (whiteRatio >= 0.45) {
-            const checkCornerSquareAnchor = (startX: number, endX: number, startY: number, endY: number) => {
-              let darkPixels = 0;
-              let whiteBorderPixels = 0;
-              let sampleCount = 0;
-
-              for (let y = startY; y < endY; y += 3) {
-                for (let x = startX; x < endX; x += 3) {
-                  const idx = (y * 320 + x) * 4;
-                  const lum = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
-                  if (lum < 85) darkPixels++;
-                  else if (lum > 135) whiteBorderPixels++;
-                  sampleCount++;
-                }
-              }
-
-              // Require a distinct dark anchor block surrounded by white paper margin
-              const darkRatio = darkPixels / (sampleCount || 1);
-              const whiteRatioRegion = whiteBorderPixels / (sampleCount || 1);
-              return darkRatio >= 0.05 && darkRatio <= 0.55 && whiteRatioRegion >= 0.25;
-            };
-
-            if (checkCornerSquareAnchor(10, 100, 10, 80)) detectedAnchors++;   // Top-Left
-            if (checkCornerSquareAnchor(220, 310, 10, 80)) detectedAnchors++;  // Top-Right
-            if (checkCornerSquareAnchor(10, 100, 160, 230)) detectedAnchors++; // Bottom-Left
-            if (checkCornerSquareAnchor(220, 310, 160, 230)) detectedAnchors++;// Bottom-Right
-          }
-        }
-
-        // Require at least 3 valid corner anchors AND 3 consecutive stable frames
-        if (detectedAnchors >= 3) {
-          setIsPaperDetected(true);
-          consecutiveHits++;
-          setAutoSnapStatus(`OMR Sheet Detected! Hold Steady (${consecutiveHits}/3)...`);
-
-          if (consecutiveHits >= 3) {
-            consecutiveHits = 0;
-            cooldown = true;
-            setAutoSnapStatus("📸 Auto-Snapping OMR Sheet...");
-            captureCameraPhoto();
-            setTimeout(() => { cooldown = false; }, 3500);
-          }
-        } else {
-          setIsPaperDetected(false);
-          consecutiveHits = 0;
-          setAutoSnapStatus("Align all 4 corners of the OMR paper inside the screen frame.");
-        }
-      } catch {
-        // Ignore frame errors
-      }
-    }, 200);
-
-    return () => clearInterval(interval);
-  }, [showCameraModal, isAutoSnapEnabled, isScanning, pendingSnapUrl]);
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -1357,11 +1226,36 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 {/* Top Orientation Text */}
                 <div className="camera-orientation-tag">Top</div>
 
-                {/* 4 Blue Guide Target Boxes */}
-                <div className={`guide-target-box tl ${isPaperDetected ? 'active' : ''}`} />
-                <div className={`guide-target-box tr ${isPaperDetected ? 'active' : ''}`} />
-                <div className={`guide-target-box bl ${isPaperDetected ? 'active' : ''}`} />
-                <div className={`guide-target-box br ${isPaperDetected ? 'active' : ''}`} />
+                {/* 4 Corner Guide Target Boxes */}
+                <div className="guide-target-box tl" />
+                <div className="guide-target-box tr" />
+                <div className="guide-target-box bl" />
+                <div className="guide-target-box br" />
+
+                {/* Bottom Snap Action Button */}
+                <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
+                  <button 
+                    type="button"
+                    onClick={captureCameraPhoto}
+                    style={{ 
+                      padding: '14px 36px', 
+                      fontSize: '1.1rem', 
+                      borderRadius: '32px', 
+                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
+                      color: '#ffffff', 
+                      border: 'none', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer', 
+                      boxShadow: '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}
+                    disabled={isScanning}
+                  >
+                    {isScanning ? <RefreshCw className="spin" size={20} /> : '📸 Snap & Grade OMR Sheet'}
+                  </button>
+                </div>
 
                 {/* Center Circular White Spinner (during processing) */}
                 {isScanning && (

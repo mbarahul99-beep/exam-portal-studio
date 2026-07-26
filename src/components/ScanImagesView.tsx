@@ -8,12 +8,15 @@ import {
   ZoomIn, 
   ZoomOut, 
   ChevronRight, 
-  FileText,
   RefreshCw,
   Trash2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Search,
+  CheckCircle,
+  Eye,
+  UserCheck
 } from 'lucide-react';
-import { db, type Exam, type Student } from '../db';
+import { db, type Exam, type Student, type ExamSubmission } from '../db';
 import { scanOMRSheet } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
@@ -24,21 +27,37 @@ interface ScanImagesViewProps {
   onClose: () => void;
 }
 
-interface ScanFileItem {
+export interface ScanFileItem {
   id: string;
   name: string;
   file?: File;
   previewUrl: string;
-  status: 'Pending' | 'Scanned' | 'Failed';
-  result?: any;
+  status: 'Pending' | 'Scanning' | 'Scanned' | 'Failed';
+  result?: {
+    studentId: number | null;
+    studentName: string;
+    detectedStudentNum: string;
+    bookletSet: string;
+    score: number;
+    correctCount: number;
+    wrongCount: number;
+    unansweredCount: number;
+    answers: Record<number, string>;
+    warpedCanvas?: HTMLCanvasElement;
+  };
 }
 
 export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, onClose }) => {
   const [fileList, setFileList] = useState<ScanFileItem[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [syncToCloud, setSyncToCloud] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
+
+  // 3-Screen Architecture State
+  const [activeScreen, setActiveScreen] = useState<1 | 2 | 3>(1);
+  const [selectedStudentSub, setSelectedStudentSub] = useState<any | null>(null);
+  const [rosterSearch, setRosterSearch] = useState('');
+  const [existingSubmissions, setExistingSubmissions] = useState<ExamSubmission[]>([]);
 
   // Camera Modal States & Refs
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -51,7 +70,27 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   // Registered students in this exam's class limit validation
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
-  const isClassLimitReached = maxClassSheets !== Infinity && fileList.length >= maxClassSheets;
+  const scannedCount = existingSubmissions.length;
+  const isClassLimitReached = maxClassSheets !== Infinity && (fileList.length >= maxClassSheets || scannedCount >= maxClassSheets);
+
+  const refreshSubmissions = async () => {
+    try {
+      const subs = await db.submissions.where('examId').equals(exam.id!).toArray();
+      const map = new Map<number, ExamSubmission>();
+      subs.forEach(s => {
+        if (!map.has(s.studentId) || (s.id && s.id > (map.get(s.studentId)?.id || 0))) {
+          map.set(s.studentId, s);
+        }
+      });
+      setExistingSubmissions(Array.from(map.values()));
+    } catch (e) {
+      console.warn("Error loading submissions:", e);
+    }
+  };
+
+  useEffect(() => {
+    refreshSubmissions();
+  }, [exam.id, fileList.length]);
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -60,18 +99,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   // Scanned verification states
   const [activeResult, setActiveResult] = useState<any | null>(null);
   const [detectedStudentId, setDetectedStudentId] = useState<number | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const getMaxPotentialScore = () => {
-    if (exam.sections && exam.sections.length > 0) {
-      let maxScore = 0;
-      exam.sections.forEach((sec: any) => {
-        const count = sec.allowOptionalAttempts ? (sec.maxAttempts ?? sec.qCount) : sec.qCount;
-        maxScore += count * (sec.correctMarks ?? 4);
-      });
-      return maxScore;
-    }
-    return exam.numQuestions * (exam.correctMarks ?? 4);
-  };
 
   // Check OpenCV loaded
   useEffect(() => {
@@ -177,7 +204,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     sCtx.drawImage(video, 0, 0, vW, vH);
 
     try {
-      // 1. Pass snapshot directly to scanOMRSheet (uses 4-corner auto-crop, orientation correction & 2-pass evaluation)
       let cvResult = await scanOMRSheet(
         snapCanvas,
         exam.numQuestions,
@@ -186,7 +212,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? []
       );
 
-      // Auto-Refine pass on cropped canvas
       if (cvResult.debugWarpedCanvas) {
         try {
           const pass2 = await scanOMRSheet(
@@ -200,21 +225,18 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         } catch {}
       }
 
-      // Extract clean auto-cropped OMR sheet preview
       const croppedUrl = cvResult.debugWarpedCanvas 
         ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
         : snapCanvas.toDataURL('image/jpeg', 0.92);
 
-      // Match student roll
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
         return cleaned === '' ? '0' : cleaned;
       };
       const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
       const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
-      const studentId = matchedStudent ? matchedStudent.id : null;
+      const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
 
-      // Grade calculations
       let score = 0;
       let correctCount = 0;
       let wrongCount = 0;
@@ -384,7 +406,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
-      // If studentId exists, remove submission record from IndexedDB & Cloud Database
       if (target.result && target.result.studentId) {
         await db.submissions.where({ examId: exam.id, studentId: target.result.studentId }).delete();
         
@@ -399,7 +420,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      // Remove from fileList state
       setFileList(prev => {
         const updated = prev.filter(f => f.id !== fileId);
         if (selectedFileId === fileId) {
@@ -444,40 +464,34 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       let imageSource: HTMLImageElement | HTMLCanvasElement;
 
       if (current.id.startsWith('sim-')) {
-        // Draw simulated sheet on a temp canvas
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = 1200;
         tempCanvas.height = 1600;
         const ctx = tempCanvas.getContext('2d');
         if (!ctx) throw new Error('Could not get simulated sheet context');
 
-        // Draw background desk and paper bounding box
         ctx.fillStyle = '#b0bec5';
         ctx.fillRect(0, 0, 1200, 1600);
 
         ctx.save();
         ctx.translate(600, 800);
-        ctx.rotate((5 * Math.PI) / 180); // Skew angle
+        ctx.rotate((5 * Math.PI) / 180);
         ctx.translate(-600, -800);
 
-        // Draw White A4 sheet
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(100, 100, 1000, 1400);
 
-        // 4 black square corner anchors
         ctx.fillStyle = '#000000';
-        ctx.fillRect(120, 120, 40, 40); // TL
-        ctx.fillRect(1040, 120, 40, 40); // TR
-        ctx.fillRect(120, 1440, 40, 40); // BL
-        ctx.fillRect(1040, 1440, 40, 40); // BR
+        ctx.fillRect(120, 120, 40, 40);
+        ctx.fillRect(1040, 120, 40, 40);
+        ctx.fillRect(120, 1440, 40, 40);
+        ctx.fillRect(1040, 1440, 40, 40);
 
-        // Header Title
         ctx.fillStyle = '#c53030';
         ctx.font = 'bold 24px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(exam.title.toUpperCase(), 600, 200);
 
-        // Draw Roll No grid
         ctx.strokeStyle = '#c53030';
         ctx.lineWidth = 1;
         const candidateRoll = '1000000001';
@@ -497,145 +511,127 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           }
         }
 
-        // Draw Questions & Options
-        const mockAnswers: Record<number, string> = {};
-        const options = ['A', 'B', 'C', 'D'];
-        for (let q = 1; q <= exam.numQuestions; q++) {
-          // Calculate correct and wrong answers for NEET
-          const correct = exam.answerKey[q];
-          // Seed 90% correct
-          const picked = Math.random() > 0.1 ? correct : options.filter(o => o !== correct)[Math.floor(Math.random() * 3)];
-          mockAnswers[q] = picked;
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 20px Inter, sans-serif';
+        ctx.fillText('BOOKLET SET', 450, 240);
+        ctx.beginPath();
+        ctx.arc(550, 235, 8, 0, 2 * Math.PI);
+        ctx.fill();
 
-          // Draw question row bubble
-          const colIndex = Math.floor((q - 1) / 50);
-          const colQIndex = (q - 1) % 50;
+        for (let q = 1; q <= Math.min(exam.numQuestions, 100); q++) {
+          const colIndex = Math.floor((q - 1) / 25);
+          const rowIndex = (q - 1) % 25;
+          const startX = 150 + colIndex * 220;
+          const startY = 520 + rowIndex * 35;
 
-          const startX = 400 + colIndex * 150;
-          const startY = 285 + colQIndex * 22;
+          const optionChars = ['A', 'B', 'C', 'D'];
+          const correctOption = (exam.answerKey && exam.answerKey[q]) || 'A';
+          const fillChoice = Math.random() > 0.15 ? correctOption : optionChars[Math.floor(Math.random() * 4)];
 
-          ctx.fillStyle = '#c53030';
-          ctx.font = '10px Inter';
-          ctx.textAlign = 'left';
-          ctx.fillText(String(q).padStart(2, '0'), startX, startY + 4);
-
-          for (let optIdx = 0; optIdx < 4; optIdx++) {
-            const optChar = options[optIdx];
-            const bx = startX + 30 + optIdx * 20;
+          optionChars.forEach((opt, idx) => {
+            const bx = startX + 60 + idx * 30;
+            const by = startY;
             ctx.beginPath();
-            ctx.arc(bx, startY, 6, 0, 2 * Math.PI);
-            if (picked === optChar) {
+            ctx.arc(bx, by, 7, 0, 2 * Math.PI);
+            if (opt === fillChoice) {
               ctx.fillStyle = '#000000';
               ctx.fill();
             } else {
-              ctx.strokeStyle = '#c53030';
               ctx.stroke();
             }
-          }
+          });
         }
-
         ctx.restore();
         imageSource = tempCanvas;
       } else {
-        // Load image element
         const img = new Image();
         img.src = current.previewUrl;
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = rej;
         });
         imageSource = img;
       }
 
-      // Run OpenCV sheet scanner on initial raw/tilted photo
+      setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
+
       let cvResult = await scanOMRSheet(
-        imageSource, 
-        exam.numQuestions, 
-        exam.rollNoDigits ?? 10, 
-        exam.examSetsCount ?? 1, 
+        imageSource,
+        exam.numQuestions,
+        exam.rollNoDigits ?? 10,
+        exam.examSetsCount ?? 1,
         exam.sections ?? []
       );
 
-      // Auto-Refine: Immediately run pass 2 on the clean cropped canvas to guarantee 100% perfect grading on 1st click!
       if (cvResult.debugWarpedCanvas) {
         try {
-          const pass2Result = await scanOMRSheet(
+          const pass2 = await scanOMRSheet(
             cvResult.debugWarpedCanvas,
             exam.numQuestions,
             exam.rollNoDigits ?? 10,
             exam.examSetsCount ?? 1,
             exam.sections ?? []
           );
-          if (pass2Result && pass2Result.answers) {
-            cvResult = pass2Result;
-          }
-        } catch (e) {
-          console.warn("Single-pass refinement notice:", e);
-        }
+          if (pass2 && pass2.answers) cvResult = pass2;
+        } catch {}
       }
 
-      // Match Student Roll No (robust against leading zero mismatches from dynamic digits configuration)
+      const croppedSheetUrl = cvResult.debugWarpedCanvas 
+        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
+        : null;
+
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
         return cleaned === '' ? '0' : cleaned;
       };
       const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
       const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
-      const studentId = matchedStudent ? matchedStudent.id : null;
+      const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
 
-      // Grade calculations using multiple sets and section configurations
       let score = 0;
       let correctCount = 0;
       let wrongCount = 0;
       let unansweredCount = 0;
 
-       const detectedSet = cvResult.bookletSet || 'A';
-       let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
-       if (!correctKey || Object.keys(correctKey).length === 0) {
-         correctKey = exam.answerKey;
-       }
+      const detectedSet = cvResult.bookletSet || 'A';
+      let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+      if (!correctKey || Object.keys(correctKey).length === 0) {
+        correctKey = exam.answerKey;
+      }
 
       if (exam.sections && exam.sections.length > 0) {
         exam.sections.forEach((sec: any) => {
-          const start = sec.qStart;
           const secCorrectMarks = sec.correctMarks ?? 4;
           const secIncorrectMarks = sec.incorrectMarks ?? -1;
-          const secUnansweredMarks = 0;
+          const secUnansweredMarks = sec.unansweredMarks ?? 0;
+          const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
 
-          const qNums = Array.from({ length: sec.qCount }, (_, i) => start + i);
-
-          if (sec.allowOptionalAttempts) {
-            const maxAttempts = sec.maxAttempts ?? sec.qCount;
-            let attemptsCount = 0;
-
+          if (sec.allowOptionalAttempts && sec.maxAttempts) {
+            const attempted: Array<{ q: number; ans: string }> = [];
             qNums.forEach(q => {
-              const studentAns = cvResult.answers[q] || '';
-              const correctAns = correctKey[q] || 'A';
+              const ans = cvResult.answers[q] || '';
+              if (ans !== '') attempted.push({ q, ans });
+            });
 
-              if (studentAns !== '') {
-                if (attemptsCount < maxAttempts) {
-                  attemptsCount++;
-                  if (studentAns === correctAns) {
-                    score += secCorrectMarks;
-                    correctCount++;
-                  } else {
-                    score += secIncorrectMarks;
-                    wrongCount++;
-                  }
-                } else {
-                  score += secUnansweredMarks;
-                  unansweredCount++;
-                }
+            const evaluated = attempted.slice(0, sec.maxAttempts);
+            evaluated.forEach(item => {
+              const correctAns = correctKey[item.q] || 'A';
+              if (item.ans === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
               } else {
-                score += secUnansweredMarks;
-                unansweredCount++;
+                score += secIncorrectMarks;
+                wrongCount++;
               }
             });
+
+            const unattemptedCount = sec.qCount - evaluated.length;
+            unansweredCount += unattemptedCount;
+            score += unattemptedCount * secUnansweredMarks;
           } else {
             qNums.forEach(q => {
               const studentAns = cvResult.answers[q] || '';
               const correctAns = correctKey[q] || 'A';
-
               if (studentAns === '') {
                 score += secUnansweredMarks;
                 unansweredCount++;
@@ -684,10 +680,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      // Extract clean auto-rotated, auto-cropped 4-corner warped OMR sheet URL
-      const croppedSheetUrl = cvResult.debugWarpedCanvas ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) : null;
-
-      // Update file list status and set preview to clean auto-cropped, auto-rotated sheet
       setFileList(prev => prev.map(f => {
         if (f.id === selectedFileId) {
           return {
@@ -699,7 +691,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
         return f;
       }));
-
       setActiveResult(scanResultData);
       setDetectedStudentId(studentId || null);
 
@@ -719,146 +710,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       setIsScanning(false);
     }
   };
-  const handleVerifyStudentChange = (studentIdVal: number | null) => {
-    setDetectedStudentId(studentIdVal);
-    
-    if (!activeResult) return;
-    const student = students.find(s => s.id === studentIdVal);
-    const updatedResult = {
-      ...activeResult,
-      studentId: studentIdVal,
-      studentName: student ? student.name : 'Unknown Candidate'
-    };
-    
-    setActiveResult(updatedResult);
-    
-    // Update the row item in fileList as well
-    setFileList(prev => prev.map(f => {
-      if (f.id === selectedFileId) {
-        return {
-          ...f,
-          result: updatedResult
-        };
-      }
-      return f;
-    }));
-  };
-
-  const handleVerifyAnswerChange = (q: number, option: string) => {
-    if (!activeResult) return;
-
-    const updatedAnswers = { ...activeResult.answers, [q]: option };
-
-    // Recalculate score using the same section-wise / uniform marking logic
-    let score = 0;
-    let correctCount = 0;
-    let wrongCount = 0;
-    let unansweredCount = 0;
-
-    const detectedSet = activeResult.bookletSet || 'A';
-    let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
-    if (!correctKey || Object.keys(correctKey).length === 0) {
-      correctKey = exam.answerKey;
-    }
-
-    if (exam.sections && exam.sections.length > 0) {
-      exam.sections.forEach((sec: any) => {
-        const start = sec.qStart;
-        const secCorrectMarks = sec.correctMarks ?? 4;
-        const secIncorrectMarks = sec.incorrectMarks ?? -1;
-        const secUnansweredMarks = 0;
-
-        const qNums = Array.from({ length: sec.qCount }, (_, i) => start + i);
-
-        if (sec.allowOptionalAttempts) {
-          const maxAttempts = sec.maxAttempts ?? sec.qCount;
-          let attemptsCount = 0;
-
-          qNums.forEach(currQ => {
-            const studentAns = updatedAnswers[currQ] || '';
-            const correctAns = correctKey[currQ] || 'A';
-
-            if (studentAns !== '') {
-              if (attemptsCount < maxAttempts) {
-                attemptsCount++;
-                if (studentAns === correctAns) {
-                  score += secCorrectMarks;
-                  correctCount++;
-                } else {
-                  score += secIncorrectMarks;
-                  wrongCount++;
-                }
-              } else {
-                score += secUnansweredMarks;
-                unansweredCount++;
-              }
-            } else {
-              score += secUnansweredMarks;
-              unansweredCount++;
-            }
-          });
-        } else {
-          qNums.forEach(currQ => {
-            const studentAns = updatedAnswers[currQ] || '';
-            const correctAns = correctKey[currQ] || 'A';
-
-            if (studentAns === '') {
-              score += secUnansweredMarks;
-              unansweredCount++;
-            } else if (studentAns === correctAns) {
-              score += secCorrectMarks;
-              correctCount++;
-            } else {
-              score += secIncorrectMarks;
-              wrongCount++;
-            }
-          });
-        }
-      });
-    } else {
-      const cMarks = exam.correctMarks ?? 4;
-      const iMarks = exam.incorrectMarks ?? -1;
-      const uMarks = exam.unansweredMarks ?? 0;
-
-      for (let currQ = 1; currQ <= exam.numQuestions; currQ++) {
-        const studentAns = updatedAnswers[currQ] || '';
-        const correctAns = correctKey[currQ] || 'A';
-
-        if (studentAns === '') {
-          score += uMarks;
-          unansweredCount++;
-        } else if (studentAns === correctAns) {
-          score += cMarks;
-          correctCount++;
-        } else {
-          score += iMarks;
-          wrongCount++;
-        }
-      }
-    }
-
-    const updatedResult = {
-      ...activeResult,
-      answers: updatedAnswers,
-      score,
-      correctCount,
-      wrongCount,
-      unansweredCount
-    };
-
-    setActiveResult(updatedResult);
-
-    // Also update the item in fileList so it isn't lost if they click save
-    setFileList(prev => prev.map(f => {
-      if (f.id === selectedFileId) {
-        return {
-          ...f,
-          result: updatedResult
-        };
-      }
-      return f;
-    }));
-  };
 
   const handleSaveResult = async () => {
     if (!activeResult || !selectedFileId) return;
@@ -869,44 +720,38 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
-      // Find and purge any pre-existing submission records for this student on this exam
-      const existingSubs = await db.submissions
-        .where('[examId+studentId]')
-        .equals([exam.id!, detectedStudentId])
-        .toArray();
+      let finalOmrUrl: string | undefined = undefined;
 
-      if (existingSubs.length > 0) {
-        // Delete all old submission records for this student so no duplicates remain
-        for (const oldSub of existingSubs) {
-          if (oldSub.id) {
-            await db.submissions.delete(oldSub.id);
-          }
-        }
+      const currentFile = fileList.find(f => f.id === selectedFileId);
+      let base64Data: string | null = null;
+
+      if (activeResult.warpedCanvas) {
+        base64Data = activeResult.warpedCanvas.toDataURL('image/jpeg', 0.90);
+      } else if (currentFile && currentFile.previewUrl.startsWith('data:image')) {
+        base64Data = currentFile.previewUrl;
       }
 
-      // Upload OMR image file to Hostinger server & save image URL in database
-      const selectedFile = getSelectedFile();
-      let omrImg = activeResult.warpedCanvas ? activeResult.warpedCanvas.toDataURL('image/jpeg', 0.85) : (selectedFile ? selectedFile.previewUrl : '');
-      let finalOmrUrl = omrImg;
-
-      if (omrImg && omrImg.startsWith('data:image')) {
+      if (base64Data) {
         try {
-          const uploadRes = await fetch('/api/upload-omr', {
+          const res = await fetch('/api/upload-omr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              imageDataBase64: omrImg,
-              filename: `omr_exam_${exam.id}_student_${detectedStudentId}_${Date.now()}.jpg`
+              imageData: base64Data,
+              examId: exam.id,
+              studentId: detectedStudentId
             })
           });
-          if (uploadRes.ok) {
-            const uploadData = await uploadRes.json();
-            if (uploadData.url) finalOmrUrl = uploadData.url;
+          const data = await res.json();
+          if (data.success && data.imageUrl) {
+            finalOmrUrl = data.imageUrl;
           }
-        } catch (err) {
-          console.warn("Upload OMR image to server failed:", err);
+        } catch (uploadErr) {
+          console.warn("Cloud image upload warning:", uploadErr);
         }
       }
+
+      await db.submissions.where({ examId: exam.id, studentId: detectedStudentId }).delete();
 
       const subId = await db.submissions.add({
         examId: exam.id!,
@@ -926,7 +771,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       alert('Student score successfully saved to database!');
       
-      // Auto-advance to next pending file if available
       setFileList(prev => {
         const nextPending = prev.find(f => f.id !== selectedFileId && f.status === 'Pending');
         if (nextPending) {
@@ -941,465 +785,494 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   };
 
   return (
-    <div className="scan-images-portal animate-fade-in">
-      {/* Top Header Breadcrumb Trail */}
-      <div className="breadcrumb-nav mb-4">
-        <span style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={onClose}>Exams</span>
-        <ChevronRight size={14} />
-        <span style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={onClose}>{exam.title}</span>
-        <ChevronRight size={14} />
-        <span style={{ fontWeight: 'bold' }}>Scan images</span>
-      </div>
-
-      <div className="split-scan-view">
-        
-        {/* LEFT COLUMN: File Listing & Upload */}
-        <div className="left-panel glass-card">
-          {fileList.length === 0 ? (
-            /* Empty State Layout (Screenshot 2) */
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 12px' }}>
-              <div style={{ width: '150px', height: '150px', marginBottom: '20px' }}>
-                <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-                  <rect x="15" y="20" width="70" height="50" rx="4" fill="none" stroke="var(--primary)" strokeWidth="2" />
-                  <line x1="15" y1="60" x2="85" y2="60" stroke="var(--primary)" strokeWidth="1.5" />
-                  <path d="M50,70 L50,85 M35,85 L65,85" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" />
-                  <rect x="35" y="32" width="30" height="20" rx="2" fill="rgba(16, 88, 202, 0.1)" stroke="var(--primary)" strokeWidth="1" />
-                  <circle cx="50" cy="42" r="4" fill="none" stroke="var(--primary)" strokeWidth="1.5" />
-                  <path d="M25,28 C28,32 30,30 35,40" fill="none" stroke="#ecc94b" strokeWidth="1.5" strokeDasharray="2,2" />
-                </svg>
-              </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 16px 0' }}>
-                Class <strong>{exam.className}</strong> ({maxClassSheets !== Infinity ? `${classStudents.length} Registered Student(s)` : 'No Limit'})
-              </p>
-
-              {isClassLimitReached && (
-                <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '8px', color: '#c53030', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
-                  ⚠️ Registered Limit Reached! Class "{exam.className}" has only {maxClassSheets} registered student(s). No extra sheets can be scanned.
-                </div>
-              )}
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
-                <button 
-                  type="button"
-                  className="btn-primary" 
-                  disabled={isClassLimitReached}
-                  onClick={() => {
-                    if (isClassLimitReached) {
-                      alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
-                      return;
-                    }
-                    setShowCameraModal(true);
-                  }}
-                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, width: '100%', boxSizing: 'border-box' }}
-                >
-                  <Camera size={20} /> 📷 Live Camera Scanner
-                </button>
-
-                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, padding: '12px 16px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--border-color)', background: '#ffffff', color: 'var(--text-main)', fontWeight: 'bold' }}>
-                  <Upload size={18} /> Select / Upload Image Files
-                  <input type="file" multiple accept="image/*" disabled={isClassLimitReached} onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
-              </div>
+    <div className="scan-images-portal animate-fade-in" style={{ paddingBottom: '30px' }}>
+      
+      {/* MOBILE-OPTIMIZED 3-SCREEN APP BAR */}
+      <div className="clean-app-header mb-3" style={{ background: '#ffffff', padding: '12px 16px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+              className="clean-back-btn" 
+              onClick={() => {
+                if (activeScreen > 1) setActiveScreen(1);
+                else onClose();
+              }}
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                {activeScreen === 1 && `📷 Scan OMR: ${exam.title}`}
+                {activeScreen === 2 && `📋 Student Roster (${scannedCount}/${maxClassSheets === Infinity ? classStudents.length : maxClassSheets})`}
+                {activeScreen === 3 && `📄 Student OMR View`}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Class: {exam.className || 'General'}</p>
             </div>
-          ) : (
-            /* Files Loaded List Layout */
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {isClassLimitReached && (
-                <div style={{ marginBottom: '10px', padding: '8px 12px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', color: '#c53030', fontSize: '0.8rem', fontWeight: '600', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>⚠️ Registered Limit Reached ({fileList.length} / {maxClassSheets} Students)</span>
-                  <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>Class: {exam.className}</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
-                    <ImageIcon size={20} />
-                  </div>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files ({maxClassSheets !== Infinity ? `Max ${maxClassSheets}` : 'No Limit'})</h4>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button 
-                    type="button"
-                    className="btn-primary" 
-                    disabled={isClassLimitReached}
-                    onClick={() => {
-                      if (isClassLimitReached) {
-                        alert(`⚠️ Registered Students Limit Reached!\n\nClass "${exam.className}" has only ${maxClassSheets} registered student(s).\nYou cannot scan extra sheets beyond the registered student count (${maxClassSheets}).`);
-                        return;
-                      }
-                      setShowCameraModal(true);
-                    }}
-                    style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1 }}
-                  >
-                    <Camera size={16} /> 📷 Live Camera
-                  </button>
-                  <label className="btn-secondary" style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold', cursor: isClassLimitReached ? 'not-allowed' : 'pointer', opacity: isClassLimitReached ? 0.5 : 1, padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Upload size={16} /> Upload Files
-                    <input type="file" multiple accept="image/*" disabled={isClassLimitReached} onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                </div>
-              </div>
-
-              {/* Files Table List */}
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <table className="app-table" style={{ fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '30px' }}><input type="checkbox" readOnly /></th>
-                      <th>Name/Rollnumber</th>
-                      <th>Status</th>
-                      <th style={{ width: '40px', textAlign: 'center' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fileList.map(f => (
-                      <tr 
-                        key={f.id} 
-                        className={`hover-row ${selectedFileId === f.id ? 'active-item' : ''}`}
-                        style={{ cursor: 'pointer', background: selectedFileId === f.id ? '#f0f4ff' : 'transparent' }}
-                        onClick={() => {
-                          setSelectedFileId(f.id);
-                          setRotation(0);
-                          setZoom(1.0);
-                          if (f.status === 'Scanned' && f.result) {
-                            setActiveResult(f.result);
-                            setDetectedStudentId(f.result.studentId || null);
-                          } else {
-                            setActiveResult(null);
-                            setDetectedStudentId(null);
-                          }
-                        }}
-                      >
-                        <td><input type="checkbox" checked={selectedFileId === f.id} readOnly /></td>
-                        <td style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.status === 'Scanned' && f.result ? `${f.result.studentName} (${f.result.detectedStudentNum})` : f.name}>
-                          {f.status === 'Scanned' && f.result ? (
-                            f.result.studentId ? (
-                              <strong>{f.result.studentName} ({f.result.detectedStudentNum})</strong>
-                            ) : (
-                              <span style={{ color: '#c05621' }}>Roll: {f.result.detectedStudentNum}</span>
-                            )
-                          ) : (
-                            f.name
-                          )}
-                        </td>
-                        <td>
-                          <span className={`pill ${f.status === 'Scanned' ? 'pass' : f.status === 'Failed' ? 'fail' : 'pending'}`}>
-                            {f.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteFile(f.id);
-                            }}
-                            style={{
-                              background: '#fff5f5',
-                              color: '#e53e3e',
-                              border: '1px solid #fed7d7',
-                              borderRadius: '6px',
-                              padding: '4px 8px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all 0.15s ease'
-                            }}
-                            title="Delete OMR Sheet Record"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
 
-        {/* RIGHT COLUMN: Image Preview Canvas & Grading Verification */}
-        <div className="right-panel">
-          
-          {/* Main Visual Crop Panel */}
-          <div className="glass-card" style={{ flex: 1, position: 'relative', display: 'flex', background: '#f7fafc', minHeight: '400px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-            
-            {selectedFileId ? (
-              <>
-                {/* Floating Left Toolbar */}
-                <div style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 10, background: '#ffffff', padding: '6px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
-                  <button className="action-icon-btn" onClick={() => setRotation(r => (r - 90) % 360)} title="Rotate CCW">
-                    <RotateCcw size={16} />
-                  </button>
-                  <button className="action-icon-btn" onClick={() => setRotation(r => (r + 90) % 360)} title="Rotate CW">
-                    <RotateCw size={16} />
-                  </button>
-                  <button className="action-icon-btn" onClick={() => setZoom(z => Math.min(2.5, z + 0.2))} title="Zoom In">
-                    <ZoomIn size={16} />
-                  </button>
-                  <button className="action-icon-btn" onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} title="Zoom Out">
-                    <ZoomOut size={16} />
-                  </button>
-                </div>
+        {/* 3 Mobile Screen Selector Pills */}
+        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '10px', padding: '4px' }}>
+          <button
+            onClick={() => setActiveScreen(1)}
+            style={{
+              flex: 1,
+              padding: '8px',
+              border: 'none',
+              borderRadius: '8px',
+              background: activeScreen === 1 ? 'var(--primary)' : 'transparent',
+              color: activeScreen === 1 ? '#fff' : 'var(--text-muted)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <Camera size={15} /> 1. Scan Hub
+          </button>
+          <button
+            onClick={() => setActiveScreen(2)}
+            style={{
+              flex: 1,
+              padding: '8px',
+              border: 'none',
+              borderRadius: '8px',
+              background: activeScreen === 2 ? 'var(--primary)' : 'transparent',
+              color: activeScreen === 2 ? '#fff' : 'var(--text-muted)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <UserCheck size={15} /> 2. Students ({scannedCount})
+          </button>
+          <button
+            onClick={() => {
+              if (selectedStudentSub) setActiveScreen(3);
+              else alert('Select a student from Screen 2 to view their scanned sheet.');
+            }}
+            style={{
+              flex: 1,
+              padding: '8px',
+              border: 'none',
+              borderRadius: '8px',
+              background: activeScreen === 3 ? 'var(--primary)' : 'transparent',
+              color: activeScreen === 3 ? '#fff' : 'var(--text-muted)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <Eye size={15} /> 3. Sheet View
+          </button>
+        </div>
+      </div>
 
-                {/* Main Preview Container */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', padding: '24px' }}>
-                  {getSelectedFile()?.id.startsWith('sim-') && !activeResult ? (
-                    /* Simulated State before scan */
-                    <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <FileText size={48} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-                      <p style={{ margin: 0, fontSize: '0.9rem' }}>Simulated scan sheet selected. Click <strong>Scan</strong> below to run the OMR scanner.</p>
-                    </div>
-                  ) : activeResult?.warpedCanvas ? (
-                    /* Warped preview canvas from scanned result */
-                    <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', maxHeight: '100%', maxWidth: '100%' }}>
-                      <canvas 
-                        ref={(el) => {
-                          if (el && activeResult.warpedCanvas) {
-                            el.width = activeResult.warpedCanvas.width;
-                            el.height = activeResult.warpedCanvas.height;
-                            const ctx = el.getContext('2d');
-                            if (ctx) {
-                              ctx.drawImage(activeResult.warpedCanvas, 0, 0);
-                            }
-                          }
-                        }}
-                        style={{ height: '360px', width: 'auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', borderRadius: '6px' }}
-                      />
-                    </div>
-                  ) : getSelectedFile()?.previewUrl ? (
-                    /* Static Uploaded Image Preview */
-                    <img 
-                      src={getSelectedFile()?.previewUrl} 
-                      alt="OMR scan sheet preview" 
-                      style={{ 
-                        maxHeight: '380px', 
-                        maxWidth: '90%', 
-                        objectFit: 'contain',
-                        transform: `rotate(${rotation}deg) scale(${zoom})`, 
-                        transition: 'transform 0.2s ease',
-                        boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
-                        borderRadius: '6px'
-                      }}
-                    />
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                <p>Upload and select an OMR sheet image on the left to start grading.</p>
+      {/* SCREEN 1: SCAN HUB & PENDING QUEUE */}
+      {activeScreen === 1 && (
+        <div className="screen-1-hub animate-fade-in">
+          
+          {/* Progress Header Card */}
+          <div className="glass-card mb-3" style={{ padding: '16px', background: '#ffffff', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Class Scanning Progress</span>
+                <h4 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{scannedCount} of {maxClassSheets === Infinity ? 'Unlimited' : maxClassSheets} Sheets Scanned</h4>
+              </div>
+              <div style={{ background: '#ebf8ff', padding: '10px 14px', borderRadius: '12px', border: '1px solid #bee3f8', textAlign: 'right' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#2b6cb0' }}>{maxClassSheets === Infinity ? 100 : Math.round((scannedCount / maxClassSheets) * 100)}%</span>
+              </div>
+            </div>
+
+            <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+              <div 
+                style={{ 
+                  height: '100%', 
+                  width: `${maxClassSheets === Infinity ? 100 : Math.min(100, (scannedCount / maxClassSheets) * 100)}%`, 
+                  background: 'linear-gradient(90deg, #3182ce, #2b6cb0)',
+                  transition: 'width 0.4s ease'
+                }} 
+              />
+            </div>
+
+            {isClassLimitReached && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '8px', color: '#c53030', fontSize: '0.85rem', fontWeight: 600 }}>
+                ⚠️ Registered Class Limit Reached! All {maxClassSheets} registered student sheets for "{exam.className}" have been scanned. No extra sheets can be scanned.
               </div>
             )}
           </div>
 
-          {/* Verification Results Panel (if sheet is scanned) */}
-          {activeResult && (
-            <div className="glass-card animate-scale-up" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="scan-diag-header">
-                <h4 style={{ margin: 0, fontWeight: 'bold' }}>Scan Diagnostics & Verification</h4>
-                <span className="status-badge success" style={{ textTransform: 'capitalize' }}>
-                  ✔ OMR Processed
-                </span>
-              </div>
-
-              <div className="scan-diag-grid">
-                {/* Associate Student */}
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                    Detected Candidate Roll: <code>{activeResult.detectedStudentNum}</code>
-                  </label>
-                  <select 
-                    value={detectedStudentId || ''} 
-                    onChange={(e) => handleVerifyStudentChange(Number(e.target.value) || null)}
-                    style={{ padding: '8px 12px', width: '100%', borderRadius: '6px', border: '1px solid var(--border-color)' }}
-                  >
-                    <option value="">-- Associate Student --</option>
-                    {students.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Score Breakdown summary */}
-                <div>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                    Grading Performance Index
-                  </label>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: '#f7fafc', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                    <span style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>Score: <strong>{activeResult.score} / {getMaxPotentialScore()}</strong></span>
-                      {exam.examSetsCount && exam.examSetsCount > 1 && (
-                        <span className="status-badge info" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>Set {activeResult.bookletSet}</span>
-                      )}
-                    </span>
-                    <span style={{ fontSize: '0.8rem', color: '#4a5568', display: 'flex', gap: '8px' }}>
-                      <span className="text-success">✔ {activeResult.correctCount}</span>
-                      <span className="text-error">✘ {activeResult.wrongCount}</span>
-                      <span style={{ opacity: 0.6 }}>➖ {activeResult.unansweredCount}</span>
-                    </span>
-                  </div>
-                </div>
+          <div className="split-scan-view">
+            {/* Left Controls & Queue */}
+            <div className="left-panel glass-card">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 
-                <div style={{ width: '100%', marginTop: '4px' }}>
-                  <button 
-                    className="btn-outlined" 
-                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '6px 12px', background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'inherit' }}
-                    onClick={() => setShowDetails(!showDetails)}
-                  >
-                    <span>{showDetails ? 'Hide Scanned Items Detail' : 'Show Scanned Items Detail'}</span>
-                    <span>{showDetails ? '▲' : '▼'}</span>
-                  </button>
-                  {showDetails && (
-                    <div style={{ marginTop: '8px', maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'rgba(255,255,255,0.01)', padding: '12px' }}>
-                      <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', opacity: 0.7 }}>Click any option bubble below to override or correct scanned answers:</p>
-                      <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                            <th style={{ padding: '6px 4px' }}>Q.No</th>
-                            <th style={{ padding: '6px 4px' }}>Scanned Bubble / Override</th>
-                            <th style={{ padding: '6px 4px' }}>Correct Key</th>
-                            <th style={{ padding: '6px 4px' }}>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Array.from({ length: exam.numQuestions }).map((_, idx) => {
-                            const q = idx + 1;
-                            const studentAns = activeResult.answers[q] || '';
-                            const detectedSet = activeResult.bookletSet || 'A';
-                            let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
-                            if (!correctKey || Object.keys(correctKey).length === 0) {
-                              correctKey = exam.answerKey;
-                            }
-                            const correctAns = correctKey[q] || 'A';
+                {/* Live Camera Scanner Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isClassLimitReached) {
+                      alert(`⚠️ Registered Class Limit Reached!\n\nAll ${maxClassSheets} student sheets for class "${exam.className}" are already scanned.`);
+                      return;
+                    }
+                    setShowCameraModal(true);
+                  }}
+                  disabled={isClassLimitReached}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    background: isClassLimitReached ? '#cbd5e1' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
+                    boxShadow: isClassLimitReached ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px'
+                  }}
+                >
+                  <Camera size={20} /> Live Camera Fast Scanner
+                </button>
 
-                            // Determine question options count
-                            const sec = exam.sections?.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
-                            const options = sec && sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
-
-                            const isCorrect = studentAns === correctAns;
-                            return (
-                              <tr key={`diag-row-${q}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                                <td style={{ padding: '6px 4px', fontWeight: 'bold' }}>Q{q}</td>
-                                <td style={{ padding: '6px 4px' }}>
-                                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                    {options.map(opt => (
-                                      <button
-                                        key={`diag-opt-${q}-${opt}`}
-                                        onClick={() => handleVerifyAnswerChange(q, studentAns === opt ? '' : opt)}
-                                        style={{
-                                          width: '22px',
-                                          height: '22px',
-                                          borderRadius: '50%',
-                                          border: '1px solid var(--border-color)',
-                                          background: studentAns === opt ? 'var(--primary)' : 'none',
-                                          color: studentAns === opt ? '#fff' : 'inherit',
-                                          fontSize: '0.65rem',
-                                          fontWeight: 'bold',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          transition: 'all 0.15s ease'
-                                        }}
-                                      >
-                                        {opt}
-                                      </button>
-                                    ))}
-                                    {studentAns !== '' && (
-                                      <button
-                                        onClick={() => handleVerifyAnswerChange(q, '')}
-                                        style={{
-                                          padding: '2px 6px',
-                                          borderRadius: '4px',
-                                          border: 'none',
-                                          background: 'rgba(229, 62, 62, 0.1)',
-                                          color: '#e53e3e',
-                                          fontSize: '0.6rem',
-                                          cursor: 'pointer',
-                                          marginLeft: '4px'
-                                        }}
-                                      >
-                                        Clear
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                                <td style={{ padding: '6px 4px', fontWeight: '600', fontSize: '0.8rem' }}>{correctAns}</td>
-                                <td style={{ padding: '6px 4px', color: studentAns === '' ? 'var(--text-muted)' : isCorrect ? 'var(--success)' : 'var(--error)', fontWeight: 'bold' }}>
-                                  {studentAns === '' ? 'Unanswered' : isCorrect ? '✔ Correct' : '✘ Wrong'}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
+                <label className={`upload-drop-zone ${isClassLimitReached ? 'disabled' : ''}`} style={{ margin: 0, padding: '16px', borderRadius: '12px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer' }}>
+                  <Upload size={22} className="mb-1" />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Choose OMR Image Files</span>
+                  <input 
+                    type="file" 
+                    multiple 
+                    accept="image/*" 
+                    onChange={handleFileSelect} 
+                    disabled={isClassLimitReached}
+                    style={{ display: 'none' }} 
+                  />
+                </label>
               </div>
 
-              <div className="scan-diag-actions" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                {selectedFileId && (
-                  <button 
-                    type="button"
-                    style={{ background: '#fff5f5', color: '#e53e3e', border: '1px solid #feb2b2', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }} 
-                    onClick={() => handleDeleteFile(selectedFileId)}
-                  >
-                    <Trash2 size={15} /> Delete Record
-                  </button>
+              {/* Pending Queue List */}
+              <div style={{ flex: 1, overflowY: 'auto', marginTop: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Pending Scans ({fileList.length})</h4>
+                </div>
+
+                {fileList.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    No pending images. Click "Live Camera Fast Scanner" or choose files to begin.
+                  </div>
+                ) : (
+                  <table className="clean-table">
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fileList.map((item) => (
+                        <tr 
+                          key={item.id} 
+                          className={selectedFileId === item.id ? 'active-row' : ''}
+                          onClick={() => {
+                            setSelectedFileId(item.id);
+                            if (item.result) {
+                              setActiveResult(item.result);
+                              setDetectedStudentId(item.result.studentId || null);
+                            } else {
+                              setActiveResult(null);
+                              setDetectedStudentId(null);
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</td>
+                          <td>
+                            <span className={`status-badge ${item.status.toLowerCase()}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteFile(item.id);
+                              }}
+                              style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', padding: '4px' }}
+                              title="Delete sheet record"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
-                <button className="btn-secondary" onClick={() => setActiveResult(null)}>Close Results</button>
-                <button className="btn-primary" onClick={handleSaveResult}>Save Scanned Score</button>
               </div>
             </div>
-          )}
 
-          {/* Bottom Toolbar Action Bar */}
-          <div className="glass-card scan-bottom-bar">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <input type="checkbox" checked={syncToCloud} onChange={(e) => setSyncToCloud(e.target.checked)} />
-              Sync images to cloud
-            </label>
+            {/* Right Panel Workspace */}
+            <div className="right-panel">
+              {selectedFileId && getSelectedFile() ? (
+                <>
+                  <div className="glass-card" style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '320px' }}>
+                    {/* View Controls */}
+                    <div style={{ position: 'absolute', left: '16px', top: '16px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.9)', padding: '6px 12px', borderRadius: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                      <button type="button" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate Left"><RotateCcw size={16} /></button>
+                      <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} title="Rotate Right"><RotateCw size={16} /></button>
+                      <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.2, 2.5))} title="Zoom In"><ZoomIn size={16} /></button>
+                      <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.2, 0.5))} title="Zoom Out"><ZoomOut size={16} /></button>
+                    </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                className="btn-secondary" 
-                style={{ padding: '10px 20px', borderRadius: '6px' }}
-                disabled={fileList.filter(f => f.status === 'Pending').length === 0}
-                onClick={async () => {
-                  const pending = fileList.filter(f => f.status === 'Pending');
-                  for (const f of pending) {
-                    setSelectedFileId(f.id);
-                    await runOMRScan();
-                  }
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: '#0f172a', padding: '20px' }}>
+                      <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', transformOrigin: 'center' }}>
+                        <img 
+                          src={getSelectedFile()?.previewUrl} 
+                          alt="OMR Preview" 
+                          style={{ maxHeight: '420px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Scan Diagnostics Card */}
+                  <div className="glass-card scan-diag-card mt-3 animate-fade-in" style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>OMR Processing Diagnostic</h4>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {activeResult && (
+                          <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                            Score: {activeResult.score} pts
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="scan-diag-actions" style={{ display: 'flex', gap: '10px' }}>
+                      <button 
+                        className="btn-primary" 
+                        onClick={runOMRScan} 
+                        disabled={isScanning}
+                        style={{ flex: 1, padding: '12px', borderRadius: '10px', fontWeight: 'bold' }}
+                      >
+                        {isScanning ? <><RefreshCw className="spin" size={16} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
+                      </button>
+
+                      {activeResult && (
+                        <button 
+                          className="btn-success" 
+                          onClick={handleSaveResult}
+                          style={{ flex: 1, padding: '12px', borderRadius: '10px', fontWeight: 'bold', background: '#16a34a', color: '#fff', border: 'none' }}
+                        >
+                          💾 Save Student Result
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <ImageIcon size={48} className="mb-2" style={{ opacity: 0.3 }} />
+                  <h4>No OMR Sheet Selected</h4>
+                  <p style={{ fontSize: '0.85rem' }}>Select a file from the pending queue or click "Live Camera Fast Scanner" above.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SCREEN 2: STUDENT ROSTER LIST WITH LIVE SEARCH */}
+      {activeScreen === 2 && (
+        <div className="screen-2-roster animate-fade-in">
+          <div className="glass-card mb-3" style={{ padding: '14px 18px', background: '#ffffff', borderRadius: '12px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search student by Name or Roll Number..."
+                value={rosterSearch}
+                onChange={(e) => setRosterSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px 10px 38px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '0.95rem',
+                  outline: 'none'
                 }}
-              >
-                Scan All
-              </button>
-              <button 
-                className="btn-primary" 
-                style={{ padding: '10px 20px', borderRadius: '6px' }}
-                disabled={!selectedFileId || isScanning || !cvLoaded}
-                onClick={runOMRScan}
-              >
-                {isScanning ? <RefreshCw className="spin" size={16} /> : 'Scan'}
-              </button>
+              />
             </div>
           </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {classStudents.filter(s => 
+              s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || 
+              s.studentNum.toLowerCase().includes(rosterSearch.toLowerCase())
+            ).length === 0 ? (
+              <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No registered students found matching search filter.
+              </div>
+            ) : (
+              classStudents
+                .filter(s => 
+                  s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || 
+                  s.studentNum.toLowerCase().includes(rosterSearch.toLowerCase())
+                )
+                .map(student => {
+                  const sub = existingSubmissions.find(subItem => subItem.studentId === student.id);
+                  const isScanned = !!sub;
+
+                  return (
+                    <div 
+                      key={`roster-${student.id}`} 
+                      className="glass-card hover-row" 
+                      onClick={() => {
+                        if (isScanned) {
+                          setSelectedStudentSub({ student, submission: sub });
+                          setActiveScreen(3);
+                        } else {
+                          alert(`No OMR sheet scanned yet for ${student.name.split('/')[0].trim()} (Roll: ${student.studentNum}). Go to "1. Scan Hub" to scan or upload.`);
+                        }
+                      }}
+                      style={{ 
+                        padding: '14px 18px', 
+                        background: '#ffffff', 
+                        borderRadius: '12px', 
+                        border: '1px solid var(--border-color)', 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        cursor: isScanned ? 'pointer' : 'default' 
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: isScanned ? '#e6fffa' : '#f1f5f9', color: isScanned ? '#319795' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                          {student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{student.name.split('/')[0].trim()}</h4>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll: {student.studentNum}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          {isScanned ? (
+                            <span style={{ padding: '4px 10px', background: '#def7ec', color: '#03543f', borderRadius: '16px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle size={14} /> Scanned ∑ {sub.score.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', borderRadius: '16px', fontSize: '0.8rem', fontWeight: 600 }}>
+                              ⏳ Pending Scan
+                            </span>
+                          )}
+                        </div>
+                        <ChevronRight size={18} style={{ color: 'var(--text-muted)' }} />
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
         </div>
+      )}
 
-      </div>
+      {/* SCREEN 3: INDIVIDUAL STUDENT SHEET DETAIL VIEW & SERVER OMR VIEWER */}
+      {activeScreen === 3 && selectedStudentSub && (
+        <div className="screen-3-detail animate-fade-in">
+          <div className="glass-card mb-3" style={{ padding: '16px', background: '#ffffff', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <button className="clean-back-btn mb-2" onClick={() => setActiveScreen(2)}>
+                <ArrowLeft size={16} /> Back to Roster
+              </button>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                {selectedStudentSub.student.name.split('/')[0].trim()}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Roll: {selectedStudentSub.student.studentNum} | Booklet Set: {selectedStudentSub.submission.bookletSet || 'A'}
+              </p>
+            </div>
 
-      {/* Live Camera Scanner Overlay */}
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Total Marks</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                {selectedStudentSub.submission.score.toFixed(1)} Pts
+              </div>
+            </div>
+          </div>
+
+          <div className="glass-card mb-3" style={{ padding: '16px', background: '#ffffff', borderRadius: '12px' }}>
+            <h4 style={{ marginTop: 0, marginBottom: '12px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Eye size={18} /> Permanent Scanned OMR Sheet Image
+            </h4>
+
+            {selectedStudentSub.submission.omrImageUrl ? (
+              <div style={{ width: '100%', minHeight: '350px', background: '#0f172a', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+                <img 
+                  src={selectedStudentSub.submission.omrImageUrl} 
+                  alt="Scanned OMR Sheet" 
+                  style={{ maxHeight: '550px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }} 
+                />
+              </div>
+            ) : (
+              <div style={{ padding: '40px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: 'var(--text-muted)' }}>
+                <ImageIcon size={40} className="mb-2" style={{ opacity: 0.4 }} />
+                <p style={{ margin: 0 }}>Local OMR Scan stored on device.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Student Delete Action */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+            <button
+              type="button"
+              className="btn-danger"
+              style={{ padding: '10px 18px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={async () => {
+                if (window.confirm(`Are you sure you want to delete OMR sheet record for ${selectedStudentSub.student.name}?`)) {
+                  await db.submissions.where({ examId: exam.id, studentId: selectedStudentSub.student.id }).delete();
+                  try {
+                    await fetch('/api/admin/delete-submission', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ examId: exam.id, studentId: selectedStudentSub.student.id })
+                    });
+                  } catch {}
+                  alert('Submission deleted successfully.');
+                  refreshSubmissions();
+                  setActiveScreen(2);
+                }
+              }}
+            >
+              <Trash2 size={16} /> Delete Student Record
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* LIVE CAMERA MODAL OVERLAY */}
       {showCameraModal && (
         <div className="camera-fullscreen-overlay">
-          {/* Top App Bar */}
           <div className="clean-app-bar">
             <div className="clean-app-bar-left">
               <button 
@@ -1432,11 +1305,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             )}
           </div>
 
-          {/* Live Camera Viewport */}
           <div className="clean-camera-viewport">
             <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
 
-            {/* Bottom Capture Action Button */}
             <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
               <button 
                 type="button"
@@ -1465,6 +1336,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
         </div>
       )}
+
     </div>
   );
 };

@@ -80,67 +80,51 @@ export function scanOMRSheetPureJS(
   const bl = findAnchorInRegion(0, W * 0.35, H * 0.70, H);
   const br = findAnchorInRegion(W * 0.65, W, H * 0.70, H);
 
-  // Build clean 1000x1414 4-point perspective-warped canvas for auto-cropping and grading
+  // Build clean, sharp, un-corrupted 4-corner cropped canvas preview
   const debugWarpedCanvas = document.createElement('canvas');
   debugWarpedCanvas.width = 1000;
   debugWarpedCanvas.height = 1414;
   const dCtx = debugWarpedCanvas.getContext('2d');
   if (dCtx) {
-    const warpedData = dCtx.createImageData(1000, 1414);
-    const dst = warpedData.data;
+    const minX = Math.max(0, Math.min(tl.x, bl.x) - 15);
+    const maxX = Math.min(canvas.width, Math.max(tr.x, br.x) + 15);
+    const minY = Math.max(0, Math.min(tl.y, tr.y) - 15);
+    const maxY = Math.min(canvas.height, Math.max(bl.y, br.y) + 15);
+    const cropW = Math.max(10, maxX - minX);
+    const cropH = Math.max(10, maxY - minY);
 
-    for (let wy = 0; wy < 1414; wy++) {
-      const v = wy / 1414;
-      
-      for (let wx = 0; wx < 1000; wx++) {
-        const u = wx / 1000;
-        const tx = tl.x + u * (tr.x - tl.x);
-        const ty = tl.y + u * (tr.y - tl.y);
-        const bx = bl.x + u * (br.x - bl.x);
-        const by = bl.y + u * (br.y - bl.y);
-
-        const srcX = Math.round(tx + v * (bx - tx));
-        const srcY = Math.round(ty + v * (by - ty));
-
-        const clampedX = Math.max(0, Math.min(W - 1, srcX));
-        const clampedY = Math.max(0, Math.min(H - 1, srcY));
-
-        const srcIdx = (clampedY * W + clampedX) * 4;
-        const dstIdx = (wy * 1000 + wx) * 4;
-
-        dst[dstIdx] = data[srcIdx];
-        dst[dstIdx + 1] = data[srcIdx + 1];
-        dst[dstIdx + 2] = data[srcIdx + 2];
-        dst[dstIdx + 3] = 255;
-      }
-    }
-    dCtx.putImageData(warpedData, 0, 0);
+    dCtx.imageSmoothingEnabled = true;
+    dCtx.imageSmoothingQuality = 'high';
+    dCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, 1000, 1414);
   }
 
-  // Get warped pixel data helper for fast bubble grading
-  const warpedCtx = debugWarpedCanvas.getContext('2d');
-  const warpedImgData = warpedCtx ? warpedCtx.getImageData(0, 0, 1000, 1414) : null;
-  const warpedPixels = warpedImgData ? warpedImgData.data : null;
+  // Map target A4 template (1000x1414) grid points to exact source image coordinates
+  const mapPoint = (tx: number, ty: number) => {
+    const u = tx / 1000;
+    const v = ty / 1414;
 
-  const getWarpedGray = (wx: number, wy: number): number => {
-    if (!warpedPixels) return 255;
-    const px = Math.floor(wx);
-    const py = Math.floor(wy);
-    if (px < 0 || px >= 1000 || py < 0 || py >= 1414) return 255;
-    const idx = (py * 1000 + px) * 4;
-    return Math.round(warpedPixels[idx] * 0.299 + warpedPixels[idx + 1] * 0.587 + warpedPixels[idx + 2] * 0.114);
+    const topX = tl.x + u * (tr.x - tl.x);
+    const topY = tl.y + u * (tr.y - tl.y);
+    const botX = bl.x + u * (br.x - bl.x);
+    const botY = bl.y + u * (br.y - bl.y);
+
+    const realX = topX + v * (botX - topX);
+    const realY = topY + v * (botY - topY);
+
+    return { x: realX, y: realY };
   };
 
-  // Helper to measure bubble fill intensity directly on warped grid
-  const getBubbleFill = (wx: number, wy: number, radius: number = 7): number => {
+  // Helper to measure bubble fill intensity at mapped point
+  const getBubbleFill = (tx: number, ty: number, radius: number = 7): number => {
+    const pt = mapPoint(tx, ty);
     let darkCount = 0;
     let totalCount = 0;
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx * dx + dy * dy <= radius * radius) {
-          const val = getWarpedGray(wx + dx, wy + dy);
-          if (val < 140) {
+          const val = getGray(pt.x + dx, pt.y + dy);
+          if (val < 135) {
             darkCount++;
           }
           totalCount++;

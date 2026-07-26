@@ -267,16 +267,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     return exam.numQuestions * (exam.correctMarks ?? 4);
   };
 
-  // Check OpenCV loaded
+  // Check OpenCV loaded with automatic 2s Pure JS fallback
   useEffect(() => {
     let timer: any = null;
+    const maxWait = setTimeout(() => {
+      // Auto-fallback after 2s so user is never stuck
+      setCvLoaded(true);
+    }, 2000);
+
     const checkCV = () => {
       const cv = (window as any).cv;
-      if (cv && typeof cv.Mat === 'function') {
+      if (cv && (typeof cv.Mat === 'function' || typeof cv.imread === 'function')) {
+        clearTimeout(maxWait);
         setCvLoaded(true);
       } else {
         if (cv && typeof cv === 'object') {
-          cv.onRuntimeInitialized = () => setCvLoaded(true);
+          cv.onRuntimeInitialized = () => {
+            clearTimeout(maxWait);
+            setCvLoaded(true);
+          };
         }
         timer = setTimeout(checkCV, 100);
       }
@@ -284,6 +293,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     checkCV();
     return () => {
       if (timer) clearTimeout(timer);
+      clearTimeout(maxWait);
     };
   }, []);
 

@@ -1439,6 +1439,16 @@ export default function App() {
 
       const startStream = async (stream: MediaStream) => {
         activeStreamRef.current = stream;
+
+        const track = stream.getVideoTracks()[0];
+        if (track && 'applyConstraints' in track) {
+          try {
+            await track.applyConstraints({
+              advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }]
+            } as any);
+          } catch {}
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           try {

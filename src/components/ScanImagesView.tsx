@@ -112,6 +112,19 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       const startStream = async (stream: MediaStream) => {
         activeStreamRef.current = stream;
+
+        // Enable continuous camera auto-focus & exposure on hardware tracks
+        const track = stream.getVideoTracks()[0];
+        if (track && 'applyConstraints' in track) {
+          try {
+            await track.applyConstraints({
+              advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }]
+            } as any);
+          } catch {
+            // Ignore devices without hardware autofocus API support
+          }
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           try {

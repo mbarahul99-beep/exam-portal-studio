@@ -7,7 +7,7 @@ export function scanOMRSheetPureJS(
   sourceImage: HTMLCanvasElement | HTMLImageElement,
   numQuestions: number,
   rollNoDigits: number = 10,
-  examSetsCount: number = 1,
+  _examSetsCount: number = 1,
   sections: any[] = []
 ): ScanResult {
   const canvas = document.createElement('canvas');
@@ -136,17 +136,15 @@ export function scanOMRSheetPureJS(
 
   // 2. Read Booklet Set Code (A, B, C, D)
   let bookletSet = "A";
-  if (examSetsCount > 1) {
-    const setNames = ["A", "B", "C", "D"];
-    let maxSetFill = 0.35;
-    for (let s = 0; s < Math.min(examSetsCount, 4); s++) {
-      const sx = 580 + s * 25;
-      const sy = 240;
-      const fill = getBubbleFill(sx, sy, 7);
-      if (fill > maxSetFill) {
-        maxSetFill = fill;
-        bookletSet = setNames[s];
-      }
+  const setNames = ["A", "B", "C", "D"];
+  let maxSetFill = 0.25;
+  for (let s = 0; s < 4; s++) {
+    const sx = 580 + s * 25;
+    const sy = 240;
+    const fill = getBubbleFill(sx, sy, 7);
+    if (fill > maxSetFill) {
+      maxSetFill = fill;
+      bookletSet = setNames[s];
     }
   }
 
@@ -233,13 +231,22 @@ export function scanOMRSheetPureJS(
     }
   }
 
-  // Draw warped debug canvas
+  // Generate 4-corner auto-cropped warped OMR sheet preview
   const debugWarpedCanvas = document.createElement('canvas');
   debugWarpedCanvas.width = 1000;
   debugWarpedCanvas.height = 1414;
   const dCtx = debugWarpedCanvas.getContext('2d');
   if (dCtx) {
-    dCtx.drawImage(canvas, 0, 0, 1000, 1414);
+    const minX = Math.max(0, Math.min(tl.x, bl.x) - 15);
+    const maxX = Math.min(canvas.width, Math.max(tr.x, br.x) + 15);
+    const minY = Math.max(0, Math.min(tl.y, tr.y) - 15);
+    const maxY = Math.min(canvas.height, Math.max(bl.y, br.y) + 15);
+    const cropW = Math.max(10, maxX - minX);
+    const cropH = Math.max(10, maxY - minY);
+
+    dCtx.imageSmoothingEnabled = true;
+    dCtx.imageSmoothingQuality = 'high';
+    dCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, 1000, 1414);
   }
 
   return {

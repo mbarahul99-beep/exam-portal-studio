@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Upload, 
   RotateCcw, 
@@ -35,6 +35,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [syncToCloud, setSyncToCloud] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [cvLoaded, setCvLoaded] = useState(false);
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -56,7 +57,17 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     return exam.numQuestions * (exam.correctMarks ?? 4);
   };
 
-
+  // Check OpenCV loaded
+  useEffect(() => {
+    const checkCV = () => {
+      if ((window as any).cv) {
+        setCvLoaded(true);
+      } else {
+        setTimeout(checkCV, 100);
+      }
+    };
+    checkCV();
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -86,8 +97,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   };
 
   // Run the OMR scanner on the active image
-  const runOMRScan = async (targetItem?: ScanFileItem) => {
-    const current = targetItem || getSelectedFile();
+  const runOMRScan = async () => {
+    const current = getSelectedFile();
     if (!current) return;
 
     setIsScanning(true);
@@ -319,15 +330,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      // Extract clean 4-corner auto-cropped OMR sheet URL (crops extra floor background!)
-      const croppedSheetUrl = cvResult.debugWarpedCanvas ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) : null;
-
-      // Update file list status and set preview to clean auto-cropped sheet
+      // Update file list status
       setFileList(prev => prev.map(f => {
-        if (f.id === current.id) {
+        if (f.id === selectedFileId) {
           return {
             ...f,
-            previewUrl: croppedSheetUrl || f.previewUrl,
             status: 'Scanned',
             result: scanResultData
           };
@@ -499,16 +506,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!activeResult || !selectedFileId) return;
 
     if (!detectedStudentId) {
-      alert('⚠️ Roll Number Validation Failed: The scanned OMR sheet roll number bubbles are incomplete or do not match any enrolled student. Please select the correct student from the dropdown menu before saving.');
+      alert('Please associate this scan with a student record before saving.');
       return;
     }
 
     try {
-      // Check if student already has a graded submission for this exam
       const duplicate = await db.submissions
         .where('[examId+studentId]')
         .equals([exam.id!, detectedStudentId])
         .first();
+
+      if (duplicate) {
+        if (!confirm('This student already has a graded submission. Do you want to overwrite it?')) {
+          return;
+        }
+        await db.submissions.delete(duplicate.id!);
+      }
 
       // Upload OMR image file to Hostinger server & save image URL in database
       const selectedFile = getSelectedFile();
@@ -534,32 +547,20 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      if (duplicate) {
-        // UPDATE existing student record seamlessly (no duplicate entries)
-        await db.submissions.update(duplicate.id!, {
-          score: activeResult.score,
-          answers: activeResult.answers,
-          bookletSet: activeResult.bookletSet,
-          omrImageUrl: finalOmrUrl,
-          scannedAt: new Date()
-        });
-        const updatedSub = await db.submissions.get(duplicate.id!);
-        if (updatedSub) await syncSubmissionToCloud(updatedSub);
-      } else {
-        // INSERT new student submission
-        const subId = await db.submissions.add({
-          examId: exam.id!,
-          studentId: detectedStudentId,
-          score: activeResult.score,
-          answers: activeResult.answers,
-          bookletSet: activeResult.bookletSet,
-          omrImageUrl: finalOmrUrl,
-          scannedAt: new Date()
-        });
-        const savedSub = await db.submissions.get(subId);
-        if (savedSub) await syncSubmissionToCloud(savedSub);
-      }
+      const subId = await db.submissions.add({
+        examId: exam.id!,
+        studentId: detectedStudentId,
+        score: activeResult.score,
+        answers: activeResult.answers,
+        bookletSet: activeResult.bookletSet,
+        omrImageUrl: finalOmrUrl,
+        scannedAt: new Date()
+      });
 
+      const savedSub = await db.submissions.get(subId);
+      if (savedSub) {
+        await syncSubmissionToCloud(savedSub);
+      }
       pullCloudUpdatesToIndexedDB();
 
       alert('Student score successfully saved to database!');
@@ -606,34 +607,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   <path d="M25,28 C28,32 30,30 35,40" fill="none" stroke="#ecc94b" strokeWidth="1.5" strokeDasharray="2,2" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Scan OMR Answer Sheets</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Upload image files of OMR answer sheets (JPG, PNG) to begin grading.</p>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>Select images to Scan</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 20px 0' }}>Supported file formats (jpg, jpeg and png)</p>
               
-              <div style={{ width: '100%', maxWidth: '320px' }}>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '14px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', boxShadow: '0 4px 14px rgba(16, 88, 202, 0.45)', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
-                  <Upload size={20} /> Select / Upload Image Files
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', padding: '12px 16px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
+                  <Upload size={16} /> Select Images
                   <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 </label>
               </div>
             </div>
           ) : (
-            /* Files Loaded List Layout */
+            /* Files Loaded List Layout (Screenshot 1) */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ background: '#ebf8ff', padding: '8px', borderRadius: '6px', color: 'var(--primary)' }}>
                     <ImageIcon size={20} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total Files</h4>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{fileList.length} Total</h4>
                   </div>
                 </div>
-                <div>
-                  <label className="btn-primary" style={{ fontSize: '0.85rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    <Upload size={16} /> + Upload Files
-                    <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                </div>
+                <label style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Choose files
+                  <input type="file" multiple accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                </label>
               </div>
 
               {/* Files Table List */}
@@ -723,8 +722,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <FileText size={48} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                       <p style={{ margin: 0, fontSize: '0.9rem' }}>Simulated scan sheet selected. Click <strong>Scan</strong> below to run the OMR scanner.</p>
                     </div>
+                  ) : activeResult?.warpedCanvas ? (
+                    /* Warped preview canvas from scanned result */
+                    <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', maxHeight: '100%', maxWidth: '100%' }}>
+                      <canvas 
+                        ref={(el) => {
+                          if (el && activeResult.warpedCanvas) {
+                            el.width = activeResult.warpedCanvas.width;
+                            el.height = activeResult.warpedCanvas.height;
+                            const ctx = el.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(activeResult.warpedCanvas, 0, 0);
+                            }
+                          }
+                        }}
+                        style={{ height: '360px', width: 'auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', borderRadius: '6px' }}
+                      />
+                    </div>
                   ) : getSelectedFile()?.previewUrl ? (
-                    /* Clean Sharp Image Preview (No Zig-Zag Warp Distortion) */
+                    /* Static Uploaded Image Preview */
                     <img 
                       src={getSelectedFile()?.previewUrl} 
                       alt="OMR scan sheet preview" 
@@ -926,8 +942,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <button 
                 className="btn-primary" 
                 style={{ padding: '10px 20px', borderRadius: '6px' }}
-                disabled={!selectedFileId || isScanning}
-                onClick={() => runOMRScan()}
+                disabled={!selectedFileId || isScanning || !cvLoaded}
+                onClick={runOMRScan}
               >
                 {isScanning ? <RefreshCw className="spin" size={16} /> : 'Scan'}
               </button>
@@ -937,7 +953,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
 
       </div>
-
     </div>
   );
 };

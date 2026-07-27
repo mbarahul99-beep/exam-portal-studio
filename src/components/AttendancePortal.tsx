@@ -71,6 +71,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
   const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
   const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
+  
+  // Multi-direction wizard states & refs
+  const [enrollStep, setEnrollStep] = useState<'center' | 'left' | 'right' | 'done'>('center');
+  const [enrollLandmarks, setEnrollLandmarks] = useState<{ left: number, top: number }[] | null>(null);
+  const enrollStepRef = useRef<'center' | 'left' | 'right' | 'done'>('center');
+  const capturedCenterRef = useRef<number[] | null>(null);
+  const capturedLeftRef = useRef<number[] | null>(null);
+  const capturedRightRef = useRef<number[] | null>(null);
 
   // Show temporary toast notification
   const showToast = (msg: string) => {
@@ -202,48 +210,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     document.body.removeChild(link);
   };
 
-  // SCANNER LOGIC (QR Code & Face Recognition)
-  const isHumanFacePresent = (canvas: HTMLCanvasElement): boolean => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-    const width = canvas.width;
-    const height = canvas.height;
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const pixels = imgData.data;
 
-    let totalLuminance = 0;
-    const totalPixels = width * height;
-    const blockMeans: number[] = [];
-
-    const blockW = Math.floor(width / 4);
-    const blockH = Math.floor(height / 4);
-
-    for (let by = 0; by < 4; by++) {
-      for (let bx = 0; bx < 4; bx++) {
-        let bSum = 0;
-        let bCount = 0;
-
-        for (let y = by * blockH; y < (by + 1) * blockH; y++) {
-          for (let x = bx * blockW; x < (bx + 1) * blockW; x++) {
-            const idx = (y * width + x) * 4;
-            const g = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
-            bSum += g;
-            bCount++;
-            totalLuminance += g;
-          }
-        }
-        blockMeans.push(bCount > 0 ? bSum / bCount : 0);
-      }
-    }
-
-    const overallAvg = totalLuminance / totalPixels;
-    if (overallAvg < 15 || overallAvg > 245) return false;
-
-    const variance = blockMeans.reduce((acc, m) => acc + Math.pow(m - overallAvg, 2), 0) / blockMeans.length;
-    const stdDev = Math.sqrt(variance);
-
-    return stdDev >= 15;
-  };
 
   const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
     const ctx = canvas.getContext('2d');
@@ -494,14 +461,30 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const startFaceEnrollment = async (student: Student) => {
     setEnrollingStudent(student);
     setIsEnrolling(true);
-    setEnrollMsg("Position face inside guidelines.");
+    setEnrollMsg("Initializing biometrics resolver...");
+    setEnrollStep('center');
+    enrollStepRef.current = 'center';
+    capturedCenterRef.current = null;
+    capturedLeftRef.current = null;
+    capturedRightRef.current = null;
+    setEnrollLandmarks(null);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setEnrollStream(stream);
+
+      const landmarkerInstance = await loadFaceLandmarker();
+      if (landmarkerInstance) {
+        setEnrollMsg("Step 1: Look straight at the camera.");
+      } else {
+        setEnrollMsg("Position face inside guidelines.");
+      }
+
       setTimeout(() => {
         if (enrollVideoRef.current) {
           enrollVideoRef.current.srcObject = stream;
           enrollVideoRef.current.play().catch(() => {});
+          requestAnimationFrame(enrollFrameLoop);
         }
       }, 300);
     } catch (err) {
@@ -511,14 +494,120 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
+  const enrollFrameLoop = () => {
+    if (!enrollVideoRef.current || !enrollVideoRef.current.srcObject) return;
+    const video = enrollVideoRef.current;
+    
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      if (faceLandmarker) {
+        try {
+          const result = faceLandmarker.detectForVideo(video, performance.now());
+          if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const landmarks = result.faceLandmarks[0];
+
+            // Estimate horizontal head turn (Yaw ratio)
+            const xNose = landmarks[1].x;
+            const xLeft = landmarks[234].x;
+            const xRight = landmarks[454].x;
+            const span = Math.abs(xRight - xLeft);
+            const ratio = span > 0 ? (xNose - Math.min(xLeft, xRight)) / span : 0.5;
+
+            // Render live landmarks projection for visual validation
+            const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
+            const nodes = keyIndices.map(idx => ({
+              left: landmarks[idx].x * 100,
+              top: landmarks[idx].y * 100
+            }));
+            setEnrollLandmarks(nodes);
+
+            const faceCanvas = document.createElement('canvas');
+            faceCanvas.width = 160;
+            faceCanvas.height = 160;
+            const faceCtx = faceCanvas.getContext('2d');
+            if (faceCtx) {
+              const size = Math.min(width, height) * 0.65;
+              const x = (width - size) / 2;
+              const y = (height - size) / 2;
+              faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+              const currentStep = enrollStepRef.current;
+
+              if (currentStep === 'center') {
+                if (ratio >= 0.44 && ratio <= 0.56) {
+                  const desc = extractFaceBiometrics(faceCanvas);
+                  capturedCenterRef.current = desc;
+                  playBeep();
+                  enrollStepRef.current = 'left';
+                  setEnrollStep('left');
+                  setEnrollMsg("Step 2: Turn head slightly to the LEFT.");
+                }
+              } else if (currentStep === 'left') {
+                if (ratio < 0.38 || ratio > 0.62) {
+                  const desc = extractFaceBiometrics(faceCanvas);
+                  capturedLeftRef.current = desc;
+                  playBeep();
+                  enrollStepRef.current = 'right';
+                  setEnrollStep('right');
+                  setEnrollMsg("Step 3: Turn head slightly to the RIGHT.");
+                }
+              } else if (currentStep === 'right') {
+                const isOppositeSide = (ratio < 0.38 || ratio > 0.62);
+                if (isOppositeSide) {
+                  const desc = extractFaceBiometrics(faceCanvas);
+                  capturedRightRef.current = desc;
+                  playBeep();
+                  enrollStepRef.current = 'done';
+                  setEnrollStep('done');
+                  setEnrollMsg("🎉 Enrollment Complete! Saving profiles...");
+                  
+                  setTimeout(() => {
+                    saveMultiDirectionDescriptors();
+                  }, 1200);
+                }
+              }
+            }
+          } else {
+            setEnrollLandmarks(null);
+          }
+        } catch (e) {
+          console.error("Landmarks tracking loop error:", e);
+        }
+      }
+    }
+
+    const isStillEnrolling = enrollVideoRef.current && enrollVideoRef.current.srcObject;
+    if (isStillEnrolling && enrollStepRef.current !== 'done') {
+      requestAnimationFrame(enrollFrameLoop);
+    }
+  };
+
+  const saveMultiDirectionDescriptors = async () => {
+    if (!enrollingStudent) return;
+    const center = capturedCenterRef.current;
+    const left = capturedLeftRef.current;
+    const right = capturedRightRef.current;
+
+    if (center && left && right) {
+      try {
+        await db.students.update(enrollingStudent.id!, {
+          faceDescriptor: center,
+          faceDescriptors: [center, left, right]
+        });
+        playBeep();
+        showToast(`✔ Multi-angle biometrics saved for ${enrollingStudent.name}!`);
+      } catch (err) {
+        console.error("Failed to save multi-angle descriptors:", err);
+      }
+    }
+    stopFaceEnrollment();
+  };
+
   const captureFaceBiometrics = async () => {
     if (!enrollingStudent || !enrollVideoRef.current) return;
     const video = enrollVideoRef.current;
-    if (video.readyState < 2) {
-      setEnrollMsg("Camera loading... Please wait.");
-      return;
-    }
-
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
 
@@ -532,26 +621,18 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const y = (height - size) / 2;
       ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
 
-      // Verify that a human face is actually present before enrolling
-      if (!isHumanFacePresent(canvas)) {
-        setEnrollMsg("⚠️ No face detected! Position face in guide circle.");
-        return;
-      }
-
       const descriptor = extractFaceBiometrics(canvas);
-
       try {
-        await db.students.update(enrollingStudent.id!, { faceDescriptor: descriptor });
+        await db.students.update(enrollingStudent.id!, {
+          faceDescriptor: descriptor,
+          faceDescriptors: [descriptor, descriptor, descriptor]
+        });
         playBeep();
-        showToast(`✔ Face Biometrics Enrolled for ${enrollingStudent.name}!`);
-        setEnrollMsg(`✅ Face Biometric successfully registered!`);
-        setTimeout(() => {
-          stopFaceEnrollment();
-        }, 1200);
+        showToast(`✔ Enrolled single-face template for ${enrollingStudent.name}!`);
       } catch (err) {
-        console.error("Failed to save face descriptor:", err);
-        setEnrollMsg("❌ Failed to save face data.");
+        console.error("Save biometrics error:", err);
       }
+      stopFaceEnrollment();
     }
   };
 
@@ -563,6 +644,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setIsEnrolling(false);
     setEnrollingStudent(null);
     setEnrollMsg(null);
+    setEnrollLandmarks(null);
   };
 
   const scanFrame = async () => {
@@ -723,8 +805,16 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
                   const matchScores: { student: Student, similarity: number }[] = [];
                   for (const student of enrolledStudents) {
-                    const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
-                    matchScores.push({ student, similarity: sim });
+                    let maxSim = 0;
+                    if (student.faceDescriptors && student.faceDescriptors.length > 0) {
+                      for (const desc of student.faceDescriptors) {
+                        const sim = computeFaceSimilarity(liveDescriptor, desc);
+                        if (sim > maxSim) maxSim = sim;
+                      }
+                    } else if (student.faceDescriptor) {
+                      maxSim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor);
+                    }
+                    matchScores.push({ student, similarity: maxSim });
                   }
 
                   matchScores.sort((a, b) => b.similarity - a.similarity);
@@ -1574,19 +1664,50 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
               <video ref={enrollVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60%', height: '70%', borderRadius: '50%', border: '2px dashed #3b82f6', pointerEvents: 'none' }} />
+              
+              {/* Live Enrollment Landmarks mesh */}
+              {enrollLandmarks && enrollLandmarks.map((n, i) => (
+                <div key={`enroll-dot-${i}`} style={{
+                  position: 'absolute',
+                  left: `${n.left}%`,
+                  top: `${n.top}%`,
+                  width: '5px',
+                  height: '5px',
+                  background: '#10b981',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 4px #10b981'
+                }} />
+              ))}
+
               {enrollMsg && (
-                <div style={{ position: 'absolute', bottom: '12px', left: '12px', right: '12px', background: 'rgba(15,23,42,0.85)', color: '#ffffff', padding: '6px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', zIndex: 10 }}>
+                <div style={{ position: 'absolute', bottom: '12px', left: '12px', right: '12px', background: 'rgba(15,23,42,0.85)', color: '#ffffff', padding: '8px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', zIndex: 10, border: '1px solid #334155' }}>
                   {enrollMsg}
                 </div>
               )}
             </div>
 
+            {/* Checklist Indicator showing active/completed states */}
+            <div style={{ padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: enrollStep === 'center' ? '#2563eb' : '#64748b' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: capturedCenterRef.current ? '#10b981' : '#cbd5e1' }}></span>
+                <span>1. Center</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: enrollStep === 'left' ? '#2563eb' : '#64748b' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: capturedLeftRef.current ? '#10b981' : '#cbd5e1' }}></span>
+                <span>2. Left Profile</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: enrollStep === 'right' ? '#2563eb' : '#64748b' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: capturedRightRef.current ? '#10b981' : '#cbd5e1' }}></span>
+                <span>3. Right Profile</span>
+              </div>
+            </div>
+
             <div style={{ padding: '16px', display: 'flex', gap: '12px', background: '#ffffff' }}>
-              <button onClick={stopFaceEnrollment} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={stopFaceEnrollment} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
                 Cancel
               </button>
-              <button onClick={captureFaceBiometrics} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                <Camera size={18} /> Capture & Save
+              <button onClick={captureFaceBiometrics} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.82rem' }}>
+                <Camera size={14} /> Skip & Save Center
               </button>
             </div>
 

@@ -1932,6 +1932,94 @@ export default function App() {
                 <p className="subtitle">Welcome to OMR Scanner. Administer and grade paper exams offline instantly.</p>
               </header>
 
+              {/* MOBILE QUICK ACTIONS GRID */}
+              <div className="mobile-quick-actions">
+                <div className="quick-actions-grid">
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => {
+                      setActiveTab('exams');
+                      setSelectedExamId(null);
+                    }}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <FileText size={22} />
+                    </div>
+                    <span className="quick-action-label">Exams</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => setActiveTab('attendance')}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <CalendarCheck size={22} />
+                    </div>
+                    <span className="quick-action-label">Attendance</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => setActiveTab('students')}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <Users size={22} />
+                    </div>
+                    <span className="quick-action-label">Classes</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => setActiveTab('questions-bank')}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <BookOpen size={22} />
+                    </div>
+                    <span className="quick-action-label">Q-Banks</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => setActiveTab('whatsapp-settings')}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <Settings size={22} />
+                    </div>
+                    <span className="quick-action-label">WhatsApp</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => setActiveTab('omr-settings')}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <Sliders size={22} />
+                    </div>
+                    <span className="quick-action-label">OMR Config</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => pullCloudUpdatesToIndexedDB()}
+                  >
+                    <div className="quick-action-icon-wrapper">
+                      <RefreshCw size={22} />
+                    </div>
+                    <span className="quick-action-label">Sync DB</span>
+                  </button>
+
+                  <button 
+                    className="quick-action-item"
+                    onClick={() => handleLogout()}
+                  >
+                    <div className="quick-action-icon-wrapper" style={{ color: '#dc2626', background: '#fef2f2' }}>
+                      <LogOut size={22} />
+                    </div>
+                    <span className="quick-action-label" style={{ color: '#dc2626' }}>Log Out</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="stats-grid">
                 <div className="stat-card glass-card">
                   <div className="stat-info">

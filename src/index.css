@@ -3007,3 +3007,70 @@ button {
   animation: spin 0.8s linear infinite !important;
 }
 
+/* Quick Actions Grid for Mobile Devices only */
+.mobile-quick-actions {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-quick-actions {
+    display: block;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 20px 16px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+  .quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .quick-action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 8px 4px;
+    transition: transform 0.15s ease;
+    width: 100%;
+    outline: none;
+  }
+
+  .quick-action-item:active {
+    transform: scale(0.95);
+  }
+
+  .quick-action-icon-wrapper {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #eef2ff; /* Soft lavender-blue/periwinkle background */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    color: #1d4ed8; /* Jio blue color */
+    box-shadow: 0 2px 4px rgba(29, 78, 216, 0.04);
+    transition: background-color 0.15s ease;
+  }
+
+  .quick-action-item:active .quick-action-icon-wrapper {
+    background: #dbeafe;
+  }
+
+  .quick-action-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #4b5563; /* Medium grey text */
+    line-height: 1.25;
+    word-break: break-word;
+  }
+}
+

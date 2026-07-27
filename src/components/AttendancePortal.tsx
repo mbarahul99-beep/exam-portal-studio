@@ -15,7 +15,8 @@ import {
   CheckCircle2,
   RefreshCw,
   QrCode,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
@@ -445,7 +446,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       if (storedJson) {
         const parsed = JSON.parse(storedJson);
         return {
-          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.70,
+          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.58,
           enableLivenessCheck: parsed.enableLivenessCheck !== undefined ? Boolean(parsed.enableLivenessCheck) : true
         };
       }
@@ -453,7 +454,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       console.warn("Failed to load OMR Settings for biometrics:", e);
     }
     return {
-      faceMatchThreshold: 0.70,
+      faceMatchThreshold: 0.58,
       enableLivenessCheck: true
     };
   };
@@ -969,9 +970,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                       setTrackedFace(null);
                     }, 3000);
                   } else {
+                    const topSimPct = topMatch ? Math.round(topScore * 100) : 0;
+                    const partialMatchName = topMatch ? topMatch.student.name.split('/')[0].trim() : '';
                     setTrackedFace({
                       ...faceBox,
-                      name: "👤 Unregistered biometric face",
+                      name: topMatch && topScore >= 0.40 
+                        ? `👤 Low Confidence Match: ${partialMatchName} (${topSimPct}%)` 
+                        : "👤 Unregistered biometric face",
                       pct: undefined,
                       landmarks: nodes
                     });
@@ -1218,13 +1223,43 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               </h2>
             </div>
 
-            <button
-              onClick={() => handleExportCSV(selectedClass)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
-              title="Export CSV"
-            >
-              <FileSpreadsheet size={18} color="#2563eb" />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <button
+                onClick={() => handleExportCSV(selectedClass)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                title="Export CSV"
+              >
+                <FileSpreadsheet size={18} color="#2563eb" />
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (window.confirm("⚠️ WARNING: This will permanently delete ALL registered face biometric templates for all students. This cannot be undone. Are you sure you want to proceed?")) {
+                    try {
+                      const allStudents = await db.students.toArray();
+                      let count = 0;
+                      for (const s of allStudents) {
+                        if (s.faceDescriptor || (s.faceDescriptors && s.faceDescriptors.length > 0)) {
+                          await db.students.update(s.id!, {
+                            faceDescriptor: undefined,
+                            faceDescriptors: []
+                          });
+                          count++;
+                        }
+                      }
+                      showToast(`Successfully deleted registered face templates for ${count} students.`);
+                    } catch (err) {
+                      console.error("Failed to delete face templates:", err);
+                      alert("Error deleting face templates.");
+                    }
+                  }
+                }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', marginLeft: '6px' }}
+                title="Delete All Registered Biometrics"
+              >
+                <Trash2 size={18} color="#dc2626" />
+              </button>
+            </div>
           </div>
 
           {/* CLASS & SESSION META CARD */}
@@ -1431,6 +1466,42 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                             <Camera size={11} />
                             <span>{student.faceDescriptor ? "Set" : "Face"}</span>
                           </button>
+
+                          {student.faceDescriptor && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Are you sure you want to clear face biometrics for ${student.name}?`)) {
+                                  try {
+                                    await db.students.update(student.id!, {
+                                      faceDescriptor: undefined,
+                                      faceDescriptors: []
+                                    });
+                                    showToast(`Biometrics cleared for ${student.name}`);
+                                  } catch (err) {
+                                    console.error("Failed to clear face biometrics:", err);
+                                  }
+                                }
+                              }}
+                              style={{
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                color: '#dc2626',
+                                cursor: 'pointer',
+                                padding: '3px 6px',
+                                borderRadius: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.7rem',
+                                fontWeight: 700
+                              }}
+                              title="Delete Registered Face"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
 
                           {/* Edit Pen Icon */}
                           <button

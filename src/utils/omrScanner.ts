@@ -96,26 +96,33 @@ export function getDynamicOMRQuestionLayout(
   // 2. Calculate rows per column so all columns are balanced
   const rowsPerCol = Math.ceil(total / numCols);
 
-  // 3. Dynamic yStart & yStep calculation to fit full page height (y: 440 -> 1270)
-  const availableHeight = 830;
+  // 3. Dynamic yStart & yStep calculation to fit full page height (y: 440 -> 1260)
+  const availableHeight = 820;
   let yStart = 440;
   let yStep = 20;
 
   if (density === 'auto') {
     yStep = availableHeight / Math.max(1, rowsPerCol);
-    if (yStep > 28) yStep = 28;
-    if (yStep < 16) yStep = 16;
+    if (total <= 30) {
+      yStep = Math.min(34, Math.max(24, yStep));
+    } else if (total <= 60) {
+      yStep = Math.min(28, Math.max(20, yStep));
+    } else {
+      if (yStep > 28) yStep = 28;
+      if (yStep < 16) yStep = 16;
+    }
   } else if (density === 'spacious') {
-    yStep = 25;
+    yStep = 26;
   } else if (density === 'compact') {
     yStep = 17;
   } else {
     yStep = 20;
   }
 
+  // Center questions block vertically between y=440 and y=1260
   const totalGridHeight = (rowsPerCol - 1) * yStep;
   if (totalGridHeight < availableHeight) {
-    yStart = 440 + (availableHeight - totalGridHeight) / 4;
+    yStart = 440 + (availableHeight - totalGridHeight) / 2;
   }
 
   // 4. Generate column positions horizontally across 1000px page
@@ -129,9 +136,9 @@ export function getDynamicOMRQuestionLayout(
     if (qStart > total) break;
 
     const colXStart = 70 + c * colWidth;
-    const xLabel = colXStart + 15;
-    const optStart = colXStart + 45;
-    const optStep = 23;
+    const xLabel = colXStart + (numCols <= 3 ? 22 : 15);
+    const optStart = colXStart + (numCols <= 3 ? 60 : 45);
+    const optStep = numCols <= 3 ? 26 : 23;
 
     columns.push({
       qStart,

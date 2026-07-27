@@ -16,7 +16,7 @@ import {
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
-import { scanOMRSheet } from '../utils/omrScanner';
+import { scanOMRSheet, findOMRSheetCornersLive } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
@@ -54,6 +54,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const analysisRequestRef = useRef<number | null>(null);
+  const [detectorStatus, setDetectorStatus] = useState<'searching' | 'aligning' | 'ready'>('searching');
 
   // Registered students in this exam's class limit validation
   const classStudents = students.filter(s => s.className === exam.className);
@@ -118,8 +121,122 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     } catch {}
   };
 
+  // Real-time sheet contour tracker
+  const runCameraAnalysisLoop = () => {
+    if (!videoRef.current || !overlayCanvasRef.current || !cvLoaded) {
+      analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = overlayCanvasRef.current;
+    
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const vW = video.videoWidth;
+      const vH = video.videoHeight;
+      
+      // Ensure canvas internal buffer matches video resolution
+      if (canvas.width !== vW || canvas.height !== vH) {
+        canvas.width = vW;
+        canvas.height = vH;
+      }
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, vW, vH);
+        
+        // Run corner detection using a lightweight OpenCV helper
+        try {
+          const corners = findOMRSheetCornersLive(video);
+          if (corners) {
+            // Draw green bounding polygon
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+            
+            ctx.strokeStyle = '#10b981'; // Glowing green outline
+            ctx.lineWidth = 8;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            
+            // Draw glowing translucent fill
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+            ctx.fill();
+            
+            // Draw 4 corner tracking circles
+            corners.forEach((pt) => {
+              ctx.beginPath();
+              ctx.arc(pt.x, pt.y, 16, 0, 2 * Math.PI);
+              ctx.fillStyle = '#10b981';
+              ctx.fill();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 4;
+              ctx.stroke();
+            });
+
+            setDetectorStatus('ready');
+          } else {
+            // No sheet found: draw a centered reference guides overlay
+            setDetectorStatus('searching');
+            
+            // Draw target bracket guide box in the center
+            const boxW = vW * 0.65;
+            const boxH = boxW * 1.414; // A4 ratio
+            const startX = (vW - boxW) / 2;
+            const startY = (vH - boxH) / 2;
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.lineWidth = 5;
+            
+            // Draw 4 brackets instead of a complete dashed box to look extremely modern/industry-grade
+            const bracketLength = 40;
+            
+            // Top Left Bracket
+            ctx.beginPath();
+            ctx.moveTo(startX + bracketLength, startY);
+            ctx.lineTo(startX, startY);
+            ctx.lineTo(startX, startY + bracketLength);
+            ctx.stroke();
+
+            // Top Right Bracket
+            ctx.beginPath();
+            ctx.moveTo(startX + boxW - bracketLength, startY);
+            ctx.lineTo(startX + boxW, startY);
+            ctx.lineTo(startX + boxW, startY + bracketLength);
+            ctx.stroke();
+
+            // Bottom Left Bracket
+            ctx.beginPath();
+            ctx.moveTo(startX, startY + boxH - bracketLength);
+            ctx.lineTo(startX, startY + boxH);
+            ctx.lineTo(startX + bracketLength, startY + boxH);
+            ctx.stroke();
+
+            // Bottom Right Bracket
+            ctx.beginPath();
+            ctx.moveTo(startX + boxW - bracketLength, startY + boxH);
+            ctx.lineTo(startX + boxW, startY + boxH);
+            ctx.lineTo(startX + boxW, startY + boxH - bracketLength);
+            ctx.stroke();
+          }
+        } catch (e) {
+          console.warn("Live OMR outline tracking failed:", e);
+        }
+      }
+    }
+    
+    analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
+  };
+
   // Stop active camera stream
   const stopCameraStream = () => {
+    if (analysisRequestRef.current) {
+      cancelAnimationFrame(analysisRequestRef.current);
+      analysisRequestRef.current = null;
+    }
     if (activeStreamRef.current) {
       activeStreamRef.current.getTracks().forEach(track => track.stop());
       activeStreamRef.current = null;
@@ -141,6 +258,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
+        
+        // Start the frame loop
+        if (analysisRequestRef.current) {
+          cancelAnimationFrame(analysisRequestRef.current);
+        }
+        analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
       }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1115,7 +1238,44 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           </div>
 
           <div className="clean-camera-viewport">
-            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} className="live-stream"></video>
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} className="live-stream"></video>
+            
+            {/* Transparent overlay canvas for drawing the detected corners and guide outline */}
+            <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', zIndex: 10 }}></canvas>
+
+            {/* Dynamic Status Indicator Overlay */}
+            <div style={{ 
+              position: 'absolute', 
+              top: '16px', 
+              left: '50%', 
+              transform: 'translateX(-50%)', 
+              zIndex: 20, 
+              padding: '8px 20px', 
+              borderRadius: '24px', 
+              background: detectorStatus === 'ready' ? 'rgba(16, 185, 129, 0.9)' : 'rgba(15, 23, 42, 0.75)', 
+              backdropFilter: 'blur(8px)',
+              color: '#ffffff', 
+              fontWeight: 'bold', 
+              fontSize: '0.9rem', 
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              border: detectorStatus === 'ready' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
+              transition: 'all 0.3s ease'
+            }}>
+              {detectorStatus === 'ready' ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#34d399' }}></span>
+                  🟢 READY TO CAPTURE - HOLD STEADY
+                </>
+              ) : (
+                <>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#f59e0b' }}></span>
+                  🔍 ALIGN OMR CORNERS INSIDE BRACKETS
+                </>
+              )}
+            </div>
 
             <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
               <button 
@@ -1125,19 +1285,29 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   padding: '14px 36px', 
                   fontSize: '1.1rem', 
                   borderRadius: '32px', 
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
+                  background: detectorStatus === 'ready' 
+                    ? 'linear-gradient(135deg, #10b981, #059669)' // Glowing emerald green when ready
+                    : 'linear-gradient(135deg, #2563eb, #1d4ed8)', // Standard blue when searching
                   color: '#ffffff', 
                   border: 'none', 
                   fontWeight: 'bold', 
                   cursor: 'pointer', 
-                  boxShadow: '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
+                  boxShadow: detectorStatus === 'ready'
+                    ? '0 6px 24px rgba(16,185,129,0.6), 0 0 0 4px rgba(255,255,255,0.3)'
+                    : '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px'
+                  gap: '10px',
+                  transition: 'all 0.3s ease'
                 }}
                 disabled={isScanning}
               >
-                {isScanning ? <RefreshCw className="spin" size={20} /> : '📷 Capture & Scan Photo'}
+                {isScanning ? <RefreshCw className="spin" size={20} /> : (
+                  <>
+                    <Camera size={20} />
+                    {detectorStatus === 'ready' ? 'Scan OMR Sheet Now' : '📷 Capture & Scan Photo'}
+                  </>
+                )}
               </button>
             </div>
           </div>

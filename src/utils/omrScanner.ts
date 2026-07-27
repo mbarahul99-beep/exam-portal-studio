@@ -271,6 +271,11 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
+                // Validate that the areas of the 4 markers are similar (within 80% range)
+                const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
+                const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
+                if (minArea === 0 || maxArea / minArea > 1.8) continue;
+
                 // Side lengths
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
@@ -285,8 +290,8 @@ export async function scanOMRSheet(
 
                 // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
                 const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.35;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.35;
+                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
+                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
 
                 if (isRatioValid && isWidthSimilar && isHeightSimilar) {
                   const quadArea = avgW * avgH;
@@ -665,4 +670,153 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
     }
   }
   return count > 0 ? sum / count : 255;
+}
+
+let smallCanvas: HTMLCanvasElement | null = null;
+let smallCtx: CanvasRenderingContext2D | null = null;
+
+/**
+ * Detects the four corner points of the OMR sheet in a video frame.
+ * Returns the points scaled to the original video dimensions.
+ */
+export function findOMRSheetCornersLive(
+  video: HTMLVideoElement
+): Array<{ x: number; y: number }> | null {
+  const cv = window.cv;
+  if (!cv) return null;
+
+  const vW = video.videoWidth;
+  const vH = video.videoHeight;
+  if (vW === 0 || vH === 0) return null;
+
+  // Downscale to a fixed width of 400px for speed
+  const scaleW = 400;
+  const scaleH = Math.round((vH / vW) * scaleW);
+
+  if (!smallCanvas) {
+    smallCanvas = document.createElement('canvas');
+  }
+  if (smallCanvas.width !== scaleW || smallCanvas.height !== scaleH) {
+    smallCanvas.width = scaleW;
+    smallCanvas.height = scaleH;
+    smallCtx = smallCanvas.getContext('2d');
+  }
+
+  if (!smallCtx) return null;
+  smallCtx.drawImage(video, 0, 0, scaleW, scaleH);
+
+  let src = cv.imread(smallCanvas);
+  let gray = new cv.Mat();
+  let blurred = new cv.Mat();
+  let thresh = new cv.Mat();
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    cv.adaptiveThreshold(
+      blurred,
+      thresh,
+      255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+      cv.THRESH_BINARY_INV,
+      11,
+      7
+    );
+
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const candidates: Array<{ center: { x: number; y: number }; area: number; rect: any }> = [];
+    const pageArea = scaleW * scaleH;
+
+    for (let i = 0; i < contours.size(); ++i) {
+      const cnt = contours.get(i);
+      const rect = cv.boundingRect(cnt);
+      const area = rect.width * rect.height;
+      const aspectRatio = rect.width / rect.height;
+
+      // Anchors are square-like black marks
+      const isCorrectSize = area > pageArea * 0.0001 && area < pageArea * 0.015;
+      const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
+
+      if (isCorrectSize && isSquare) {
+        const center = {
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2
+        };
+        candidates.push({ center, area, rect });
+      }
+    }
+
+    // Sort by area desc and take top 10 candidates
+    const sorted = candidates.sort((a, b) => b.area - a.area).slice(0, 10);
+    if (sorted.length < 4) return null;
+
+    let bestQuad: Array<{ x: number; y: number }> | null = null;
+    let maxQuadArea = 0;
+
+    // Search for a quad of 4 candidates that forms a valid OMR box ratio
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        for (let k = j + 1; k < sorted.length; k++) {
+          for (let l = k + 1; l < sorted.length; l++) {
+            const pts = [sorted[i], sorted[j], sorted[k], sorted[l]];
+            
+            // Sort corners geometrically
+            const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
+            const tl = sortedBySum[0];
+            const br = sortedBySum[3];
+            
+            const remaining = [sortedBySum[1], sortedBySum[2]];
+            const sortedByDiff = remaining.sort((a, b) => (a.center.x - a.center.y) - (b.center.x - b.center.y));
+            const bl = sortedByDiff[0];
+            const tr = sortedByDiff[1];
+
+            // Validate that the areas of the 4 markers are similar (within 80% range)
+            const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
+            const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
+            if (minArea === 0 || maxArea / minArea > 1.8) continue;
+
+            const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
+            const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
+            const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
+            const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
+
+            const avgW = (wTop + wBot) / 2;
+            const avgH = (hLeft + hRight) / 2;
+            if (avgW === 0) continue;
+            
+            const ratio = avgH / avgW;
+            const isRatioValid = (ratio >= 1.15 && ratio <= 1.7); // Portrait A4 ratio is ~1.41
+            const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
+            const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
+
+            if (isRatioValid && isWidthSimilar && isHeightSimilar) {
+              const quadArea = avgW * avgH;
+              if (quadArea > maxQuadArea) {
+                maxQuadArea = quadArea;
+                bestQuad = [
+                  { x: tl.center.x * (vW / scaleW), y: tl.center.y * (vH / scaleH) },
+                  { x: tr.center.x * (vW / scaleW), y: tr.center.y * (vH / scaleH) },
+                  { x: br.center.x * (vW / scaleW), y: br.center.y * (vH / scaleH) },
+                  { x: bl.center.x * (vW / scaleW), y: bl.center.y * (vH / scaleH) }
+                ];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return bestQuad;
+
+  } finally {
+    src.delete();
+    gray.delete();
+    blurred.delete();
+    thresh.delete();
+    contours.delete();
+    hierarchy.delete();
+  }
 }

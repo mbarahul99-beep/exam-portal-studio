@@ -385,12 +385,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setModelLoadError(null);
     isModelFailedRef.current = false;
 
-    // Temporarily backup and remove window.Module to prevent Emscripten namespace conflicts with OpenCV
-    let tempModule: any = undefined;
-    let hasTempModule = false;
+    // Permanently remove window.Module to prevent Emscripten namespace conflicts between OpenCV and MediaPipe.
+    // Since OpenCV is already loaded inside window.cv, window.Module is no longer needed by OpenCV.
     if (typeof window !== 'undefined' && 'Module' in window) {
-      tempModule = (window as any).Module;
-      hasTempModule = true;
       try {
         delete (window as any).Module;
       } catch (e) {
@@ -441,11 +438,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       isModelLoadingRef.current = false;
       setIsModelLoading(false);
       return null;
-    } finally {
-      // Restore the window.Module namespace for OpenCV
-      if (hasTempModule && typeof window !== 'undefined') {
-        (window as any).Module = tempModule;
-      }
     }
   };
 

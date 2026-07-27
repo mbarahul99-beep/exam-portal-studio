@@ -335,12 +335,17 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     if (faceLandmarker) return faceLandmarker;
     setIsModelLoading(true);
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-      );
+      const baseUrl = window.location.pathname.endsWith('/') 
+        ? window.location.pathname 
+        : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+
+      const wasmPath = `${window.location.origin}${baseUrl}wasm`;
+      const modelPath = `${window.location.origin}${baseUrl}face_landmarker.task`;
+
+      const vision = await FilesetResolver.forVisionTasks(wasmPath);
       const landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          modelAssetPath: modelPath,
           delegate: "GPU"
         },
         outputFaceBlendshapes: false,

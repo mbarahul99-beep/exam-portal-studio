@@ -1084,11 +1084,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                Live Attendance Scanner
+                Attendance
               </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.2 }}>
-                Instant QR ID Card & Facial Recognition Check-In
-              </p>
             </div>
 
             <span style={{

@@ -56,6 +56,106 @@ export const OMR_CONFIG = {
   }
 };
 
+export interface OMRColumnConfig {
+  qStart: number;
+  qEnd: number;
+  xLabel: number;
+  xOptions: number[];
+}
+
+export interface OMRQuestionLayout {
+  bubbleRadius: number;
+  yStart: number;
+  yStep: number;
+  rowsPerCol: number;
+  numCols: number;
+  columns: OMRColumnConfig[];
+}
+
+/**
+ * Calculates a dynamic question grid layout that adjusts columns, row counts, and vertical spacing (yStep)
+ * to perfectly stretch and fill 100% of the available page height without leaving blank bottom space!
+ */
+export function getDynamicOMRQuestionLayout(
+  numQuestions: number,
+  preferredCols?: number,
+  density: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto'
+): OMRQuestionLayout {
+  const total = Math.min(Math.max(1, numQuestions), 200);
+
+  // 1. Determine optimal columns count if not specified
+  let numCols = preferredCols;
+  if (!numCols || numCols < 1) {
+    if (total >= 160) numCols = 5;
+    else if (total >= 90) numCols = 4;
+    else if (total >= 45) numCols = 3;
+    else numCols = 2;
+  }
+  numCols = Math.min(5, Math.max(2, numCols));
+
+  // 2. Calculate rows per column so all columns are balanced
+  const rowsPerCol = Math.ceil(total / numCols);
+
+  // 3. Dynamic yStart & yStep calculation to fit full page height (y: 440 -> 1270)
+  const availableHeight = 830;
+  let yStart = 440;
+  let yStep = 20;
+
+  if (density === 'auto') {
+    yStep = availableHeight / Math.max(1, rowsPerCol);
+    if (yStep > 28) yStep = 28;
+    if (yStep < 16) yStep = 16;
+  } else if (density === 'spacious') {
+    yStep = 25;
+  } else if (density === 'compact') {
+    yStep = 17;
+  } else {
+    yStep = 20;
+  }
+
+  const totalGridHeight = (rowsPerCol - 1) * yStep;
+  if (totalGridHeight < availableHeight) {
+    yStart = 440 + (availableHeight - totalGridHeight) / 4;
+  }
+
+  // 4. Generate column positions horizontally across 1000px page
+  const availWidth = 860;
+  const colWidth = availWidth / numCols;
+  const columns: OMRColumnConfig[] = [];
+
+  for (let c = 0; c < numCols; c++) {
+    const qStart = c * rowsPerCol + 1;
+    const qEnd = Math.min(total, (c + 1) * rowsPerCol);
+    if (qStart > total) break;
+
+    const colXStart = 70 + c * colWidth;
+    const xLabel = colXStart + 15;
+    const optStart = colXStart + 45;
+    const optStep = 23;
+
+    columns.push({
+      qStart,
+      qEnd,
+      xLabel,
+      xOptions: [
+        optStart,
+        optStart + optStep,
+        optStart + optStep * 2,
+        optStart + optStep * 3
+      ]
+    });
+  }
+
+  return {
+    bubbleRadius: yStep < 18 ? 5.5 : 6.5,
+    yStart,
+    yStep,
+    rowsPerCol,
+    numCols,
+    columns
+  };
+}
+
 
 /**
  * Main OMR Scanner function. Processes an source image (HTMLCanvasElement, HTMLImageElement, or ImageData)
@@ -434,9 +534,9 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (200 questions, 5 columns of 40 questions)
+    // 7. Scan Answers (Dynamic Grid Layout matching printed OMR sheet)
     const answers: Record<number, string> = {};
-    const qConf = OMR_CONFIG.questions;
+    const qConf = getDynamicOMRQuestionLayout(numQuestions);
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
     for (let q = 1; q <= numQuestions; q++) {

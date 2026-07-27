@@ -9,8 +9,6 @@ import {
   Camera, 
   FileSpreadsheet, 
   ChevronRight,
-  UserCheck,
-  UserX,
   Edit2,
   ListOrdered,
   Globe,
@@ -1045,78 +1043,74 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* VIEW 1: CLASSES SELECTION LIST VIEW (WHEN NO CLASS IS SELECTED)       */}
       {/* ==================================================================== */}
       {!selectedClass && (
-        <div>
+        <div style={{ padding: '4px' }}>
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '4px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>Attendance Roster</h2>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Select a class or use camera scanner to take roll call.</p>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>Attendance Roster</h2>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '10px' }}>
-              <Calendar size={16} color="#64748b" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '10px' }}>
+              <Calendar size={14} color="#64748b" />
               <input 
                 type="date" 
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                style={{ border: 'none', background: 'transparent', fontSize: '0.88rem', fontWeight: 700, outline: 'none', color: '#0f172a' }}
+                style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', fontWeight: 700, outline: 'none', color: '#0f172a', width: '105px' }}
               />
             </div>
           </div>
 
-          {/* PROMINENT SCANNER CARD AT TOP */}
+          {/* COMPACT SCANNER CARD */}
           <div 
             onClick={startScanner}
             style={{
               background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
-              border: '1.5px solid #bfdbfe',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              marginBottom: '24px',
+              border: '1px solid #bfdbfe',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '20px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              boxShadow: '0 4px 12px rgba(37,99,235,0.06)',
+              boxShadow: '0 2px 8px rgba(37,99,235,0.04)',
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #93c5fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Camera size={24} color="#2563eb" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Camera size={18} color="#2563eb" />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>
-                  Live Attendance Scanner
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e3a8a' }}>
+                  Live Scanner
                 </h3>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#3b82f6', fontWeight: 600 }}>
-                  Instant QR ID Card & Facial Recognition Check-In
-                </p>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                  QR & Face Check-In
+                </span>
               </div>
             </div>
 
             <span style={{
-              background: '#2563eb',
+              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
               color: '#ffffff',
-              padding: '8px 16px',
-              borderRadius: '20px',
+              padding: '6px 12px',
+              borderRadius: '8px',
               fontWeight: 700,
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 6px rgba(37,99,235,0.3)'
+              fontSize: '0.75rem',
+              boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
             }}>
-              Start Scan
+              Scan
             </span>
           </div>
 
-          {/* CLASSES LIST (MATCHING CLASSES THEME) */}
-          <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
-            Select Class ({dbClasses.length})
+          {/* CLASSES LIST */}
+          <h3 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#0f172a', marginBottom: '10px' }}>
+            Classes ({dbClasses.length})
           </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {dbClasses.map((cls) => {
               const clsStudents = dbStudents.filter(s => s.className === cls.name);
               const clsPresent = clsStudents.filter(s => {
@@ -1133,44 +1127,41 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   style={{
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
-                    borderRadius: '14px',
-                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.01)',
                     transition: 'all 0.2s ease'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem' }}>
                       {cls.name.charAt(0).toUpperCase()}
                     </div>
 
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>{cls.name}</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                        <span><Users size={13} style={{ verticalAlign: 'middle' }} /> {clsStudents.length} Students</span>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{cls.name}</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#64748b', marginTop: '1px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Users size={11} /> {clsStudents.length}</span>
                         <span>•</span>
                         <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : '#d97706' }}>
-                        {pct}%
-                      </span>
-                    </div>
-                    <ChevronRight size={20} color="#94a3b8" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#94a3b8') }}>
+                      {pct}%
+                    </span>
+                    <ChevronRight size={16} color="#cbd5e1" />
                   </div>
                 </div>
               );
             })}
           </div>
-
         </div>
       )}
 
@@ -1179,27 +1170,26 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* ==================================================================== */}
       {selectedClass && (
         <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-          
           {/* SCREENSHOT TOP HEADER BAR */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '16px 20px',
+            padding: '10px 14px',
             borderBottom: '1px solid #f1f5f9',
             background: '#ffffff',
             position: 'sticky',
             top: 0,
             zIndex: 10
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <button
                 onClick={() => setSelectedClass(null)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
               >
-                <ArrowLeft size={22} color="#0f172a" />
+                <ArrowLeft size={18} color="#0f172a" />
               </button>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
                 Session Detail
               </h2>
             </div>
@@ -1207,57 +1197,54 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             <button
               onClick={() => handleExportCSV(selectedClass)}
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
-              title="Export CSV Spreadsheet"
+              title="Export CSV"
             >
-              <FileSpreadsheet size={22} color="#2563eb" />
+              <FileSpreadsheet size={18} color="#2563eb" />
             </button>
           </div>
 
-          {/* SCREENSHOT CLASS & SESSION META TOP CARD */}
-          <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
-            <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
+          {/* CLASS & SESSION META CARD */}
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
               {selectedClass}
             </h3>
-            <span style={{ fontSize: '0.9rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
-              attendance
-            </span>
 
-            {/* Metadata Line matching screenshot */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', fontSize: '0.88rem', color: '#475569' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Calendar size={16} color="#64748b" />
+            {/* Metadata Line */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', fontSize: '0.78rem', color: '#64748b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Calendar size={12} color="#64748b" />
                 <span style={{ fontWeight: 600 }}>{formatDateDisplay(selectedDate)}</span>
               </div>
 
-              <span style={{ color: '#cbd5e1' }}>|</span>
+              <span>•</span>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Users size={16} color="#64748b" />
-                <span style={{ fontWeight: 600 }}>{classStudents.length}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Users size={12} color="#64748b" />
+                <span style={{ fontWeight: 600 }}>{classStudents.length} Students</span>
               </div>
 
               <div style={{ marginLeft: 'auto' }}>
                 <span style={{
-                  background: '#e6f4ea',
-                  color: '#137333',
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '0.7rem',
                   fontWeight: 700,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  gap: '3px'
                 }}>
-                  <Globe size={13} /> Public
+                  <Globe size={11} /> Public
                 </span>
               </div>
             </div>
           </div>
 
-          {/* SCREENSHOT STUDENT ROSTER LIST */}
-          <div style={{ flex: 1, padding: '0 20px' }}>
+          {/* STUDENT ROSTER LIST */}
+          <div style={{ flex: 1, padding: '0 12px 80px 12px' }}>
             {filteredStudents.length === 0 ? (
-              <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+              <div style={{ padding: '40px 12px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
                 No students found in class {selectedClass}.
               </div>
             ) : (
@@ -1277,15 +1264,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '16px 0',
+                      padding: '10px 0',
                       borderBottom: '1px solid #f1f5f9'
                     }}
                   >
-                    {/* Left: Circular Avatar & Name */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    {/* Left: circular avatar and name */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <div style={{
-                        width: '46px',
-                        height: '46px',
+                        width: '32px',
+                        height: '32px',
                         borderRadius: '50%',
                         background: '#eff6ff',
                         color: '#2563eb',
@@ -1293,29 +1280,28 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontWeight: 700,
-                        fontSize: '1.1rem'
+                        fontSize: '0.85rem'
                       }}>
                         {initial}
                       </div>
 
                       <div>
-                        <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>
                           {primaryName}
                         </h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                          <ListOrdered size={14} color="#94a3b8" />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.75rem', color: '#94a3b8', marginTop: '1px' }}>
+                          <ListOrdered size={12} color="#94a3b8" />
                           <span>{rollDisplay}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Right: Actions matching Screenshot Exactly */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Right: Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       
-                      {/* EDITING / SELECTION STATE (Show Red ❌ and Green ✔️ round buttons) */}
+                      {/* EDITING STATE */}
                       {isEditing ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          {/* Red Circular Absent Button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <button
                             type="button"
                             onClick={() => {
@@ -1323,8 +1309,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
                             }}
                             style={{
-                              width: '36px',
-                              height: '36px',
+                              width: '28px',
+                              height: '28px',
                               borderRadius: '50%',
                               background: '#ef4444',
                               color: '#ffffff',
@@ -1333,15 +1319,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               alignItems: 'center',
                               justifyContent: 'center',
                               cursor: 'pointer',
-                              boxShadow: '0 2px 6px rgba(239,68,68,0.3)',
-                              transition: 'transform 0.15s ease'
+                              boxShadow: '0 1px 4px rgba(239,68,68,0.2)'
                             }}
                             title="Mark Absent"
                           >
-                            <X size={20} strokeWidth={2.5} />
+                            <X size={15} strokeWidth={2.5} />
                           </button>
 
-                          {/* Green Circular Present Button */}
                           <button
                             type="button"
                             onClick={() => {
@@ -1349,8 +1333,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
                             }}
                             style={{
-                              width: '36px',
-                              height: '36px',
+                              width: '28px',
+                              height: '28px',
                               borderRadius: '50%',
                               background: '#16a34a',
                               color: '#ffffff',
@@ -1359,27 +1343,46 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               alignItems: 'center',
                               justifyContent: 'center',
                               cursor: 'pointer',
-                              boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
-                              transition: 'transform 0.15s ease'
+                              boxShadow: '0 1px 4px rgba(22,163,74,0.2)'
                             }}
                             title="Mark Present"
                           >
-                            <Check size={20} strokeWidth={2.5} />
+                            <Check size={15} strokeWidth={2.5} />
                           </button>
                         </div>
                       ) : (
-                        /* SAVED STATE (Show green user check icon or red user cross icon + edit pen) */
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        /* SAVED STATE */
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {isPresent && (
-                            <div style={{ display: 'flex', alignItems: 'center', color: '#16a34a' }} title="Present">
-                              <UserCheck size={24} />
-                            </div>
+                            <span style={{
+                              background: '#e6f4ea',
+                              color: '#137333',
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}>
+                              <Check size={11} strokeWidth={3} /> Present
+                            </span>
                           )}
 
                           {isAbsent && (
-                            <div style={{ display: 'flex', alignItems: 'center', color: '#dc2626' }} title="Absent">
-                              <UserX size={24} />
-                            </div>
+                            <span style={{
+                              background: '#fce8e6',
+                              color: '#c5221f',
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}>
+                              <X size={11} strokeWidth={3} /> Absent
+                            </span>
                           )}
 
                           {/* Face Enrollment Button */}
@@ -1387,22 +1390,22 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                             type="button"
                             onClick={() => startFaceEnrollment(student)}
                             style={{
-                              background: student.faceDescriptor ? '#f0fdf4' : '#eff6ff',
-                              border: student.faceDescriptor ? '1px solid #bbf7d0' : '1px solid #bfdbfe',
-                              color: student.faceDescriptor ? '#16a34a' : '#2563eb',
+                              background: student.faceDescriptor ? '#f0fdf4' : '#f8fafc',
+                              border: student.faceDescriptor ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                              color: student.faceDescriptor ? '#16a34a' : '#64748b',
                               cursor: 'pointer',
-                              padding: '4px 8px',
+                              padding: '3px 6px',
                               borderRadius: '6px',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.75rem',
+                              gap: '3px',
+                              fontSize: '0.7rem',
                               fontWeight: 700
                             }}
-                            title={student.faceDescriptor ? "Face Enrolled - Click to re-enroll" : "Register Face Biometrics"}
+                            title={student.faceDescriptor ? "Face Set" : "Register Face"}
                           >
-                            <Camera size={14} />
-                            <span>{student.faceDescriptor ? "Face Set" : "Enroll"}</span>
+                            <Camera size={11} />
+                            <span>{student.faceDescriptor ? "Set" : "Face"}</span>
                           </button>
 
                           {/* Edit Pen Icon */}
@@ -1418,9 +1421,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               display: 'flex',
                               alignItems: 'center'
                             }}
-                            title="Change Attendance Status"
+                            title="Change Status"
                           >
-                            <Edit2 size={18} />
+                            <Edit2 size={13} />
                           </button>
                         </div>
                       )}
@@ -1432,7 +1435,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             )}
           </div>
 
-          {/* SCREENSHOT BOTTOM STICKY ACTION BUTTONS */}
+          {/* BOTTOM STICKY ACTION BAR */}
           <div style={{
             position: 'fixed',
             bottom: 0,
@@ -1440,9 +1443,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             right: 0,
             background: '#ffffff',
             borderTop: '1px solid #e2e8f0',
-            padding: '12px 20px',
+            padding: '8px 12px',
             display: 'flex',
-            gap: '14px',
+            gap: '8px',
             zIndex: 100
           }}>
             <button
@@ -1450,13 +1453,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               onClick={() => setSelectedClass(null)}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '8px',
+                borderRadius: '6px',
                 background: '#ffffff',
                 color: '#2563eb',
-                border: '1.5px solid #2563eb',
+                border: '1px solid #2563eb',
                 fontWeight: 700,
-                fontSize: '0.95rem',
+                fontSize: '0.85rem',
                 cursor: 'pointer'
               }}
             >
@@ -1470,15 +1473,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '8px',
+                borderRadius: '6px',
                 background: '#2563eb',
                 color: '#ffffff',
                 border: 'none',
                 fontWeight: 700,
-                fontSize: '0.95rem',
+                fontSize: '0.85rem',
                 cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                boxShadow: '0 2px 6px rgba(37,99,235,0.2)'
               }}
             >
               Save

@@ -14,7 +14,10 @@ import {
   Edit2,
   ListOrdered,
   Globe,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw,
+  QrCode,
+  Sparkles
 } from 'lucide-react';
 import jsQR from 'jsqr';
 
@@ -37,10 +40,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [editingStudentIds, setEditingStudentIds] = useState<Record<number, boolean>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Scanner States
+  // Scanner & Biometric States
   const [isScanning, setIsScanning] = useState(false);
   const [scanStream, setScanStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   
   const [scannedFeedback, setScannedFeedback] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'QR' | 'Face'>('QR');
@@ -48,6 +52,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const isCooldownRef = useRef<boolean>(false);
   const facePresenceStartRef = useRef<number | null>(null);
   const isScanningRef = useRef<boolean>(false);
+
+  // Face Enrollment Modal State
+  const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
 
   // Show temporary toast notification
   const showToast = (msg: string) => {
@@ -339,14 +349,28 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
   };
 
-  const startScanner = async () => {
+  const toggleCameraFacing = () => {
+    const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+    setCameraFacingMode(nextMode);
+    if (isScanning) {
+      stopScanner();
+      setTimeout(() => startScannerWithFacing(nextMode), 300);
+    }
+  };
+
+  const startScannerWithFacing = async (facing: 'user' | 'environment') => {
     setIsScanning(true);
     isScanningRef.current = true;
     setScannedFeedback(null);
     facePresenceStartRef.current = null;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (scanStream) {
+        scanStream.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } 
+      });
       setScanStream(stream);
 
       setTimeout(() => {
@@ -361,6 +385,62 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       alert("Please allow camera access to scan attendance.");
       setIsScanning(false);
     }
+  };
+
+  const startScanner = () => startScannerWithFacing(cameraFacingMode);
+
+  const startFaceEnrollment = async (student: Student) => {
+    setEnrollingStudent(student);
+    setIsEnrolling(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+      });
+      setEnrollStream(stream);
+      setTimeout(() => {
+        if (enrollVideoRef.current) {
+          enrollVideoRef.current.srcObject = stream;
+          enrollVideoRef.current.play().catch(() => {});
+        }
+      }, 300);
+    } catch (err) {
+      alert("Could not access camera for face enrollment.");
+      setIsEnrolling(false);
+      setEnrollingStudent(null);
+    }
+  };
+
+  const captureFaceBiometrics = async () => {
+    if (!enrollingStudent || !enrollVideoRef.current) return;
+    const video = enrollVideoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const descriptor = extractFaceBiometrics(canvas);
+
+    try {
+      await db.students.update(enrollingStudent.id!, { faceDescriptor: descriptor });
+      playBeep();
+      showToast(`✔ Face Biometrics Enrolled for ${enrollingStudent.name}!`);
+    } catch (err) {
+      console.error("Failed to save face descriptor:", err);
+      alert("Error saving face descriptor.");
+    }
+
+    stopFaceEnrollment();
+  };
+
+  const stopFaceEnrollment = () => {
+    if (enrollStream) {
+      enrollStream.getTracks().forEach(t => t.stop());
+      setEnrollStream(null);
+    }
+    setIsEnrolling(false);
+    setEnrollingStudent(null);
   };
 
   const scanFrame = () => {
@@ -423,7 +503,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
 
-            if (bestMatch && highestSim >= 0.72) {
+            if (bestMatch && highestSim >= 0.65) {
               const primaryName = bestMatch.name.split('/')[0].trim();
 
               if (!isCooldownRef.current) {
@@ -431,13 +511,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 playBeep();
                 speakAttendance(primaryName);
                 handleSetStatus(bestMatch.id!, bestMatch.className, 'Present');
-                setScannedFeedback(`✔ Face Recognized: ${primaryName} (${Math.round(highestSim * 100)}%)`);
+                setScannedFeedback(`✔ Face Recognized: ${primaryName} (${Math.round(highestSim * 100)}% Match)`);
 
                 setTimeout(() => {
                   isCooldownRef.current = false;
                   setScannedFeedback(null);
                   facePresenceStartRef.current = null;
-                }, 2500);
+                }, 2200);
               }
             }
           } else {
@@ -854,6 +934,29 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                             </div>
                           )}
 
+                          {/* Face Enrollment Button */}
+                          <button
+                            type="button"
+                            onClick={() => startFaceEnrollment(student)}
+                            style={{
+                              background: student.faceDescriptor ? '#f0fdf4' : '#eff6ff',
+                              border: student.faceDescriptor ? '1px solid #bbf7d0' : '1px solid #bfdbfe',
+                              color: student.faceDescriptor ? '#16a34a' : '#2563eb',
+                              cursor: 'pointer',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700
+                            }}
+                            title={student.faceDescriptor ? "Face Enrolled - Click to re-enroll" : "Register Face Biometrics"}
+                          >
+                            <Camera size={14} />
+                            <span>{student.faceDescriptor ? "Face Set" : "Enroll"}</span>
+                          </button>
+
                           {/* Edit Pen Icon */}
                           <button
                             type="button"
@@ -940,61 +1043,157 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* SCANNER OVERLAY MODAL */}
       {isScanning && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#ffffff', width: '100%', maxWidth: '440px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '440px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.25)' }}>
             
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Attendance Camera Scanner</h3>
-              <button onClick={stopScanner} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}><X size={20} color="#64748b" /></button>
+            {/* Modal Header */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 8px #16a34a' }}></span>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Live Attendance Scanner</h3>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Switch Camera Button */}
+                <button 
+                  onClick={toggleCameraFacing} 
+                  title="Switch Camera (Front/Back)"
+                  style={{ border: '1px solid #cbd5e1', background: '#ffffff', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 700, color: '#2563eb' }}
+                >
+                  <RefreshCw size={14} /> Switch Camera
+                </button>
+
+                <button onClick={stopScanner} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}><X size={20} color="#64748b" /></button>
+              </div>
             </div>
 
-            {/* Tabs */}
-            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
+            {/* Mode Selection Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#ffffff' }}>
               <button 
                 onClick={() => { setScanMode('QR'); setScannedFeedback(null); }}
                 style={{
-                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                  borderBottom: scanMode === 'QR' ? '3px solid #2563eb' : 'none', color: scanMode === 'QR' ? '#2563eb' : '#64748b'
+                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  borderBottom: scanMode === 'QR' ? '3px solid #2563eb' : '3px solid transparent', color: scanMode === 'QR' ? '#2563eb' : '#64748b'
                 }}
               >
-                QR ID Card
+                <QrCode size={16} /> QR ID Card
               </button>
               <button 
                 onClick={() => { setScanMode('Face'); setScannedFeedback(null); }}
                 style={{
-                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                  borderBottom: scanMode === 'Face' ? '3px solid #2563eb' : 'none', color: scanMode === 'Face' ? '#2563eb' : '#64748b'
+                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  borderBottom: scanMode === 'Face' ? '3px solid #2563eb' : '3px solid transparent', color: scanMode === 'Face' ? '#2563eb' : '#64748b'
                 }}
               >
-                Face Biometrics
+                <Sparkles size={16} color="#8b5cf6" /> Face Biometrics
               </button>
             </div>
 
-            {/* Video Viewport */}
+            {/* Video Viewport with Scanning Target Reticle */}
             <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
               <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               
-              <div style={{ position: 'absolute', inset: 0, border: '2px solid rgba(37,99,235,0.4)', pointerEvents: 'none' }} />
+              {/* Target Bounding Frame Overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '65%',
+                height: '65%',
+                border: '2px solid rgba(255, 255, 255, 0.4)',
+                borderRadius: scanMode === 'Face' ? '50%' : '16px',
+                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {/* Laser Scanning Animation */}
+                <div style={{
+                  position: 'absolute',
+                  left: '5%',
+                  right: '5%',
+                  height: '2px',
+                  background: scanMode === 'Face' ? '#8b5cf6' : '#2563eb',
+                  boxShadow: scanMode === 'Face' ? '0 0 12px #8b5cf6' : '0 0 12px #2563eb',
+                  animation: 'laserScanAnim 2s infinite ease-in-out'
+                }} />
+              </div>
+
+              {/* Status Pill Badge */}
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
+                <span>AUTO SCANNING</span>
+              </div>
 
               {scannedFeedback && (
                 <div style={{
                   position: 'absolute', bottom: '16px', left: '16px', right: '16px',
                   background: '#0f172a', color: '#ffffff', padding: '10px 14px', borderRadius: '10px',
-                  fontSize: '0.85rem', fontWeight: 700, textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                  fontSize: '0.85rem', fontWeight: 700, textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  border: '1px solid #334155', animation: 'fade-in 0.2s ease-in'
                 }}>
                   {scannedFeedback}
                 </div>
               )}
             </div>
 
-            <div style={{ padding: '14px', textAlign: 'center' }}>
-              <button onClick={stopScanner} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: '#f1f5f9', color: '#334155', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
-                Done Scanning
+            <div style={{ padding: '14px', textAlign: 'center', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                {scanMode === 'QR' ? 'Point camera at student QR ID Card' : 'Position face inside camera circle'}
+              </span>
+
+              <button onClick={stopScanner} style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#0f172a', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                Done
               </button>
             </div>
 
           </div>
         </div>
       )}
+
+      {/* FACE ENROLLMENT OVERLAY MODAL */}
+      {isEnrolling && enrollingStudent && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '420px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.3)' }}>
+            
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Enroll Face Biometrics</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Candidate: <strong>{enrollingStudent.name}</strong></p>
+              </div>
+              <button onClick={stopFaceEnrollment} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}><X size={20} color="#64748b" /></button>
+            </div>
+
+            {/* Live Camera Box for Enrollment */}
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
+              <video ref={enrollVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60%', height: '70%', borderRadius: '50%', border: '2px dashed #3b82f6', pointerEvents: 'none' }} />
+            </div>
+
+            <div style={{ padding: '16px', display: 'flex', gap: '12px', background: '#ffffff' }}>
+              <button onClick={stopFaceEnrollment} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 700, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={captureFaceBiometrics} style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <Camera size={18} /> Capture & Save
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Laser Scanning Keyframe Animation */}
+      <style>{`
+        @keyframes laserScanAnim {
+          0% { top: 10%; }
+          50% { top: 90%; }
+          100% { top: 10%; }
+        }
+      `}</style>
 
     </div>
   );

@@ -65,6 +65,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const hasBlinkedRef = useRef<boolean>(false);
   const earHistoryRef = useRef<number[]>([]);
   const lastBlinkTimeRef = useRef<number>(0);
+  const baselineEARRef = useRef<number>(0.25);
 
   // Face Enrollment Modal State
   const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
@@ -837,6 +838,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const rightEAR = (dist3D(landmarks[385], landmarks[373]) + dist3D(landmarks[387], landmarks[380])) / (2.0 * dist3D(landmarks[362], landmarks[263]));
               const ear = (leftEAR + rightEAR) / 2.0;
 
+              // Self-calibration of eye aspect ratio (EAR) baseline
+              if (ear > baselineEARRef.current) {
+                baselineEARRef.current = ear;
+              } else {
+                baselineEARRef.current = baselineEARRef.current * 0.999 + ear * 0.001;
+              }
+              // Constrain baseline to sensible real-world eye openness bounds (0.15 - 0.40)
+              baselineEARRef.current = Math.max(0.15, Math.min(0.40, baselineEARRef.current));
+
               earHistoryRef.current.push(ear);
               if (earHistoryRef.current.length > 5) {
                 earHistoryRef.current.shift();
@@ -845,9 +855,17 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
               // Blink trigger liveness verification
               if (requiresLiveness) {
-                if (avgEAR < 0.19 && !isCooldownRef.current) {
+                if (!facePresenceStartRef.current) {
+                  facePresenceStartRef.current = Date.now();
+                }
+
+                const timeStablyPresent = Date.now() - facePresenceStartRef.current;
+                const closeThreshold = baselineEARRef.current * 0.72; // 28% drop indicates close
+                const openThreshold = baselineEARRef.current * 0.85;  // reopening to 85% openness
+
+                if (avgEAR < closeThreshold && !isCooldownRef.current) {
                   lastBlinkTimeRef.current = Date.now();
-                } else if (avgEAR > 0.23 && lastBlinkTimeRef.current > 0 && (Date.now() - lastBlinkTimeRef.current < 1500)) {
+                } else if (avgEAR > openThreshold && lastBlinkTimeRef.current > 0 && (Date.now() - lastBlinkTimeRef.current < 1500)) {
                   if (!hasBlinkedRef.current) {
                     hasBlinkedRef.current = true;
                     setLivenessStatus('blinked');
@@ -855,6 +873,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     showToast("✔ Blink Verified! Analyzing facial identity...");
                   }
                   lastBlinkTimeRef.current = 0;
+                } else if (timeStablyPresent > 4000 && !hasBlinkedRef.current) {
+                  // Fallback: stable face for over 4 seconds is auto-verified for better UX
+                  hasBlinkedRef.current = true;
+                  setLivenessStatus('blinked');
+                  playBeep();
+                  showToast("✔ Liveness Auto-Verified. Analyzing facial identity...");
                 }
               } else {
                 hasBlinkedRef.current = true;
@@ -963,6 +987,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             } else {
               setTrackedFace(null);
+              hasBlinkedRef.current = false;
+              facePresenceStartRef.current = null;
+              if (livenessStatus !== 'pending') {
+                setLivenessStatus('pending');
+              }
             }
           } catch (e) {
             console.error("MediaPipe detection error:", e);

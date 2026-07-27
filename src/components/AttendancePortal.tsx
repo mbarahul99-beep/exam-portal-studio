@@ -82,6 +82,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const capturedCenterRef = useRef<number[] | null>(null);
   const capturedLeftRef = useRef<number[] | null>(null);
   const capturedRightRef = useRef<number[] | null>(null);
+  const lastEnrollLandmarksRef = useRef<any>(null);
 
   // Show temporary toast notification
   const showToast = (msg: string) => {
@@ -215,9 +216,38 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
 
 
-  const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
+  const extractFaceBiometrics = (canvas: HTMLCanvasElement | null, landmarks?: any[]): number[] => {
+    if (landmarks && landmarks.length > 0) {
+      // 3D Geometric Landmark descriptor representing robust face proportions
+      const keyIndices = [10, 152, 234, 454, 33, 133, 159, 145, 263, 362, 386, 374, 70, 107, 300, 336, 4, 1, 197, 2, 64, 294, 61, 291, 13, 14, 172, 397];
+      
+      const p33 = landmarks[33];
+      const p263 = landmarks[263];
+      const scaleDist = Math.sqrt(
+        Math.pow(p33.x - p263.x, 2) +
+        Math.pow(p33.y - p263.y, 2) +
+        Math.pow(p33.z - p263.z, 2)
+      ) || 1;
+
+      const descriptor: number[] = [];
+      for (let i = 0; i < keyIndices.length; i++) {
+        const ptA = landmarks[keyIndices[i]];
+        for (let j = i + 1; j < keyIndices.length; j++) {
+          const ptB = landmarks[keyIndices[j]];
+          const dist = Math.sqrt(
+            Math.pow(ptA.x - ptB.x, 2) +
+            Math.pow(ptA.y - ptB.y, 2) +
+            Math.pow(ptA.z - ptB.z, 2)
+          );
+          descriptor.push(Number((dist / scaleDist).toFixed(6)));
+        }
+      }
+      return descriptor;
+    }
+
+    if (!canvas) return Array(378).fill(0);
     const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(128).fill(0);
+    if (!ctx) return Array(378).fill(0);
 
     const width = canvas.width;
     const height = canvas.height;
@@ -322,6 +352,18 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    
+    // If it is the 3D landmark geometric vector descriptor, compute mean relative difference
+    if (vecA.length === 378) {
+      let sumAbsDiff = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        sumAbsDiff += Math.abs(vecA[i] - vecB[i]);
+      }
+      const meanDiff = sumAbsDiff / vecA.length;
+      return Math.max(0, Math.min(1, 1 - meanDiff * 5.0));
+    }
+
+    // Fallback to legacy HOG-like image cosine similarity
     let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < vecA.length; i++) {
       dot += vecA[i] * vecB[i];
@@ -568,8 +610,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     const video = enrollVideoRef.current;
     
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      const width = video.videoWidth;
-      const height = video.videoHeight;
 
       const landmarkerInstance = faceLandmarkerRef.current;
       if (landmarkerInstance) {
@@ -577,6 +617,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const result = landmarkerInstance.detectForVideo(video, performance.now());
           if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
             const landmarks = result.faceLandmarks[0];
+            lastEnrollLandmarksRef.current = landmarks;
 
             // Estimate horizontal head turn (Yaw ratio)
             const xNose = landmarks[1].x;
@@ -593,50 +634,39 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }));
             setEnrollLandmarks(nodes);
 
-            const faceCanvas = document.createElement('canvas');
-            faceCanvas.width = 160;
-            faceCanvas.height = 160;
-            const faceCtx = faceCanvas.getContext('2d');
-            if (faceCtx) {
-              const size = Math.min(width, height) * 0.65;
-              const x = (width - size) / 2;
-              const y = (height - size) / 2;
-              faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+            const currentStep = enrollStepRef.current;
 
-              const currentStep = enrollStepRef.current;
-
-              if (currentStep === 'center') {
-                if (ratio >= 0.44 && ratio <= 0.56) {
-                  const desc = extractFaceBiometrics(faceCanvas);
-                  capturedCenterRef.current = desc;
-                  playBeep();
-                  enrollStepRef.current = 'left';
-                  setEnrollStep('left');
-                  setEnrollMsg("Step 2: Turn head slightly to the LEFT.");
-                }
-              } else if (currentStep === 'left') {
-                if (ratio < 0.38 || ratio > 0.62) {
-                  const desc = extractFaceBiometrics(faceCanvas);
-                  capturedLeftRef.current = desc;
-                  playBeep();
-                  enrollStepRef.current = 'right';
-                  setEnrollStep('right');
-                  setEnrollMsg("Step 3: Turn head slightly to the RIGHT.");
-                }
-              } else if (currentStep === 'right') {
-                const isOppositeSide = (ratio < 0.38 || ratio > 0.62);
-                if (isOppositeSide) {
-                  const desc = extractFaceBiometrics(faceCanvas);
-                  capturedRightRef.current = desc;
-                  playBeep();
-                  enrollStepRef.current = 'done';
-                  setEnrollStep('done');
-                  setEnrollMsg("🎉 Enrollment Complete! Saving profiles...");
-                  
-                  setTimeout(() => {
-                    saveMultiDirectionDescriptors();
-                  }, 1200);
-                }
+            if (currentStep === 'center') {
+              if (ratio >= 0.44 && ratio <= 0.56) {
+                const desc = extractFaceBiometrics(null, landmarks);
+                capturedCenterRef.current = desc;
+                playBeep();
+                enrollStepRef.current = 'left';
+                setEnrollStep('left');
+                setEnrollMsg("Step 2: Turn head slightly to the LEFT.");
+              }
+            } else if (currentStep === 'left') {
+              if (ratio < 0.38 || ratio > 0.62) {
+                const desc = extractFaceBiometrics(null, landmarks);
+                capturedLeftRef.current = desc;
+                playBeep();
+                enrollStepRef.current = 'right';
+                setEnrollStep('right');
+                setEnrollMsg("Step 3: Turn head slightly to the RIGHT.");
+              }
+            } else if (currentStep === 'right') {
+              const isOppositeSide = (ratio < 0.38 || ratio > 0.62);
+              if (isOppositeSide) {
+                const desc = extractFaceBiometrics(null, landmarks);
+                capturedRightRef.current = desc;
+                playBeep();
+                enrollStepRef.current = 'done';
+                setEnrollStep('done');
+                setEnrollMsg("🎉 Enrollment Complete! Saving profiles...");
+                
+                setTimeout(() => {
+                  saveMultiDirectionDescriptors();
+                }, 1200);
               }
             }
           } else {
@@ -691,7 +721,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const y = (height - size) / 2;
       ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
 
-      const descriptor = extractFaceBiometrics(canvas);
+      const descriptor = extractFaceBiometrics(canvas, lastEnrollLandmarksRef.current);
       try {
         await db.students.update(enrollingStudent.id!, {
           faceDescriptor: descriptor,
@@ -867,7 +897,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   const y = (height - size) / 2;
                   faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
 
-                  const liveDescriptor = extractFaceBiometrics(faceCanvas);
+                  const liveDescriptor = extractFaceBiometrics(null, landmarks);
                   const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
 
                   if (enrolledStudents.length === 0) {

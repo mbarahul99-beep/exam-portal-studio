@@ -103,13 +103,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const dbClasses = (liveDbClasses && liveDbClasses.length > 0) ? liveDbClasses : fallbackClasses;
 
   const attendanceRecords = useLiveQuery(
-    async () => {
-      try {
-        return await db.attendance.where('date').equals(selectedDate).toArray();
-      } catch (err) {
-        return [];
-      }
-    },
+    () => db.attendance.where('date').equals(selectedDate).toArray(),
     [selectedDate]
   ) || [];
 

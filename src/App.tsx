@@ -624,7 +624,7 @@ export default function App() {
   };
 
   const enrollFrameLoop = () => {
-    if (!enrollVideoRef.current || !enrollStream) return;
+    if (!enrollVideoRef.current) return;
     const video = enrollVideoRef.current;
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
       const landmarkerInstance = faceLandmarkerRef.current;
@@ -712,6 +712,9 @@ export default function App() {
     if (enrollStream) {
       enrollStream.getTracks().forEach(track => track.stop());
       setEnrollStream(null);
+    }
+    if (enrollVideoRef.current) {
+      enrollVideoRef.current.srcObject = null;
     }
     setEnrollingFaceStudent(null);
     setEnrollSuccess(false);

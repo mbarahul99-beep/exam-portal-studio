@@ -58,8 +58,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const isScanningRef = useRef<boolean>(false);
 
   // MediaPipe FaceLandmarker states & refs
-  const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(false);
+  const isModelLoadingRef = useRef<boolean>(false);
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const isModelFailedRef = useRef<boolean>(false);
   const [livenessStatus, setLivenessStatus] = useState<'pending' | 'blinked' | 'failed'>('pending');
@@ -334,7 +335,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
 
   const loadFaceLandmarker = async () => {
-    if (faceLandmarker) return faceLandmarker;
+    if (faceLandmarkerRef.current) return faceLandmarkerRef.current;
+    if (isModelLoadingRef.current) return null;
+    
+    isModelLoadingRef.current = true;
     setIsModelLoading(true);
     setModelLoadError(null);
     isModelFailedRef.current = false;
@@ -368,7 +372,9 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         runningMode: "VIDEO",
         numFaces: 1
       });
-      setFaceLandmarker(landmarker);
+      
+      faceLandmarkerRef.current = landmarker;
+      isModelLoadingRef.current = false;
       setIsModelLoading(false);
       return landmarker;
     } catch (err: any) {
@@ -376,6 +382,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const errMsg = err?.message || String(err);
       setModelLoadError(errMsg);
       isModelFailedRef.current = true;
+      isModelLoadingRef.current = false;
       setIsModelLoading(false);
       return null;
     }
@@ -545,9 +552,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const width = video.videoWidth;
       const height = video.videoHeight;
 
-      if (faceLandmarker) {
+      const landmarkerInstance = faceLandmarkerRef.current;
+      if (landmarkerInstance) {
         try {
-          const result = faceLandmarker.detectForVideo(video, performance.now());
+          const result = landmarkerInstance.detectForVideo(video, performance.now());
           if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
             const landmarks = result.faceLandmarks[0];
 
@@ -747,8 +755,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const targetThreshold = bioSettings.faceMatchThreshold;
           const requiresLiveness = bioSettings.enableLivenessCheck;
 
-          let landmarkerInstance = faceLandmarker;
-          if (!landmarkerInstance && !isModelLoading && !isModelFailedRef.current) {
+          let landmarkerInstance = faceLandmarkerRef.current;
+          if (!landmarkerInstance && !isModelLoadingRef.current && !isModelFailedRef.current) {
             landmarkerInstance = await loadFaceLandmarker();
           }
 

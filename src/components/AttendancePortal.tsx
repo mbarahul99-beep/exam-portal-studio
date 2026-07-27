@@ -385,14 +385,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setModelLoadError(null);
     isModelFailedRef.current = false;
 
-    // Permanently remove window.Module to prevent Emscripten namespace conflicts between OpenCV and MediaPipe.
+    // Permanently overwrite window.Module to prevent Emscripten namespace conflicts between OpenCV and MediaPipe.
     // Since OpenCV is already loaded inside window.cv, window.Module is no longer needed by OpenCV.
-    if (typeof window !== 'undefined' && 'Module' in window) {
+    // Overwriting is used instead of delete because global var declarations in third-party scripts are non-configurable.
+    if (typeof window !== 'undefined') {
       try {
-        delete (window as any).Module;
-      } catch (e) {
         (window as any).Module = undefined;
-      }
+      } catch (e) {}
     }
 
     try {

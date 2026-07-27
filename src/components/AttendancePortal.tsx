@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -91,21 +90,34 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
-  // Reactive live queries from IndexedDB
-  const liveDbStudents = useLiveQuery(() => db.students.toArray(), []);
-  const dbStudents = (liveDbStudents && liveDbStudents.length > 0) ? liveDbStudents : students;
+  // Data sources from props with safety fallbacks
+  const dbStudents = (students && students.length > 0) ? students : [];
 
-  const liveDbClasses = useLiveQuery(() => db.classes.toArray(), []);
   const fallbackClasses = (classes && classes.length > 0) 
     ? classes 
     : [{ id: 1, name: 'NEET', state: 'Synced' as const, createdAt: new Date() }];
 
-  const dbClasses = (liveDbClasses && liveDbClasses.length > 0) ? liveDbClasses : fallbackClasses;
+  const dbClasses = fallbackClasses;
 
-  const attendanceRecords = useLiveQuery(
-    () => db.attendance.where('date').equals(selectedDate).toArray(),
-    [selectedDate]
-  ) || [];
+  // Local state for attendance records safely managed via useEffect
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+
+  const loadAttendanceRecords = async () => {
+    try {
+      if (!db.isOpen()) {
+        await db.open();
+      }
+      const records = await db.attendance.where('date').equals(selectedDate).toArray();
+      setAttendanceRecords(records || []);
+    } catch (err) {
+      console.warn("Failed to load attendance records:", err);
+      setAttendanceRecords([]);
+    }
+  };
+
+  React.useEffect(() => {
+    loadAttendanceRecords();
+  }, [selectedDate, selectedClass]);
 
   // Map student ID -> Attendance Record
   const attendanceMap = new Map<number, AttendanceRecord>(
@@ -127,6 +139,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           createdAt: new Date()
         });
       }
+      await loadAttendanceRecords();
     } catch (err: any) {
       console.error("Set attendance failed:", err);
     }

@@ -63,6 +63,39 @@ import {
   Download
 } from 'lucide-react';
 
+class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, tabName: string }, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error(`Error in ${this.props.tabName}:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '40px 20px', textAlign: 'center', background: '#fff', borderRadius: '12px', margin: '20px', border: '1px solid #fee2e2' }}>
+          <h3 style={{ color: '#dc2626', marginBottom: '8px', fontSize: '1.2rem', fontWeight: 700 }}>Unable to render {this.props.tabName}</h3>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>{String(this.state.error?.message || 'An unexpected error occurred.')}</p>
+          <button 
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Reload Component
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
@@ -3319,10 +3352,12 @@ export default function App() {
           )}
 
           {activeTab === 'attendance' && (
-            <AttendancePortal 
-              classes={classes}
-              students={students}
-            />
+            <AppTabErrorBoundary tabName="Attendance Portal">
+              <AttendancePortal 
+                classes={classes}
+                students={students}
+              />
+            </AppTabErrorBoundary>
           )}
 
           {activeTab === 'questions-bank' && (

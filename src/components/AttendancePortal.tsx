@@ -92,11 +92,24 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   };
 
   // Reactive live queries from IndexedDB
-  const dbStudents = useLiveQuery(() => db.students.toArray(), []) || students;
-  const dbClasses = useLiveQuery(() => db.classes.toArray(), []) || classes;
+  const liveDbStudents = useLiveQuery(() => db.students.toArray(), []);
+  const dbStudents = (liveDbStudents && liveDbStudents.length > 0) ? liveDbStudents : students;
+
+  const liveDbClasses = useLiveQuery(() => db.classes.toArray(), []);
+  const fallbackClasses = (classes && classes.length > 0) 
+    ? classes 
+    : [{ id: 1, name: 'NEET', state: 'Synced' as const, createdAt: new Date() }];
+
+  const dbClasses = (liveDbClasses && liveDbClasses.length > 0) ? liveDbClasses : fallbackClasses;
 
   const attendanceRecords = useLiveQuery(
-    () => db.attendance.where('date').equals(selectedDate).toArray(),
+    async () => {
+      try {
+        return await db.attendance.where('date').equals(selectedDate).toArray();
+      } catch (err) {
+        return [];
+      }
+    },
     [selectedDate]
   ) || [];
 

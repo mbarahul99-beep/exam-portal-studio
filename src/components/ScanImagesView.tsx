@@ -179,15 +179,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ctx.stroke();
             });
 
-            // Trigger auto-capture instantly on the first matching frame if not scanning
+            // Increment stable frames counter if not currently scanning
             if (!isScanningRef.current) {
-              isScanningRef.current = true;
-              setIsScanning(true);
+              stableFramesRef.current += 1;
+
+              // Auto-capture after 5 consecutive stable frames (~150ms) to ensure it is a valid sheet outline
+              if (stableFramesRef.current >= 5) {
+                stableFramesRef.current = 0;
+                isScanningRef.current = true;
+                setIsScanning(true);
+                // Call capture asynchronously
+                setTimeout(() => {
+                  captureCameraPhoto();
+                }, 0);
+              }
+            } else {
               stableFramesRef.current = 0;
-              // Call capture asynchronously
-              setTimeout(() => {
-                captureCameraPhoto();
-              }, 0);
             }
 
             setDetectorStatus('ready');
@@ -1284,7 +1291,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               {detectorStatus === 'ready' ? (
                 <>
                   <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#34d399', animation: 'ping 1s infinite' }}></span>
-                  📸 CAPTURING OMR SHEET INSTANTLY...
+                  🟢 OMR SHEET DETECTED - HOLD STILL
                 </>
               ) : (
                 <>

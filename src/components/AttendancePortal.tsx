@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import jsQR from 'jsqr';
+import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 interface AttendancePortalProps {
   classes: ClassEntity[];
@@ -50,11 +51,19 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   
   const [scannedFeedback, setScannedFeedback] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'QR' | 'Face'>('QR');
-  const [trackedFace, setTrackedFace] = useState<{ x: number, y: number, w: number, h: number, name?: string, pct?: number } | null>(null);
+  const [trackedFace, setTrackedFace] = useState<{ x: number, y: number, w: number, h: number, name?: string, pct?: number, landmarks?: { left: number, top: number }[] } | null>(null);
   const requestRef = useRef<number | null>(null);
   const isCooldownRef = useRef<boolean>(false);
   const facePresenceStartRef = useRef<number | null>(null);
   const isScanningRef = useRef<boolean>(false);
+
+  // MediaPipe FaceLandmarker states & refs
+  const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [livenessStatus, setLivenessStatus] = useState<'pending' | 'blinked' | 'failed'>('pending');
+  const hasBlinkedRef = useRef<boolean>(false);
+  const earHistoryRef = useRef<number[]>([]);
+  const lastBlinkTimeRef = useRef<number>(0);
 
   // Face Enrollment Modal State
   const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
@@ -355,12 +364,40 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
 
 
+  const loadFaceLandmarker = async () => {
+    if (faceLandmarker) return faceLandmarker;
+    setIsModelLoading(true);
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+      );
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU"
+        },
+        outputFaceBlendshapes: false,
+        runningMode: "VIDEO",
+        numFaces: 1
+      });
+      setFaceLandmarker(landmarker);
+      setIsModelLoading(false);
+      return landmarker;
+    } catch (err) {
+      console.error("Failed to load MediaPipe FaceLandmarker:", err);
+      setIsModelLoading(false);
+      return null;
+    }
+  };
+
   const startScanner = async () => {
     setIsScanning(true);
     isScanningRef.current = true;
     setScannedFeedback(null);
     setTrackedFace(null);
     isCooldownRef.current = false;
+    hasBlinkedRef.current = false;
+    setLivenessStatus('pending');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacingMode } });
@@ -373,6 +410,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const activeTrack = stream.getVideoTracks()[0];
       const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
       setSelectedDeviceId(activeDeviceId);
+
+      if (scanMode === 'Face') {
+        await loadFaceLandmarker();
+      }
 
       setTimeout(() => {
         if (videoRef.current) {
@@ -429,10 +470,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     isScanningRef.current = true;
     setScannedFeedback(null);
     setTrackedFace(null);
+    hasBlinkedRef.current = false;
+    setLivenessStatus('pending');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
       setScanStream(stream);
+      if (scanMode === 'Face') {
+        await loadFaceLandmarker();
+      }
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -519,7 +565,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setEnrollMsg(null);
   };
 
-  const scanFrame = () => {
+  const scanFrame = async () => {
     if (!isScanningRef.current) return;
     if (!videoRef.current) {
       requestRef.current = requestAnimationFrame(scanFrame);
@@ -572,99 +618,167 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
           }
         } else if (scanMode === 'Face') {
-          const jitterX = Math.round(Math.random() * 4 - 2);
-          const jitterY = Math.round(Math.random() * 4 - 2);
-          const trackingBox = {
-            x: Math.round(width * 0.32) + jitterX,
-            y: Math.round(height * 0.18) + jitterY,
-            w: Math.round(width * 0.36),
-            h: Math.round(height * 0.58)
-          };
+          let landmarkerInstance = faceLandmarker;
+          if (!landmarkerInstance && !isModelLoading) {
+            landmarkerInstance = await loadFaceLandmarker();
+          }
 
-          if (isCooldownRef.current) {
+          if (!landmarkerInstance) {
+            setTrackedFace({
+              x: Math.round(width * 0.32),
+              y: Math.round(height * 0.18),
+              w: Math.round(width * 0.36),
+              h: Math.round(height * 0.58),
+              name: "⏳ Loading Face biometrics engine...",
+              pct: undefined
+            });
             requestRef.current = requestAnimationFrame(scanFrame);
             return;
           }
 
-          const faceCanvas = document.createElement('canvas');
-          faceCanvas.width = 160;
-          faceCanvas.height = 160;
-          const faceCtx = faceCanvas.getContext('2d');
-          if (faceCtx) {
-            const size = Math.min(width, height) * 0.65;
-            const x = (width - size) / 2;
-            const y = (height - size) / 2;
-            faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+          try {
+            const result = landmarkerInstance.detectForVideo(video, performance.now());
+            if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+              const landmarks = result.faceLandmarks[0];
 
-            // Step 1: Detect if a real human face is in the scanner frame
-            if (!isHumanFacePresent(faceCanvas)) {
-              setTrackedFace(null);
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
+              // Calculate Bounding Box around face
+              let minX = 1, maxX = 0, minY = 1, maxY = 0;
+              for (const pt of landmarks) {
+                if (pt.x < minX) minX = pt.x;
+                if (pt.x > maxX) maxX = pt.x;
+                if (pt.y < minY) minY = pt.y;
+                if (pt.y > maxY) maxY = pt.y;
+              }
+              const faceBox = {
+                x: Math.round(minX * width),
+                y: Math.round(minY * height),
+                w: Math.round((maxX - minX) * width),
+                h: Math.round((maxY - minY) * height)
+              };
 
-            const liveDescriptor = extractFaceBiometrics(faceCanvas);
-            const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
+              // EAR calculations for Left Eye (points 33, 160, 158, 133, 153, 144) and Right Eye (points 362, 385, 387, 263, 380, 373)
+              const dist3D = (a: any, b: any) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
+              const leftEAR = (dist3D(landmarks[160], landmarks[153]) + dist3D(landmarks[158], landmarks[144])) / (2.0 * dist3D(landmarks[33], landmarks[133]));
+              const rightEAR = (dist3D(landmarks[385], landmarks[373]) + dist3D(landmarks[387], landmarks[380])) / (2.0 * dist3D(landmarks[362], landmarks[263]));
+              const ear = (leftEAR + rightEAR) / 2.0;
 
-            if (enrolledStudents.length === 0) {
-              setTrackedFace({
-                ...trackingBox,
-                name: "⚠️ No Enrolled Faces (Click 'Enroll' next to student)",
-                pct: undefined
-              });
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
+              earHistoryRef.current.push(ear);
+              if (earHistoryRef.current.length > 5) {
+                earHistoryRef.current.shift();
+              }
+              const avgEAR = earHistoryRef.current.reduce((a, b) => a + b, 0) / earHistoryRef.current.length;
 
-            // Calculate similarity scores for ALL enrolled candidates
-            const matchScores: { student: Student, similarity: number }[] = [];
-            for (const student of enrolledStudents) {
-              const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
-              matchScores.push({ student, similarity: sim });
-            }
+              // Blink trigger liveness verification
+              if (avgEAR < 0.19 && !isCooldownRef.current) {
+                lastBlinkTimeRef.current = Date.now();
+              } else if (avgEAR > 0.23 && lastBlinkTimeRef.current > 0 && (Date.now() - lastBlinkTimeRef.current < 1500)) {
+                if (!hasBlinkedRef.current) {
+                  hasBlinkedRef.current = true;
+                  setLivenessStatus('blinked');
+                  playBeep();
+                  showToast("✔ Blink Verified! Analyzing facial identity...");
+                }
+                lastBlinkTimeRef.current = 0;
+              }
 
-            matchScores.sort((a, b) => b.similarity - a.similarity);
-
-            const topMatch = matchScores[0];
-            const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
-
-            const topScore = topMatch.similarity;
-            const secondScore = secondMatch ? secondMatch.similarity : 0;
-            const margin = topScore - secondScore;
-
-            if (topMatch && topScore >= 0.70 && (matchScores.length === 1 || margin >= 0.04)) {
-              const matchPct = Math.round(topScore * 100);
-              const primaryName = topMatch.student.name.split('/')[0].trim();
-
-              isCooldownRef.current = true;
-              playBeep();
-              speakAttendance(primaryName);
-              handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
-              setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
-              setTrackedFace({
-                ...trackingBox,
-                name: `👤 ${primaryName} (${matchPct}% Match)`,
-                pct: matchPct
+              // Selected facial feature mesh nodes to project in UI
+              const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
+              const nodes = keyIndices.map(idx => {
+                const pt = landmarks[idx];
+                return {
+                  left: pt.x * 100,
+                  top: pt.y * 100
+                };
               });
 
-              setTimeout(() => {
-                isCooldownRef.current = false;
-                setScannedFeedback(null);
-                setTrackedFace(null);
-              }, 2200);
-            } else if (topMatch && topScore >= 0.60 && margin < 0.04 && matchScores.length > 1) {
-              setTrackedFace({
-                ...trackingBox,
-                name: "👤 Face Ambiguous - Position Closer",
-                pct: undefined
-              });
+              if (hasBlinkedRef.current) {
+                if (isCooldownRef.current) {
+                  requestRef.current = requestAnimationFrame(scanFrame);
+                  return;
+                }
+
+                const faceCanvas = document.createElement('canvas');
+                faceCanvas.width = 160;
+                faceCanvas.height = 160;
+                const faceCtx = faceCanvas.getContext('2d');
+                if (faceCtx) {
+                  const size = Math.min(width, height) * 0.65;
+                  const x = (width - size) / 2;
+                  const y = (height - size) / 2;
+                  faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+                  const liveDescriptor = extractFaceBiometrics(faceCanvas);
+                  const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
+
+                  if (enrolledStudents.length === 0) {
+                    setTrackedFace({
+                      ...faceBox,
+                      name: "⚠️ No Enrolled Faces (Click 'Enroll' next to student)",
+                      pct: undefined,
+                      landmarks: nodes
+                    });
+                    requestRef.current = requestAnimationFrame(scanFrame);
+                    return;
+                  }
+
+                  const matchScores: { student: Student, similarity: number }[] = [];
+                  for (const student of enrolledStudents) {
+                    const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
+                    matchScores.push({ student, similarity: sim });
+                  }
+
+                  matchScores.sort((a, b) => b.similarity - a.similarity);
+                  const topMatch = matchScores[0];
+                  const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
+                  const topScore = topMatch.similarity;
+                  const secondScore = secondMatch ? secondMatch.similarity : 0;
+                  const margin = topScore - secondScore;
+
+                  if (topMatch && topScore >= 0.70 && (matchScores.length === 1 || margin >= 0.04)) {
+                    const matchPct = Math.round(topScore * 100);
+                    const primaryName = topMatch.student.name.split('/')[0].trim();
+
+                    isCooldownRef.current = true;
+                    playBeep();
+                    speakAttendance(primaryName);
+                    handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
+                    setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
+                    setTrackedFace({
+                      ...faceBox,
+                      name: `👤 ${primaryName} (${matchPct}% Match)`,
+                      pct: matchPct,
+                      landmarks: nodes
+                    });
+
+                    setTimeout(() => {
+                      isCooldownRef.current = false;
+                      hasBlinkedRef.current = false;
+                      setLivenessStatus('pending');
+                      setScannedFeedback(null);
+                      setTrackedFace(null);
+                    }, 3000);
+                  } else {
+                    setTrackedFace({
+                      ...faceBox,
+                      name: "👤 Unregistered biometric face",
+                      pct: undefined,
+                      landmarks: nodes
+                    });
+                  }
+                }
+              } else {
+                setTrackedFace({
+                  ...faceBox,
+                  name: "🔒 Liveness Check: PLEASE BLINK YOUR EYES",
+                  pct: undefined,
+                  landmarks: nodes
+                });
+              }
             } else {
-              setTrackedFace({
-                ...trackingBox,
-                name: "👤 Unregistered Face",
-                pct: undefined
-              });
+              setTrackedFace(null);
             }
+          } catch (e) {
+            console.error("MediaPipe detection error:", e);
           }
         }
       }
@@ -689,6 +803,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setIsScanning(false);
     setScannedFeedback(null);
     setTrackedFace(null);
+    hasBlinkedRef.current = false;
   };
 
   // Helper to format date display (DD-MM-YYYY)
@@ -1223,7 +1338,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 <QrCode size={16} /> QR ID Card
               </button>
               <button 
-                onClick={() => { setScanMode('Face'); setScannedFeedback(null); }}
+                onClick={async () => { 
+                  setScanMode('Face'); 
+                  setScannedFeedback(null); 
+                  hasBlinkedRef.current = false;
+                  setLivenessStatus('pending');
+                  await loadFaceLandmarker();
+                }}
                 style={{
                   flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -1238,6 +1359,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: '360px', background: '#000000', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
               
+              {/* MediaPipe Model Loading Overlay */}
+              {scanMode === 'Face' && isModelLoading && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.9)', zIndex: 99, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '20px' }}>
+                  <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.2)', borderTop: '4px solid #8b5cf6', borderRadius: '50%', animation: 'laserScanAnim 1.2s linear infinite' }}></div>
+                  <span style={{ color: '#ffffff', fontSize: '0.92rem', fontWeight: 800, textAlign: 'center' }}>Initializing Face Biometrics Engine...</span>
+                  <span style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>First time download may take a few seconds. Offline caching enabled.</span>
+                </div>
+              )}
+
               {/* QR Mode Scanning reticle */}
               {scanMode === 'QR' && (
                 <div className="scanning-box" style={{
@@ -1303,9 +1433,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                       const fw = widthPct;
                       const fh = heightPct;
 
-                      const isMatched = trackedFace.name?.includes('Match') || trackedFace.name?.includes('Checked');
+                      const isMatched = trackedFace.name?.includes('Match') || trackedFace.name?.includes('Recognized') || trackedFace.name?.includes('Checked');
+                      const isLivenessLocked = trackedFace.name?.includes('Liveness Check') || trackedFace.name?.includes('BLINKYOUR');
 
-                      const nodes = [
+                      const nodes = trackedFace.landmarks || [
                         { left: fx + fw * 0.25, top: fy + fh * 0.3 },
                         { left: fx + fw * 0.75, top: fy + fh * 0.3 },
                         { left: fx + fw * 0.5, top: fy + fh * 0.5 },
@@ -1321,13 +1452,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           {/* Live Biometric Bounding Box */}
                           <div style={{
                             position: 'absolute',
-                            border: isMatched ? '3px solid #16a34a' : '2px dashed #f59e0b',
+                            border: isMatched ? '3px solid #16a34a' : (isLivenessLocked ? '2px dashed #3b82f6' : '2px dashed #f59e0b'),
                             borderRadius: '12px',
                             left: `${leftPct}%`,
                             top: `${topPct}%`,
                             width: `${widthPct}%`,
                             height: `${heightPct}%`,
-                            boxShadow: isMatched ? '0 0 20px rgba(22,163,74,0.5)' : '0 0 10px rgba(245,158,11,0.3)',
+                            boxShadow: isMatched ? '0 0 20px rgba(22,163,74,0.5)' : (isLivenessLocked ? '0 0 10px rgba(59,130,246,0.3)' : '0 0 10px rgba(245,158,11,0.3)'),
                             boxSizing: 'border-box',
                             transition: 'all 0.1s linear'
                           }}>
@@ -1336,7 +1467,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               position: 'absolute',
                               top: '-32px',
                               left: '0',
-                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              background: isMatched ? '#16a34a' : (isLivenessLocked ? '#2563eb' : '#f59e0b'),
                               color: '#ffffff',
                               padding: '4px 10px',
                               borderRadius: '6px',
@@ -1349,7 +1480,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                             </div>
                           </div>
 
-                          {/* 8 Landmark mesh nodes */}
+                          {/* Landmark mesh nodes */}
                           {nodes.map((n, i) => (
                             <div key={`dot-${i}`} style={{
                               position: 'absolute',
@@ -1357,10 +1488,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                               top: `${n.top}%`,
                               width: '6px',
                               height: '6px',
-                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              background: isMatched ? '#16a34a' : (isLivenessLocked ? '#3b82f6' : '#f59e0b'),
                               borderRadius: '50%',
-                              boxShadow: isMatched ? '0 0 6px #16a34a' : '0 0 4px #f59e0b',
-                              transition: 'all 0.1s linear'
+                              boxShadow: isMatched ? '0 0 6px #16a34a' : (isLivenessLocked ? '0 0 4px #3b82f6' : '0 0 4px #f59e0b'),
+                              transition: 'all 0.05s linear'
                             }} />
                           ))}
                         </>
@@ -1372,8 +1503,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
               {/* Status Pill Badge */}
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', zIndex: 10 }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
-                <span>AUTO SCANNING</span>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: scanMode === 'Face' && livenessStatus === 'pending' ? '#3b82f6' : '#22c55e' }}></span>
+                <span>{scanMode === 'QR' ? 'AUTO SCANNING' : (livenessStatus === 'pending' ? '🔒 LIVENESS VERIFICATION PENDING' : '🔓 LIVENESS VERIFIED')}</span>
               </div>
 
               {scannedFeedback && (

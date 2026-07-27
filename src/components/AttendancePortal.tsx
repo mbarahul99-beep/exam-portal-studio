@@ -1065,31 +1065,30 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           <div 
             onClick={startScanner}
             style={{
-              background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
-              border: '1px solid #bfdbfe',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
               borderRadius: '12px',
               padding: '12px 14px',
               marginBottom: '20px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              boxShadow: '0 2px 8px rgba(37,99,235,0.04)',
+              gap: '14px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Camera size={18} color="#2563eb" />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e3a8a' }}>
-                  Live Scanner
-                </h3>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                  QR & Face Check-In
-                </span>
-              </div>
+            <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Camera size={24} color="#1d4ed8" />
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                Live Attendance Scanner
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.2 }}>
+                Instant QR ID Card & Facial Recognition Check-In
+              </p>
             </div>
 
             <span style={{
@@ -1098,19 +1097,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               padding: '6px 12px',
               borderRadius: '8px',
               fontWeight: 700,
-              fontSize: '0.75rem',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+              fontSize: '0.78rem',
+              boxShadow: '0 2px 4px rgba(37,99,235,0.2)',
+              flexShrink: 0
             }}>
-              Scan
+              Start Scan
             </span>
           </div>
 
           {/* CLASSES LIST */}
-          <h3 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#0f172a', marginBottom: '10px' }}>
-            Classes ({dbClasses.length})
+          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>
+            Select Class ({dbClasses.length})
           </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {dbClasses.map((cls) => {
               const clsStudents = dbStudents.filter(s => s.className === cls.name);
               const clsPresent = clsStudents.filter(s => {
@@ -1128,35 +1128,33 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
                     borderRadius: '12px',
-                    padding: '10px 14px',
+                    padding: '12px 14px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    gap: '14px',
                     cursor: 'pointer',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.01)',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
                     transition: 'all 0.2s ease'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem' }}>
-                      {cls.name.charAt(0).toUpperCase()}
-                    </div>
+                  <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.25rem', flexShrink: 0 }}>
+                    {cls.name.charAt(0).toUpperCase()}
+                  </div>
 
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{cls.name}</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#64748b', marginTop: '1px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Users size={11} /> {clsStudents.length}</span>
-                        <span>•</span>
-                        <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
-                      </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{cls.name}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {clsStudents.length} Students</span>
+                      <span style={{ color: '#cbd5e1' }}>|</span>
+                      <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#94a3b8') }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#94a3b8') }}>
                       {pct}%
                     </span>
-                    <ChevronRight size={16} color="#cbd5e1" />
+                    <ChevronRight size={18} color="#94a3b8" />
                   </div>
                 </div>
               );

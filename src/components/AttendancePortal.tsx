@@ -343,15 +343,26 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         ? window.location.pathname 
         : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
 
-      // Keep it relative to the current origin to prevent CORS or proxy resolution issues
-      const wasmPath = `${baseUrl}wasm/`.replace(/\/+/g, '/');
-      const modelPath = `${baseUrl}face_landmarker.task`.replace(/\/+/g, '/');
+      // Construct clean absolute same-origin URL paths to ensure they resolve reliably
+      const origin = window.location.origin.replace(/\/+$/, '');
+      const cleanBase = baseUrl.replace(/^\/+|\/+$/g, '');
+      
+      const wasmPath = cleanBase 
+        ? `${origin}/${cleanBase}/wasm/` 
+        : `${origin}/wasm/`;
 
+      const modelPath = cleanBase 
+        ? `${origin}/${cleanBase}/face_landmarker.task` 
+        : `${origin}/face_landmarker.task`;
+
+      console.log("Loading FilesetResolver from wasmPath:", wasmPath);
       const vision = await FilesetResolver.forVisionTasks(wasmPath);
+
+      console.log("Loading FaceLandmarker with modelPath:", modelPath);
       const landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: modelPath,
-          delegate: "GPU"
+          delegate: "CPU" // CPU is stable and avoids WebGL shader shader compilation locks / tab freezes
         },
         outputFaceBlendshapes: false,
         runningMode: "VIDEO",

@@ -60,6 +60,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   // MediaPipe FaceLandmarker states & refs
   const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const isModelFailedRef = useRef<boolean>(false);
   const [livenessStatus, setLivenessStatus] = useState<'pending' | 'blinked' | 'failed'>('pending');
   const hasBlinkedRef = useRef<boolean>(false);
   const earHistoryRef = useRef<number[]>([]);
@@ -334,13 +336,16 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const loadFaceLandmarker = async () => {
     if (faceLandmarker) return faceLandmarker;
     setIsModelLoading(true);
+    setModelLoadError(null);
+    isModelFailedRef.current = false;
     try {
       const baseUrl = window.location.pathname.endsWith('/') 
         ? window.location.pathname 
         : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
 
-      const wasmPath = `${window.location.origin}${baseUrl}wasm`;
-      const modelPath = `${window.location.origin}${baseUrl}face_landmarker.task`;
+      // Keep it relative to the current origin to prevent CORS or proxy resolution issues
+      const wasmPath = `${baseUrl}wasm/`.replace(/\/+/g, '/');
+      const modelPath = `${baseUrl}face_landmarker.task`.replace(/\/+/g, '/');
 
       const vision = await FilesetResolver.forVisionTasks(wasmPath);
       const landmarker = await FaceLandmarker.createFromOptions(vision, {
@@ -355,8 +360,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       setFaceLandmarker(landmarker);
       setIsModelLoading(false);
       return landmarker;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load MediaPipe FaceLandmarker:", err);
+      const errMsg = err?.message || String(err);
+      setModelLoadError(errMsg);
+      isModelFailedRef.current = true;
       setIsModelLoading(false);
       return null;
     }
@@ -729,7 +737,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const requiresLiveness = bioSettings.enableLivenessCheck;
 
           let landmarkerInstance = faceLandmarker;
-          if (!landmarkerInstance && !isModelLoading) {
+          if (!landmarkerInstance && !isModelLoading && !isModelFailedRef.current) {
             landmarkerInstance = await loadFaceLandmarker();
           }
 
@@ -739,7 +747,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               y: Math.round(height * 0.18),
               w: Math.round(width * 0.36),
               h: Math.round(height * 0.58),
-              name: "⏳ Loading Face biometrics engine...",
+              name: isModelFailedRef.current ? "⚠️ Biometrics Engine Load Failed" : "⏳ Loading Face biometrics engine...",
               pct: undefined
             });
             requestRef.current = requestAnimationFrame(scanFrame);
@@ -1482,11 +1490,32 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
               
               {/* MediaPipe Model Loading Overlay */}
-              {scanMode === 'Face' && isModelLoading && (
+              {scanMode === 'Face' && (isModelLoading || modelLoadError) && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.9)', zIndex: 99, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '20px' }}>
-                  <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.2)', borderTop: '4px solid #8b5cf6', borderRadius: '50%', animation: 'laserScanAnim 1.2s linear infinite' }}></div>
-                  <span style={{ color: '#ffffff', fontSize: '0.92rem', fontWeight: 800, textAlign: 'center' }}>Initializing Face Biometrics Engine...</span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>First time download may take a few seconds. Offline caching enabled.</span>
+                  {modelLoadError ? (
+                    <>
+                      <span style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}>⚠️ Initialization Failed</span>
+                      <span style={{ color: '#cbd5e1', fontSize: '0.82rem', textAlign: 'center', maxWidth: '300px', lineHeight: '1.4' }}>
+                        {modelLoadError}
+                      </span>
+                      <button 
+                        onClick={async () => {
+                          setModelLoadError(null);
+                          isModelFailedRef.current = false;
+                          await loadFaceLandmarker();
+                        }}
+                        style={{ padding: '8px 16px', borderRadius: '8px', background: '#8b5cf6', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', marginTop: '10px' }}
+                      >
+                        Retry Load
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.2)', borderTop: '4px solid #8b5cf6', borderRadius: '50%', animation: 'laserScanAnim 1.2s linear infinite' }}></div>
+                      <span style={{ color: '#ffffff', fontSize: '0.92rem', fontWeight: 800, textAlign: 'center' }}>Initializing Face Biometrics Engine...</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>First-time local model loading may take a few seconds.</span>
+                    </>
+                  )}
                 </div>
               )}
 

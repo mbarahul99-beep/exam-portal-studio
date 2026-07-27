@@ -43,7 +43,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
       return String(qNum).padStart(2, '0');
     }
     const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
-    if (!sec || !sec.subjectName || sec.subjectName.toLowerCase() === 'subject' || sec.subjectName.toLowerCase() === 'general') {
+    if (
+      !sec || 
+      !sec.subjectName || 
+      sec.subjectName.toUpperCase().includes('SUB') || 
+      sec.subjectName.toLowerCase() === 'subject' || 
+      sec.subjectName.toLowerCase() === 'general'
+    ) {
       return String(qNum).padStart(2, '0');
     }
     const subCode = sec.subjectName.substring(0, 3).toUpperCase();
@@ -169,11 +175,11 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       {/* PRINTABLE A4 PAGE CONTAINER */}
       <div className="omr-print-page">
-        {/* 4 Corner Alignment Anchors - Centered 8.4mm inside page borders for crisp, non-cut display */}
-        <div className="omr-anchor anchor-tl" style={{ left: toX(40), top: toY(40) }} />
-        <div className="omr-anchor anchor-tr" style={{ left: toX(960), top: toY(40) }} />
-        <div className="omr-anchor anchor-bl" style={{ left: toX(40), top: toY(1374) }} />
-        <div className="omr-anchor anchor-br" style={{ left: toX(960), top: toY(1374) }} />
+        {/* 4 Corner Alignment Anchors - Positioned at 11.55mm / 198.45mm to guarantee zero left/right clipping */}
+        <div className="omr-anchor anchor-tl" style={{ left: toX(55), top: toY(45) }} />
+        <div className="omr-anchor anchor-tr" style={{ left: toX(945), top: toY(45) }} />
+        <div className="omr-anchor anchor-bl" style={{ left: toX(55), top: toY(1365) }} />
+        <div className="omr-anchor anchor-br" style={{ left: toX(945), top: toY(1365) }} />
 
         {/* Outer Border Frame */}
         <div className="sheet-border-frame" 
@@ -181,17 +187,17 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                left: toX(70),
                top: toY(70),
                width: toX(860),
-               height: toY(1300)
+               height: toY(1275)
              }} 
         />
 
         {/* Institute Name */}
-        <div style={{ position: 'absolute', top: toY(30), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
+        <div style={{ position: 'absolute', top: toY(28), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
           <h1 className="omr-institute-title">{instituteName.toUpperCase()}</h1>
         </div>
 
         {/* Header section inside the margin frame */}
-        <div className="omr-header-section" style={{ top: toY(78) }}>
+        <div className="omr-header-section" style={{ top: toY(76) }}>
           <div className="omr-exam-title">{examTitle.toUpperCase()}</div>
           <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
         </div>
@@ -200,7 +206,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70),
-               top: toY(150),
+               top: toY(146),
                width: toX(rollNoWidth),
                height: toY(260)
              }}
@@ -211,7 +217,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70 + rollNoWidth),
-               top: toY(150),
+               top: toY(146),
                width: toX(200),
                height: toY(260)
              }}
@@ -222,7 +228,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70 + rollNoWidth + 200),
-               top: toY(150),
+               top: toY(146),
                width: toX(660 - rollNoWidth),
                height: toY(260)
              }}
@@ -324,7 +330,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         {(() => {
           const bookletShift = rollNoWidth - 275;
           return (
-            <div className="candidate-info-table" style={{ left: toX(575 + bookletShift), top: toY(250), width: toX(335 - bookletShift) }}>
+            <div className="candidate-info-table" style={{ left: toX(575 + bookletShift), top: toY(246), width: toX(335 - bookletShift) }}>
               <div className="info-row">
                 <span className="info-label">CANDIDATE'S NAME (IN CAPITAL LETTERS)</span>
                 <div className="info-line" />
@@ -414,13 +420,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* Footer boxes: Compact Student & Invigilator Signatures (Height decreased to 11mm) */}
+        {/* Footer boxes: Compact Student & Invigilator Signatures (Height 10mm) */}
         <div className="sheet-footer-section" 
              style={{
                left: toX(70),
-               bottom: '14mm',
+               bottom: '10mm',
                width: toX(860),
-               height: '11mm',
+               height: '10mm',
                display: 'grid',
                gridTemplateColumns: '1fr 1fr',
                gap: '20px'
@@ -435,7 +441,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         </div>
 
         {/* Bottom disclaimer */}
-        <div className="bottom-disclaimer" style={{ bottom: '8mm' }}>
+        <div className="bottom-disclaimer" style={{ bottom: '4.5mm' }}>
           ★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★
         </div>
 
@@ -660,12 +666,34 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           @media print {
+            @page {
+              size: A4 portrait;
+              margin: 4mm 2mm;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              height: 100% !important;
+              overflow: hidden !important;
+            }
             .no-print {
               display: none !important;
             }
-            .omr-print-page {
+            .omr-print-wrapper {
+              padding: 0 !important;
               margin: 0 !important;
+            }
+            .omr-print-page {
+              margin: 0 auto !important;
               box-shadow: none !important;
+              border: none !important;
+              height: 272mm !important;
+              transform: scale(0.95);
+              transform-origin: top center;
+              page-break-before: avoid !important;
+              page-break-after: avoid !important;
+              page-break-inside: avoid !important;
             }
           }
         `}</style>

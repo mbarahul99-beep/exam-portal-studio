@@ -15,10 +15,10 @@ export const OMR_CONFIG = {
   
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 30, y: 30 },
-    tr: { x: 970, y: 30 },
-    bl: { x: 30, y: 1384 },
-    br: { x: 970, y: 1384 }
+    tl: { x: 55, y: 45 },
+    tr: { x: 945, y: 45 },
+    bl: { x: 55, y: 1365 },
+    br: { x: 945, y: 1365 }
   },
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)

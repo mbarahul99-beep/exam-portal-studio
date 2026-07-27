@@ -777,11 +777,29 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               <Camera size={18} /> Live Camera Scanner
             </button>
 
-            <label className={`upload-drop-zone ${isClassLimitReached ? 'disabled' : ''}`} style={{ margin: 0, padding: '14px', borderRadius: '12px', cursor: isClassLimitReached ? 'not-allowed' : 'pointer' }}>
-              <Upload size={20} className="mb-1" />
-              <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
-                {isClassLimitReached ? 'Class Limit Reached' : 'Choose OMR Image Files'}
-              </span>
+            {/* Upload Files Button (Prominent & Clearly Visible Button Card) */}
+            <label
+              style={{
+                width: '100%',
+                margin: 0,
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: isClassLimitReached ? '#f1f5f9' : '#f0fdf4',
+                border: isClassLimitReached ? '1.5px dashed #cbd5e1' : '1.5px dashed #16a34a',
+                color: isClassLimitReached ? '#94a3b8' : '#15803d',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 6px rgba(22,163,74,0.08)'
+              }}
+            >
+              <Upload size={18} />
+              <span>{isClassLimitReached ? 'Class Limit Reached' : 'Choose OMR Image Files'}</span>
               <input 
                 type="file" 
                 multiple 

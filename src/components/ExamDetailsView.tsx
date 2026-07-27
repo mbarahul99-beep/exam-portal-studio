@@ -735,32 +735,35 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <Check size={14} />
                       </div>
 
-                      {row.omrImageUrl && (
-                        <button 
-                          type="button"
-                          title="View Scanned OMR Sheet Image"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingScannedOmr({ studentName: row.studentName, omrUrl: row.omrImageUrl! });
-                          }}
-                          style={{
-                            background: '#eff6ff',
-                            color: '#2563eb',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: '16px',
-                            padding: '4px 10px',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            cursor: 'pointer',
-                            marginLeft: '8px'
-                          }}
-                        >
-                          <Eye size={13} /> Sheet
-                        </button>
-                      )}
+                      <button 
+                        type="button"
+                        title="View Scanned OMR Sheet"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (row.omrImageUrl) {
+                            setViewingScannedOmr({ studentName: row.studentName, omrUrl: row.omrImageUrl });
+                          } else {
+                            onViewAnalysis(row);
+                          }
+                        }}
+                        style={{
+                          background: '#eff6ff',
+                          color: '#2563eb',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '16px',
+                          padding: '4px 10px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: 'pointer',
+                          marginLeft: 'auto',
+                          flexShrink: 0
+                        }}
+                      >
+                        <Eye size={14} /> Sheet
+                      </button>
 
                       <button 
                         type="button"

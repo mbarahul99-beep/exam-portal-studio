@@ -342,6 +342,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setIsModelLoading(true);
     setModelLoadError(null);
     isModelFailedRef.current = false;
+
+    // Temporarily backup and remove window.Module to prevent Emscripten namespace conflicts with OpenCV
+    let tempModule: any = undefined;
+    let hasTempModule = false;
+    if (typeof window !== 'undefined' && 'Module' in window) {
+      tempModule = (window as any).Module;
+      hasTempModule = true;
+      try {
+        delete (window as any).Module;
+      } catch (e) {
+        (window as any).Module = undefined;
+      }
+    }
+
     try {
       const baseUrl = window.location.pathname.endsWith('/') 
         ? window.location.pathname 
@@ -385,6 +399,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       isModelLoadingRef.current = false;
       setIsModelLoading(false);
       return null;
+    } finally {
+      // Restore the window.Module namespace for OpenCV
+      if (hasTempModule && typeof window !== 'undefined') {
+        (window as any).Module = tempModule;
+      }
     }
   };
 

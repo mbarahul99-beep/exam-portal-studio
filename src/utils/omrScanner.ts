@@ -128,8 +128,10 @@ export function getDynamicOMRQuestionLayout(
     yStart = minY + (maxAvailableHeight - totalGridHeight) / 2;
   }
 
-  // 4. Generate column positions horizontally across 1000px page
-  const availWidth = 860;
+  // 4. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
+  const frameLeft = 70;
+  const frameRight = 930;
+  const availWidth = frameRight - frameLeft; // 860px
   const colWidth = availWidth / numCols;
   const columns: OMRColumnConfig[] = [];
 
@@ -138,10 +140,11 @@ export function getDynamicOMRQuestionLayout(
     const qEnd = Math.min(total, (c + 1) * rowsPerCol);
     if (qStart > total) break;
 
-    const colXStart = 70 + c * colWidth;
+    // Shift whole questions area right to balance left/right blank space evenly inside frame
+    const colXStart = frameLeft + 12 + c * colWidth;
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
-    const optStart = colXStart + (numCols <= 3 ? 55 : 38);
-    const optStep = numCols <= 3 ? 25 : 22;
+    const optStart = colXStart + (numCols <= 3 ? 62 : 44);
+    const optStep = numCols <= 3 ? 28 : 24;
 
     columns.push({
       qStart,

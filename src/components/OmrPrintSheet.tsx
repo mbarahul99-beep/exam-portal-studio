@@ -202,7 +202,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
         </div>
 
-        {/* Decorative Border Cards */}
+        {/* Decorative Border Cards (Clean English-Only Headers) */}
         <div className="bg-border-card" 
              style={{
                left: toX(70),
@@ -211,7 +211,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                height: toY(260)
              }}
         >
-          <div className="box-title">ROLL NO. / अनुक्रमांक</div>
+          <div className="box-title">ROLL NO.</div>
         </div>
 
         <div className="bg-border-card" 
@@ -233,7 +233,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                height: toY(260)
              }}
         >
-          <div className="box-title">BOOKLET CODE / पुस्तिका कोड</div>
+          <div className="box-title">BOOKLET CODE</div>
         </div>
 
         {/* ROLL NO DIGIT HEADER BOXES */}
@@ -343,7 +343,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })()}
 
-        {/* DYNAMIC QUESTIONS GRID SECTION (Shifted down to y = 460 -> 1220 to clear top cards & bottom signatures) */}
+        {/* DYNAMIC QUESTIONS GRID SECTION (Shifted right to perfectly balance left and right margins inside the frame) */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(
             { length: Math.max(0, Math.min(col.qEnd, totalQuestions) - col.qStart + 1) },
@@ -420,7 +420,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* Footer boxes: Compact Student & Invigilator Signatures (Shifted down to y = 1250, height = 70px / 14.7mm) */}
+        {/* Footer boxes: Compact Student & Invigilator Signatures (English Only) */}
         <div className="sheet-footer-section" 
              style={{
                left: toX(70),
@@ -440,7 +440,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           </div>
         </div>
 
-        {/* Bottom disclaimer */}
+        {/* Bottom disclaimer (English Only) */}
         <div className="bottom-disclaimer" style={{ top: toY(1335), left: 0, right: 0, textAlign: 'center' }}>
           ★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★
         </div>
@@ -526,13 +526,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           .box-title {
             background-color: #dc0045 !important;
             color: #fff !important;
-            font-size: 7.5px;
+            font-size: 8px;
             font-weight: bold;
             text-align: center;
-            padding: 3px;
+            padding: 3.5px;
             border-top-left-radius: 4px;
             border-top-right-radius: 4px;
-            letter-spacing: 0.2px;
+            letter-spacing: 0.4px;
             white-space: nowrap;
             overflow: hidden;
           }

@@ -2,20 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const assets = [
-  {
-    url: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-    dest: path.join(__dirname, 'public', 'face_landmarker.task')
-  },
-  {
-    url: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_internal.wasm',
-    dest: path.join(__dirname, 'public', 'wasm', 'vision_wasm_internal.wasm')
-  },
-  {
-    url: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_internal.js',
-    dest: path.join(__dirname, 'public', 'wasm', 'vision_wasm_internal.js')
-  }
-];
+const wasmSourceDir = path.join(__dirname, 'node_modules', '@mediapipe', 'tasks-vision', 'wasm');
+const publicWasmDir = path.join(__dirname, 'public', 'wasm');
+
+// 1. Download face_landmarker.task locally
+const modelUrl = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const modelDest = path.join(__dirname, 'public', 'face_landmarker.task');
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
@@ -44,14 +36,38 @@ function download(url, dest) {
   });
 }
 
+function copyWasmFiles() {
+  if (!fs.existsSync(publicWasmDir)) {
+    fs.mkdirSync(publicWasmDir, { recursive: true });
+  }
+
+  if (fs.existsSync(wasmSourceDir)) {
+    console.log(`Found node_modules tasks-vision wasm directory. Copying assets...`);
+    const files = fs.readdirSync(wasmSourceDir);
+    for (const file of files) {
+      const src = path.join(wasmSourceDir, file);
+      const dest = path.join(publicWasmDir, file);
+      if (fs.statSync(src).isFile()) {
+        fs.copyFileSync(src, dest);
+        console.log(`Copied ${file} to public/wasm/`);
+      }
+    }
+  } else {
+    console.warn(`node_modules tasks-vision wasm directory not found at: ${wasmSourceDir}`);
+  }
+}
+
 async function run() {
   try {
-    for (const asset of assets) {
-      await download(asset.url, asset.dest);
-    }
-    console.log('All biometrics assets downloaded locally successfully!');
+    // Copy local WASM modules from node_modules
+    copyWasmFiles();
+    
+    // Download task model file
+    await download(modelUrl, modelDest);
+
+    console.log('All biometrics assets resolved and copied locally successfully!');
   } catch (err) {
-    console.error('Download failed:', err);
+    console.error('Resolution failed:', err);
     process.exit(1);
   }
 }

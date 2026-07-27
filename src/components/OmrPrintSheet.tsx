@@ -17,7 +17,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const [bubbleScale, setBubbleScale] = useState<'normal' | 'large' | 'compact'>('normal');
   const [instituteName, setInstituteName] = useState('APEX INSTITUTE, JIND');
 
-  // Calculate dynamic question layout to fit cleanly between y = 430 and y = 1165
+  // Calculate dynamic question layout to fit cleanly between y = 460 and y = 1220
   const layout = getDynamicOMRQuestionLayout(totalQuestions, customCols, density);
 
   // Conversion: OMR coordinates (1000 x 1414) mapped to A4 millimeters (210 x 297)
@@ -343,7 +343,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })()}
 
-        {/* DYNAMIC QUESTIONS GRID SECTION (Strictly bounds between y = 430 and y = 1165 to clear signature box at y = 1210) */}
+        {/* DYNAMIC QUESTIONS GRID SECTION (Shifted down to y = 460 -> 1220 to clear top cards & bottom signatures) */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(
             { length: Math.max(0, Math.min(col.qEnd, totalQuestions) - col.qStart + 1) },
@@ -420,13 +420,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* Footer boxes: Student & Invigilator Signatures (Positioned at y = 1210 to y = 1310, height: 100px = 21mm) */}
+        {/* Footer boxes: Compact Student & Invigilator Signatures (Shifted down to y = 1250, height = 70px / 14.7mm) */}
         <div className="sheet-footer-section" 
              style={{
                left: toX(70),
-               top: toY(1210),
+               top: toY(1250),
                width: toX(860),
-               height: toY(100),
+               height: toY(70),
                display: 'grid',
                gridTemplateColumns: '1fr 1fr',
                gap: '20px'

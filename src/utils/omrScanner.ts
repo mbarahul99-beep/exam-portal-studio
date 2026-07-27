@@ -44,7 +44,7 @@ export const OMR_CONFIG = {
   // Questions layout coordinates (5 columns of 40 questions each = 200 total)
   questions: {
     bubbleRadius: 6,
-    yStart: 430,
+    yStart: 460,
     yStep: 20,
     columns: [
       { qStart: 1, qEnd: 40, xLabel: 90, xOptions: [120, 145, 170, 195] },
@@ -74,7 +74,7 @@ export interface OMRQuestionLayout {
 
 /**
  * Calculates a dynamic question grid layout that adjusts columns, row counts, and vertical spacing (yStep)
- * to perfectly fit between y = 430 and y = 1165 so question bubbles NEVER overlap signature boxes!
+ * to perfectly fit between y = 460 and y = 1220 so question bubbles NEVER overlap signature boxes!
  */
 export function getDynamicOMRQuestionLayout(
   numQuestions: number,
@@ -96,10 +96,10 @@ export function getDynamicOMRQuestionLayout(
   // 2. Calculate rows per column so all columns are balanced
   const rowsPerCol = Math.ceil(total / numCols);
 
-  // 3. Dynamic yStart & yStep calculation (y = 430 to 1165)
-  const minY = 430;
-  const maxY = 1165;
-  const maxAvailableHeight = maxY - minY; // 735px
+  // 3. Dynamic yStart & yStep calculation (y = 460 to 1220)
+  const minY = 460;
+  const maxY = 1220;
+  const maxAvailableHeight = maxY - minY; // 760px
 
   let yStep = 20;
   if (rowsPerCol > 1) {
@@ -108,11 +108,11 @@ export function getDynamicOMRQuestionLayout(
 
   if (density === 'auto') {
     if (total <= 30) {
-      yStep = Math.min(32, Math.max(22, yStep));
+      yStep = Math.min(34, Math.max(24, yStep));
     } else if (total <= 60) {
-      yStep = Math.min(26, Math.max(19, yStep));
+      yStep = Math.min(28, Math.max(20, yStep));
     } else {
-      yStep = Math.min(21.0, Math.max(15, yStep));
+      yStep = Math.min(21.7, Math.max(15, yStep));
     }
   } else if (density === 'spacious') {
     yStep = 24;

@@ -3048,8 +3048,8 @@ button {
   }
 
   .quick-action-icon-wrapper {
-    width: 54px;
-    height: 54px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     background: #eef2ff; /* Soft lavender-blue/periwinkle background */
     display: flex;

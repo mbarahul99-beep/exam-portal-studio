@@ -23,6 +23,7 @@ import { OmrSettingsView } from './components/OmrSettingsView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
   Sliders,
+  LayoutDashboard,
   Users,
   UserCheck, 
   FileText, 
@@ -1801,6 +1802,15 @@ export default function App() {
 
           <nav className="sidebar-nav">
             <button 
+              className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('dashboard');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <LayoutDashboard size={18} /> Dashboard
+            </button>
+            <button 
               className={`nav-item ${activeTab === 'exams' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('exams');
@@ -1927,11 +1937,6 @@ export default function App() {
           {/* TAB 1: DASHBOARD */}
           {activeTab === 'dashboard' && (
             <div className="tab-pane animate-fade-in">
-              <header className="pane-header">
-                <h2>Overview Dashboard</h2>
-                <p className="subtitle">Welcome to OMR Scanner. Administer and grade paper exams offline instantly.</p>
-              </header>
-
               {/* MOBILE QUICK ACTIONS GRID */}
               <div className="mobile-quick-actions">
                 <div className="quick-actions-grid">
@@ -1943,7 +1948,7 @@ export default function App() {
                     }}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <FileText size={22} />
+                      <FileText size={28} />
                     </div>
                     <span className="quick-action-label">Exams</span>
                   </button>
@@ -1953,7 +1958,7 @@ export default function App() {
                     onClick={() => setActiveTab('attendance')}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <CalendarCheck size={22} />
+                      <CalendarCheck size={28} />
                     </div>
                     <span className="quick-action-label">Attendance</span>
                   </button>
@@ -1963,17 +1968,39 @@ export default function App() {
                     onClick={() => setActiveTab('students')}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <Users size={22} />
+                      <Users size={28} />
                     </div>
                     <span className="quick-action-label">Classes</span>
                   </button>
+
+                  {sessionRole === 'admin' ? (
+                    <button 
+                      className="quick-action-item"
+                      onClick={() => setActiveTab('teachers')}
+                    >
+                      <div className="quick-action-icon-wrapper">
+                        <Shield size={28} />
+                      </div>
+                      <span className="quick-action-label">Teachers</span>
+                    </button>
+                  ) : (
+                    <button 
+                      className="quick-action-item"
+                      onClick={() => setShowTeacherProfileModal(true)}
+                    >
+                      <div className="quick-action-icon-wrapper">
+                        <User size={28} />
+                      </div>
+                      <span className="quick-action-label">Profile</span>
+                    </button>
+                  )}
 
                   <button 
                     className="quick-action-item"
                     onClick={() => setActiveTab('questions-bank')}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <BookOpen size={22} />
+                      <BookOpen size={28} />
                     </div>
                     <span className="quick-action-label">Q-Banks</span>
                   </button>
@@ -1983,7 +2010,7 @@ export default function App() {
                     onClick={() => setActiveTab('whatsapp-settings')}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <Settings size={22} />
+                      <Settings size={28} />
                     </div>
                     <span className="quick-action-label">WhatsApp</span>
                   </button>
@@ -1993,29 +2020,9 @@ export default function App() {
                     onClick={() => setActiveTab('omr-settings')}
                   >
                     <div className="quick-action-icon-wrapper">
-                      <Sliders size={22} />
+                      <Sliders size={28} />
                     </div>
                     <span className="quick-action-label">OMR Config</span>
-                  </button>
-
-                  <button 
-                    className="quick-action-item"
-                    onClick={() => pullCloudUpdatesToIndexedDB()}
-                  >
-                    <div className="quick-action-icon-wrapper">
-                      <RefreshCw size={22} />
-                    </div>
-                    <span className="quick-action-label">Sync DB</span>
-                  </button>
-
-                  <button 
-                    className="quick-action-item"
-                    onClick={() => handleLogout()}
-                  >
-                    <div className="quick-action-icon-wrapper" style={{ color: '#dc2626', background: '#fef2f2' }}>
-                      <LogOut size={22} />
-                    </div>
-                    <span className="quick-action-label" style={{ color: '#dc2626' }}>Log Out</span>
                   </button>
                 </div>
               </div>
@@ -2043,58 +2050,6 @@ export default function App() {
                     <span className="stat-val">{submissions.length}</span>
                   </div>
                   <CheckCircle className="stat-icon emerald" />
-                </div>
-              </div>
-
-              <div className="dashboard-content">
-                <div className="glass-card recent-scans">
-                  <h3>Recent Graded Exams</h3>
-                  {(() => {
-                    const validSubmissions = submissions.filter(sub => exams.some(e => e.id === sub.examId));
-                    if (validSubmissions.length === 0) {
-                      return (
-                        <div className="empty-state">
-                          <p>No scans completed yet. Go to OMR Scanner to scan your first sheet.</p>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                        <table className="app-table">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Student</th>
-                              <th>Exam</th>
-                              <th>Score</th>
-                              <th>Result</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {validSubmissions.slice(-5).reverse().map((sub) => {
-                              const s = students.find(std => std.id === sub.studentId);
-                              const e = exams.find(ex => ex.id === sub.examId)!;
-                              const totalPossible = e ? e.numQuestions * (e.correctMarks ?? 4) : 0;
-                              const pct = totalPossible > 0 ? Math.max(0, Math.round((sub.score / totalPossible) * 100)) : 0;
-                              return (
-                                <tr key={`recent-${sub.id}`}>
-                                  <td>{new Date(sub.scannedAt).toLocaleDateString()}</td>
-                                  <td><strong>{s ? s.name : 'Unknown'}</strong></td>
-                                  <td>{e.title}</td>
-                                  <td>{sub.score} / {totalPossible}</td>
-                                  <td>
-                                    <span className={`pill ${pct >= 50 ? 'pass' : 'fail'}`}>
-                                      {pct}%
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
             </div>
@@ -3457,8 +3412,14 @@ export default function App() {
           )}
         </main>
 
-        {/* MOBILE BOTTOM NAVIGATION BAR (Matching Screenshot 2) */}
         <nav className="mobile-bottom-nav">
+          <button 
+            className={`nav-tab-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <LayoutDashboard size={20} />
+            <span>Dashboard</span>
+          </button>
           <button 
             className={`nav-tab-item ${activeTab === 'exams' ? 'active' : ''}`}
             onClick={() => setActiveTab('exams')}

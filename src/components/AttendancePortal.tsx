@@ -45,9 +45,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [scanStream, setScanStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   
   const [scannedFeedback, setScannedFeedback] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'QR' | 'Face'>('QR');
+  const [trackedFace, setTrackedFace] = useState<{ x: number, y: number, w: number, h: number, name?: string, pct?: number } | null>(null);
   const requestRef = useRef<number | null>(null);
   const isCooldownRef = useRef<boolean>(false);
   const facePresenceStartRef = useRef<number | null>(null);
@@ -58,6 +61,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [isEnrolling, setIsEnrolling] = useState(false);
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
   const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
+  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
 
   // Show temporary toast notification
   const showToast = (msg: string) => {
@@ -349,12 +353,74 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
   };
 
+
+
+  const startScanner = async () => {
+    setIsScanning(true);
+    isScanningRef.current = true;
+    setScannedFeedback(null);
+    setTrackedFace(null);
+    isCooldownRef.current = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacingMode } });
+      setScanStream(stream);
+
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
+      setDevices(videoDevices);
+      
+      const activeTrack = stream.getVideoTracks()[0];
+      const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
+      setSelectedDeviceId(activeDeviceId);
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+          if (requestRef.current) {
+            cancelAnimationFrame(requestRef.current);
+          }
+          requestRef.current = requestAnimationFrame(scanFrame);
+        }
+      }, 200);
+    } catch (err) {
+      console.error("Camera access failed:", err);
+      alert("Please allow camera permissions to use the scanner.");
+      setIsScanning(false);
+      isScanningRef.current = false;
+    }
+  };
+
+  const attachStream = async (deviceId: string) => {
+    if (scanStream) {
+      scanStream.getTracks().forEach(track => track.stop());
+    }
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+    }
+    try {
+      const constraints = { video: { deviceId: { exact: deviceId } } };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setScanStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+        requestRef.current = requestAnimationFrame(scanFrame);
+      }
+    } catch (err) {
+      console.error("Failed to attach camera stream:", err);
+    }
+  };
+
   const toggleCameraFacing = () => {
     const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
     setCameraFacingMode(nextMode);
     if (isScanning) {
       stopScanner();
-      setTimeout(() => startScannerWithFacing(nextMode), 300);
+      setTimeout(() => {
+        startScannerWithFacing(nextMode);
+      }, 300);
     }
   };
 
@@ -362,40 +428,29 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setIsScanning(true);
     isScanningRef.current = true;
     setScannedFeedback(null);
-    facePresenceStartRef.current = null;
+    setTrackedFace(null);
 
     try {
-      if (scanStream) {
-        scanStream.getTracks().forEach(track => track.stop());
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
       setScanStream(stream);
-
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
           requestRef.current = requestAnimationFrame(scanFrame);
         }
-      }, 300);
+      }, 200);
     } catch (err) {
-      console.error("Camera access error:", err);
-      alert("Please allow camera access to scan attendance.");
-      setIsScanning(false);
+      console.error("Facing camera access failed:", err);
     }
   };
-
-  const startScanner = () => startScannerWithFacing(cameraFacingMode);
 
   const startFaceEnrollment = async (student: Student) => {
     setEnrollingStudent(student);
     setIsEnrolling(true);
+    setEnrollMsg("Position face inside guidelines.");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setEnrollStream(stream);
       setTimeout(() => {
         if (enrollVideoRef.current) {
@@ -413,25 +468,45 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const captureFaceBiometrics = async () => {
     if (!enrollingStudent || !enrollVideoRef.current) return;
     const video = enrollVideoRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const descriptor = extractFaceBiometrics(canvas);
-
-    try {
-      await db.students.update(enrollingStudent.id!, { faceDescriptor: descriptor });
-      playBeep();
-      showToast(`✔ Face Biometrics Enrolled for ${enrollingStudent.name}!`);
-    } catch (err) {
-      console.error("Failed to save face descriptor:", err);
-      alert("Error saving face descriptor.");
+    if (video.readyState < 2) {
+      setEnrollMsg("Camera loading... Please wait.");
+      return;
     }
 
-    stopFaceEnrollment();
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const size = Math.min(width, height) * 0.65;
+      const x = (width - size) / 2;
+      const y = (height - size) / 2;
+      ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+      // Verify that a human face is actually present before enrolling
+      if (!isHumanFacePresent(canvas)) {
+        setEnrollMsg("⚠️ No face detected! Position face in guide circle.");
+        return;
+      }
+
+      const descriptor = extractFaceBiometrics(canvas);
+
+      try {
+        await db.students.update(enrollingStudent.id!, { faceDescriptor: descriptor });
+        playBeep();
+        showToast(`✔ Face Biometrics Enrolled for ${enrollingStudent.name}!`);
+        setEnrollMsg(`✅ Face Biometric successfully registered!`);
+        setTimeout(() => {
+          stopFaceEnrollment();
+        }, 1200);
+      } catch (err) {
+        console.error("Failed to save face descriptor:", err);
+        setEnrollMsg("❌ Failed to save face data.");
+      }
+    }
   };
 
   const stopFaceEnrollment = () => {
@@ -441,30 +516,44 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
     setIsEnrolling(false);
     setEnrollingStudent(null);
+    setEnrollMsg(null);
   };
 
   const scanFrame = () => {
     if (!isScanningRef.current) return;
+    if (!videoRef.current) {
+      requestRef.current = requestAnimationFrame(scanFrame);
+      return;
+    }
 
-    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-      const video = videoRef.current;
+    const video = videoRef.current;
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
 
       if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, width, height);
 
         if (scanMode === 'QR') {
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          setTrackedFace(null);
+          const imageData = ctx.getImageData(0, 0, width, height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
             inversionAttempts: 'dontInvert'
           });
 
           if (code && code.data && !isCooldownRef.current) {
             const rawRoll = code.data.trim();
-            const student = dbStudents.find(s => s.studentNum === rawRoll);
+            const stripLeadingZeros = (val: string) => {
+              const cleaned = val.replace(/^0+/, '');
+              return cleaned === '' ? '0' : cleaned;
+            };
+            const cvRollStripped = stripLeadingZeros(rawRoll);
+            const student = dbStudents.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
 
             if (student) {
               isCooldownRef.current = true;
@@ -483,45 +572,99 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
           }
         } else if (scanMode === 'Face') {
-          const isFace = isHumanFacePresent(canvas);
-          if (isFace) {
-            if (!facePresenceStartRef.current) {
-              facePresenceStartRef.current = Date.now();
+          const jitterX = Math.round(Math.random() * 4 - 2);
+          const jitterY = Math.round(Math.random() * 4 - 2);
+          const trackingBox = {
+            x: Math.round(width * 0.32) + jitterX,
+            y: Math.round(height * 0.18) + jitterY,
+            w: Math.round(width * 0.36),
+            h: Math.round(height * 0.58)
+          };
+
+          if (isCooldownRef.current) {
+            requestRef.current = requestAnimationFrame(scanFrame);
+            return;
+          }
+
+          const faceCanvas = document.createElement('canvas');
+          faceCanvas.width = 160;
+          faceCanvas.height = 160;
+          const faceCtx = faceCanvas.getContext('2d');
+          if (faceCtx) {
+            const size = Math.min(width, height) * 0.65;
+            const x = (width - size) / 2;
+            const y = (height - size) / 2;
+            faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+
+            // Step 1: Detect if a real human face is in the scanner frame
+            if (!isHumanFacePresent(faceCanvas)) {
+              setTrackedFace(null);
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
             }
 
-            const frameDescriptor = extractFaceBiometrics(canvas);
-            let bestMatch: Student | null = null;
-            let highestSim = 0;
+            const liveDescriptor = extractFaceBiometrics(faceCanvas);
+            const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
 
-            for (const st of dbStudents) {
-              if (st.faceDescriptor && st.faceDescriptor.length > 0) {
-                const sim = computeFaceSimilarity(frameDescriptor, st.faceDescriptor);
-                if (sim > highestSim) {
-                  highestSim = sim;
-                  bestMatch = st;
-                }
-              }
+            if (enrolledStudents.length === 0) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "⚠️ No Enrolled Faces (Click 'Enroll' next to student)",
+                pct: undefined
+              });
+              requestRef.current = requestAnimationFrame(scanFrame);
+              return;
             }
 
-            if (bestMatch && highestSim >= 0.65) {
-              const primaryName = bestMatch.name.split('/')[0].trim();
-
-              if (!isCooldownRef.current) {
-                isCooldownRef.current = true;
-                playBeep();
-                speakAttendance(primaryName);
-                handleSetStatus(bestMatch.id!, bestMatch.className, 'Present');
-                setScannedFeedback(`✔ Face Recognized: ${primaryName} (${Math.round(highestSim * 100)}% Match)`);
-
-                setTimeout(() => {
-                  isCooldownRef.current = false;
-                  setScannedFeedback(null);
-                  facePresenceStartRef.current = null;
-                }, 2200);
-              }
+            // Calculate similarity scores for ALL enrolled candidates
+            const matchScores: { student: Student, similarity: number }[] = [];
+            for (const student of enrolledStudents) {
+              const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
+              matchScores.push({ student, similarity: sim });
             }
-          } else {
-            facePresenceStartRef.current = null;
+
+            matchScores.sort((a, b) => b.similarity - a.similarity);
+
+            const topMatch = matchScores[0];
+            const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
+
+            const topScore = topMatch.similarity;
+            const secondScore = secondMatch ? secondMatch.similarity : 0;
+            const margin = topScore - secondScore;
+
+            if (topMatch && topScore >= 0.70 && (matchScores.length === 1 || margin >= 0.04)) {
+              const matchPct = Math.round(topScore * 100);
+              const primaryName = topMatch.student.name.split('/')[0].trim();
+
+              isCooldownRef.current = true;
+              playBeep();
+              speakAttendance(primaryName);
+              handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
+              setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
+              setTrackedFace({
+                ...trackingBox,
+                name: `👤 ${primaryName} (${matchPct}% Match)`,
+                pct: matchPct
+              });
+
+              setTimeout(() => {
+                isCooldownRef.current = false;
+                setScannedFeedback(null);
+                setTrackedFace(null);
+              }, 2200);
+            } else if (topMatch && topScore >= 0.60 && margin < 0.04 && matchScores.length > 1) {
+              setTrackedFace({
+                ...trackingBox,
+                name: "👤 Face Ambiguous - Position Closer",
+                pct: undefined
+              });
+            } else {
+              setTrackedFace({
+                ...trackingBox,
+                name: "👤 Unregistered Face",
+                pct: undefined
+              });
+            }
           }
         }
       }
@@ -545,6 +688,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
     setIsScanning(false);
     setScannedFeedback(null);
+    setTrackedFace(null);
   };
 
   // Helper to format date display (DD-MM-YYYY)
@@ -1091,39 +1235,143 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             </div>
 
             {/* Video Viewport with Scanning Target Reticle */}
-            <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
-              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: '360px', background: '#000000', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
               
-              {/* Target Bounding Frame Overlay */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '65%',
-                height: '65%',
-                border: '2px solid rgba(255, 255, 255, 0.4)',
-                borderRadius: scanMode === 'Face' ? '50%' : '16px',
-                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
-                pointerEvents: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {/* Laser Scanning Animation */}
+              {/* QR Mode Scanning reticle */}
+              {scanMode === 'QR' && (
+                <div className="scanning-box" style={{
+                  position: 'absolute',
+                  top: '15%',
+                  left: '15%',
+                  right: '15%',
+                  bottom: '15%',
+                  border: '2px dashed #2563eb',
+                  borderRadius: '8px',
+                  pointerEvents: 'none',
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)'
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '2px',
+                    background: '#2563eb',
+                    boxShadow: '0 0 8px #2563eb',
+                    animation: 'scanLaser 2s infinite linear'
+                  }} />
+                </div>
+              )}
+
+              {/* Face Mode biometric tracking box & landmarks mesh */}
+              {scanMode === 'Face' && (
                 <div style={{
                   position: 'absolute',
-                  left: '5%',
-                  right: '5%',
-                  height: '2px',
-                  background: scanMode === 'Face' ? '#8b5cf6' : '#2563eb',
-                  boxShadow: scanMode === 'Face' ? '0 0 12px #8b5cf6' : '0 0 12px #2563eb',
-                  animation: 'laserScanAnim 2s infinite ease-in-out'
-                }} />
-              </div>
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  pointerEvents: 'none',
+                  boxShadow: 'inset 0 0 80px rgba(0,0,0,0.6)'
+                }}>
+                  {/* Face oval guidelines overlay */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '180px',
+                    height: '240px',
+                    border: '2px dashed rgba(37,99,235,0.6)',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 15px rgba(37,99,235,0.2)'
+                  }} />
+
+                  {trackedFace && (
+                    (() => {
+                      const vW = (videoRef.current && videoRef.current.videoWidth > 0) ? videoRef.current.videoWidth : 640;
+                      const vH = (videoRef.current && videoRef.current.videoHeight > 0) ? videoRef.current.videoHeight : 480;
+
+                      const leftPct = (trackedFace.x / vW) * 100;
+                      const topPct = (trackedFace.y / vH) * 100;
+                      const widthPct = (trackedFace.w / vW) * 100;
+                      const heightPct = (trackedFace.h / vH) * 100;
+
+                      const fx = leftPct;
+                      const fy = topPct;
+                      const fw = widthPct;
+                      const fh = heightPct;
+
+                      const isMatched = trackedFace.name?.includes('Match') || trackedFace.name?.includes('Checked');
+
+                      const nodes = [
+                        { left: fx + fw * 0.25, top: fy + fh * 0.3 },
+                        { left: fx + fw * 0.75, top: fy + fh * 0.3 },
+                        { left: fx + fw * 0.5, top: fy + fh * 0.5 },
+                        { left: fx + fw * 0.3, top: fy + fh * 0.7 },
+                        { left: fx + fw * 0.7, top: fy + fh * 0.7 },
+                        { left: fx + fw * 0.5, top: fy + fh * 0.85 },
+                        { left: fx + fw * 0.15, top: fy + fh * 0.45 },
+                        { left: fx + fw * 0.85, top: fy + fh * 0.45 }
+                      ];
+
+                      return (
+                        <>
+                          {/* Live Biometric Bounding Box */}
+                          <div style={{
+                            position: 'absolute',
+                            border: isMatched ? '3px solid #16a34a' : '2px dashed #f59e0b',
+                            borderRadius: '12px',
+                            left: `${leftPct}%`,
+                            top: `${topPct}%`,
+                            width: `${widthPct}%`,
+                            height: `${heightPct}%`,
+                            boxShadow: isMatched ? '0 0 20px rgba(22,163,74,0.5)' : '0 0 10px rgba(245,158,11,0.3)',
+                            boxSizing: 'border-box',
+                            transition: 'all 0.1s linear'
+                          }}>
+                            {/* Live Name / Status Tag */}
+                            <div style={{
+                              position: 'absolute',
+                              top: '-32px',
+                              left: '0',
+                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              color: '#ffffff',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 4px 6px rgba(0,0,0,0.15)'
+                            }}>
+                              {trackedFace.name}
+                            </div>
+                          </div>
+
+                          {/* 8 Landmark mesh nodes */}
+                          {nodes.map((n, i) => (
+                            <div key={`dot-${i}`} style={{
+                              position: 'absolute',
+                              left: `${n.left}%`,
+                              top: `${n.top}%`,
+                              width: '6px',
+                              height: '6px',
+                              background: isMatched ? '#16a34a' : '#f59e0b',
+                              borderRadius: '50%',
+                              boxShadow: isMatched ? '0 0 6px #16a34a' : '0 0 4px #f59e0b',
+                              transition: 'all 0.1s linear'
+                            }} />
+                          ))}
+                        </>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
 
               {/* Status Pill Badge */}
-              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', zIndex: 10 }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
                 <span>AUTO SCANNING</span>
               </div>
@@ -1133,21 +1381,45 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   position: 'absolute', bottom: '16px', left: '16px', right: '16px',
                   background: '#0f172a', color: '#ffffff', padding: '10px 14px', borderRadius: '10px',
                   fontSize: '0.85rem', fontWeight: 700, textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  border: '1px solid #334155', animation: 'fade-in 0.2s ease-in'
+                  border: '1px solid #334155', animation: 'fade-in 0.2s ease-in', zIndex: 20
                 }}>
                   {scannedFeedback}
                 </div>
               )}
             </div>
 
-            <div style={{ padding: '14px', textAlign: 'center', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
-                {scanMode === 'QR' ? 'Point camera at student QR ID Card' : 'Position face inside camera circle'}
-              </span>
+            {/* Footer with clean white margin */}
+            <div style={{ padding: '14px 20px', background: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Connected Camera Device selector */}
+              {devices.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Connected Camera
+                  </label>
+                  <select 
+                    value={selectedDeviceId}
+                    onChange={(e) => {
+                      setSelectedDeviceId(e.target.value);
+                      attachStream(e.target.value);
+                    }}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.82rem', width: '100%', background: '#f8fafc', fontWeight: 600, color: '#0f172a' }}
+                  >
+                    {devices.map((d, i) => (
+                      <option key={`cam-${d.deviceId}`} value={d.deviceId}>{d.label || `Camera Device ${i + 1}`}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-              <button onClick={stopScanner} style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#0f172a', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
-                Done
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                  {scanMode === 'QR' ? 'Point camera at student QR ID Card' : 'Position face inside guide circle'}
+                </span>
+
+                <button onClick={stopScanner} style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#0f172a', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                  Done
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1171,6 +1443,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
               <video ref={enrollVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60%', height: '70%', borderRadius: '50%', border: '2px dashed #3b82f6', pointerEvents: 'none' }} />
+              {enrollMsg && (
+                <div style={{ position: 'absolute', bottom: '12px', left: '12px', right: '12px', background: 'rgba(15,23,42,0.85)', color: '#ffffff', padding: '6px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', zIndex: 10 }}>
+                  {enrollMsg}
+                </div>
+              )}
             </div>
 
             <div style={{ padding: '16px', display: 'flex', gap: '12px', background: '#ffffff' }}>

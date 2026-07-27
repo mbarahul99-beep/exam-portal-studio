@@ -218,15 +218,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const extractFaceBiometrics = (canvas: HTMLCanvasElement | null, landmarks?: any[]): number[] => {
     if (landmarks && landmarks.length > 0) {
-      // 3D Geometric Landmark descriptor representing robust face proportions
+      // 2D Geometric Landmark descriptor representing robust face proportions (excluding noisy relative depth Z-coordinate)
       const keyIndices = [10, 152, 234, 454, 33, 133, 159, 145, 263, 362, 386, 374, 70, 107, 300, 336, 4, 1, 197, 2, 64, 294, 61, 291, 13, 14, 172, 397];
       
       const p33 = landmarks[33];
       const p263 = landmarks[263];
       const scaleDist = Math.sqrt(
         Math.pow(p33.x - p263.x, 2) +
-        Math.pow(p33.y - p263.y, 2) +
-        Math.pow(p33.z - p263.z, 2)
+        Math.pow(p33.y - p263.y, 2)
       ) || 1;
 
       const descriptor: number[] = [];
@@ -236,8 +235,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const ptB = landmarks[keyIndices[j]];
           const dist = Math.sqrt(
             Math.pow(ptA.x - ptB.x, 2) +
-            Math.pow(ptA.y - ptB.y, 2) +
-            Math.pow(ptA.z - ptB.z, 2)
+            Math.pow(ptA.y - ptB.y, 2)
           );
           descriptor.push(Number((dist / scaleDist).toFixed(6)));
         }
@@ -698,6 +696,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const captureFaceBiometrics = async () => {
     if (!enrollingStudent || !enrollVideoRef.current) return;
+    if (!lastEnrollLandmarksRef.current) {
+      showToast("⚠️ Face landmarks not detected yet. Please look straight at the camera.");
+      return;
+    }
     const video = enrollVideoRef.current;
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
@@ -712,7 +714,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const y = (height - size) / 2;
       ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
 
-      const descriptor = extractFaceBiometrics(canvas, lastEnrollLandmarksRef.current);
+      const descriptor = extractFaceBiometrics(null, lastEnrollLandmarksRef.current);
       try {
         await db.students.update(enrollingStudent.id!, {
           faceDescriptor: descriptor,
@@ -936,6 +938,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     } else if (student.faceDescriptor) {
                       maxSim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor);
                     }
+                    console.log(`[FaceScanner] Comparing vs ${student.name}: sim = ${maxSim.toFixed(4)} (live len = ${liveDescriptor.length}, enrolled len = ${student.faceDescriptor ? student.faceDescriptor.length : 0})`);
                     matchScores.push({ student, similarity: maxSim });
                   }
 

@@ -57,6 +57,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const analysisRequestRef = useRef<number | null>(null);
   const [detectorStatus, setDetectorStatus] = useState<'searching' | 'aligning' | 'ready'>('searching');
+  const isScanningRef = useRef<boolean>(false);
+  const stableFramesRef = useRef<number>(0);
+  const [autoSnapProgress, setAutoSnapProgress] = useState<number>(0);
 
   // Registered students in this exam's class limit validation
   const classStudents = students.filter(s => s.className === exam.className);
@@ -177,8 +180,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ctx.stroke();
             });
 
+            // Increment stable frames counter if not currently scanning
+            if (!isScanningRef.current) {
+              stableFramesRef.current += 1;
+              const progress = Math.min(100, Math.round((stableFramesRef.current / 15) * 100));
+              setAutoSnapProgress(progress);
+
+              // Auto-capture after 15 consecutive stable frames (~500ms)
+              if (stableFramesRef.current >= 15) {
+                stableFramesRef.current = 0;
+                setAutoSnapProgress(0);
+                isScanningRef.current = true;
+                setIsScanning(true);
+                // Call capture asynchronously
+                setTimeout(() => {
+                  captureCameraPhoto();
+                }, 0);
+              }
+            } else {
+              stableFramesRef.current = 0;
+              setAutoSnapProgress(0);
+            }
+
             setDetectorStatus('ready');
           } else {
+            stableFramesRef.current = 0;
+            setAutoSnapProgress(0);
             // No sheet found: draw a centered reference guides overlay
             setDetectorStatus('searching');
             
@@ -223,6 +250,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             ctx.stroke();
           }
         } catch (e) {
+          stableFramesRef.current = 0;
+          setAutoSnapProgress(0);
           console.warn("Live OMR outline tracking failed:", e);
         }
       }
@@ -292,7 +321,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
   // Capture photo from live camera & process with the EXACT SAME OMR PIPELINE!
   const captureCameraPhoto = async () => {
-    if (!videoRef.current || !cvLoaded || isScanning) return;
+    if (!videoRef.current || !cvLoaded) return;
 
     if (maxClassSheets !== Infinity && fileList.length >= maxClassSheets) {
       alert(`Class limit reached (${maxClassSheets} registered students).`);
@@ -301,6 +330,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     playShutterSound();
+    isScanningRef.current = true;
     setIsScanning(true);
 
     const video = videoRef.current;
@@ -459,6 +489,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     } catch (err: any) {
       alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Align sheet inside frame."));
     } finally {
+      isScanningRef.current = false;
       setIsScanning(false);
     }
   };
@@ -1266,8 +1297,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             }}>
               {detectorStatus === 'ready' ? (
                 <>
-                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#34d399' }}></span>
-                  🟢 READY TO CAPTURE - HOLD STEADY
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#34d399', animation: 'ping 1s infinite' }}></span>
+                  📸 AUTO-CAPTURING... HOLD STILL ({autoSnapProgress}%)
                 </>
               ) : (
                 <>

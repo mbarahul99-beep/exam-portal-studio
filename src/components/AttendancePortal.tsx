@@ -357,6 +357,25 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
+  const getBiometricSettings = () => {
+    try {
+      const storedJson = localStorage.getItem('omr_custom_settings');
+      if (storedJson) {
+        const parsed = JSON.parse(storedJson);
+        return {
+          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.70,
+          enableLivenessCheck: parsed.enableLivenessCheck !== undefined ? Boolean(parsed.enableLivenessCheck) : true
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to load OMR Settings for biometrics:", e);
+    }
+    return {
+      faceMatchThreshold: 0.70,
+      enableLivenessCheck: true
+    };
+  };
+
   const startScanner = async () => {
     setIsScanning(true);
     isScanningRef.current = true;
@@ -700,6 +719,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             }
           }
         } else if (scanMode === 'Face') {
+          const bioSettings = getBiometricSettings();
+          const targetThreshold = bioSettings.faceMatchThreshold;
+          const requiresLiveness = bioSettings.enableLivenessCheck;
+
           let landmarkerInstance = faceLandmarker;
           if (!landmarkerInstance && !isModelLoading) {
             landmarkerInstance = await loadFaceLandmarker();
@@ -751,16 +774,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               const avgEAR = earHistoryRef.current.reduce((a, b) => a + b, 0) / earHistoryRef.current.length;
 
               // Blink trigger liveness verification
-              if (avgEAR < 0.19 && !isCooldownRef.current) {
-                lastBlinkTimeRef.current = Date.now();
-              } else if (avgEAR > 0.23 && lastBlinkTimeRef.current > 0 && (Date.now() - lastBlinkTimeRef.current < 1500)) {
-                if (!hasBlinkedRef.current) {
-                  hasBlinkedRef.current = true;
-                  setLivenessStatus('blinked');
-                  playBeep();
-                  showToast("✔ Blink Verified! Analyzing facial identity...");
+              if (requiresLiveness) {
+                if (avgEAR < 0.19 && !isCooldownRef.current) {
+                  lastBlinkTimeRef.current = Date.now();
+                } else if (avgEAR > 0.23 && lastBlinkTimeRef.current > 0 && (Date.now() - lastBlinkTimeRef.current < 1500)) {
+                  if (!hasBlinkedRef.current) {
+                    hasBlinkedRef.current = true;
+                    setLivenessStatus('blinked');
+                    playBeep();
+                    showToast("✔ Blink Verified! Analyzing facial identity...");
+                  }
+                  lastBlinkTimeRef.current = 0;
                 }
-                lastBlinkTimeRef.current = 0;
+              } else {
+                hasBlinkedRef.current = true;
               }
 
               // Selected facial feature mesh nodes to project in UI
@@ -824,7 +851,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   const secondScore = secondMatch ? secondMatch.similarity : 0;
                   const margin = topScore - secondScore;
 
-                  if (topMatch && topScore >= 0.70 && (matchScores.length === 1 || margin >= 0.04)) {
+                  if (topMatch && topScore >= targetThreshold && (matchScores.length === 1 || margin >= 0.04)) {
                     const matchPct = Math.round(topScore * 100);
                     const primaryName = topMatch.student.name.split('/')[0].trim();
 
@@ -1593,8 +1620,33 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
               {/* Status Pill Badge */}
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', color: '#ffffff', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', zIndex: 10 }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: scanMode === 'Face' && livenessStatus === 'pending' ? '#3b82f6' : '#22c55e' }}></span>
-                <span>{scanMode === 'QR' ? 'AUTO SCANNING' : (livenessStatus === 'pending' ? '🔒 LIVENESS VERIFICATION PENDING' : '🔓 LIVENESS VERIFIED')}</span>
+                {(() => {
+                  if (scanMode === 'QR') {
+                    return (
+                      <>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
+                        <span>AUTO SCANNING</span>
+                      </>
+                    );
+                  }
+                  
+                  const settings = getBiometricSettings();
+                  if (!settings.enableLivenessCheck) {
+                    return (
+                      <>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
+                        <span>🔓 LIVENESS VERIFICATION BYPASSED</span>
+                      </>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: livenessStatus === 'pending' ? '#3b82f6' : '#22c55e' }}></span>
+                      <span>{livenessStatus === 'pending' ? '🔒 LIVENESS VERIFICATION PENDING' : '🔓 LIVENESS VERIFIED'}</span>
+                    </>
+                  );
+                })()}
               </div>
 
               {scannedFeedback && (

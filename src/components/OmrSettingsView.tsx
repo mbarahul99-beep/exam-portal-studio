@@ -23,6 +23,8 @@ export interface OmrCustomSettings {
   studentSignatureLabel: string;
   invigilatorSignatureLabel: string;
   disclaimerText: string;
+  faceMatchThreshold: number;
+  enableLivenessCheck: boolean;
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
@@ -36,7 +38,9 @@ export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
   showSignatureBoxes: true,
   studentSignatureLabel: "STUDENT'S SIGNATURE",
   invigilatorSignatureLabel: "INVIGILATOR'S SIGNATURE",
-  disclaimerText: '★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★'
+  disclaimerText: '★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★',
+  faceMatchThreshold: 0.70,
+  enableLivenessCheck: true
 };
 
 export const OmrSettingsView: React.FC = () => {
@@ -364,6 +368,79 @@ export const OmrSettingsView: React.FC = () => {
                   onChange={(e) => handleChange('disclaimerText', e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                 />
+              </div>
+
+            </div>
+          </div>
+
+          {/* SECTION 4: Face Recognition & Biometric Liveness Settings */}
+          <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#8b5cf6' }}>
+              <Sliders size={18} />
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>4. Face Recognition & Liveness Settings</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Liveness Check Toggle Switch */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ flex: 1, marginRight: '10px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', display: 'block' }}>Require Eye-Blink Liveness check</span>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>Unlocks scanner database entry only after an active blink is verified</p>
+                </div>
+                
+                <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableLivenessCheck}
+                    onChange={(e) => handleChange('enableLivenessCheck', e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                  />
+                  <span style={{
+                    position: 'absolute',
+                    cursor: 'pointer',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: settings.enableLivenessCheck ? '#8b5cf6' : '#cbd5e1',
+                    borderRadius: '24px',
+                    transition: '0.3s'
+                  }}>
+                    <span style={{
+                      position: 'absolute',
+                      content: '""',
+                      height: '18px',
+                      width: '18px',
+                      left: settings.enableLivenessCheck ? '22px' : '3px',
+                      bottom: '3px',
+                      backgroundColor: 'white',
+                      borderRadius: '50%',
+                      transition: '0.3s'
+                    }} />
+                  </span>
+                </label>
+              </div>
+
+              {/* Threshold cosine similarity slider */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Face Match Similarity Threshold
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#8b5cf6', background: '#f5f3ff', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.faceMatchThreshold} ({settings.faceMatchThreshold >= 0.80 ? 'Strict' : (settings.faceMatchThreshold >= 0.70 ? 'Standard' : 'Loose')})
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.60"
+                  max="0.88"
+                  step="0.01"
+                  value={settings.faceMatchThreshold}
+                  onChange={(e) => handleChange('faceMatchThreshold', parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#8b5cf6', cursor: 'pointer' }}
+                />
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                  Higher values prevent false-positives but require more precise alignment. Standard recommended value: 0.70.
+                </p>
               </div>
 
             </div>

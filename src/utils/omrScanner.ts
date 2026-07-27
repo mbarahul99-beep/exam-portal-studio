@@ -292,8 +292,9 @@ export async function scanOMRSheet(
                 const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
                 const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
                 const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
+                const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
-                if (isRatioValid && isWidthSimilar && isHeightSimilar) {
+                if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
                   const quadArea = avgW * avgH;
                   if (quadArea > maxQuadArea) {
                     maxQuadArea = quadArea;
@@ -791,8 +792,9 @@ export function findOMRSheetCornersLive(
             const isRatioValid = (ratio >= 1.15 && ratio <= 1.7); // Portrait A4 ratio is ~1.41
             const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
             const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
+            const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
-            if (isRatioValid && isWidthSimilar && isHeightSimilar) {
+            if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
               const quadArea = avgW * avgH;
               if (quadArea > maxQuadArea) {
                 maxQuadArea = quadArea;
@@ -819,4 +821,40 @@ export function findOMRSheetCornersLive(
     contours.delete();
     hierarchy.delete();
   }
+}
+
+/**
+ * Validates that the four corner anchors form a well-shaped, solid rectangle/quadrilateral.
+ * Checks that all four interior angles are close to 90 degrees (between 70 and 110 degrees),
+ * preventing collinear lines or triangle-like degenerate configurations.
+ */
+function validateQuadAngles(
+  tl: { x: number; y: number },
+  tr: { x: number; y: number },
+  br: { x: number; y: number },
+  bl: { x: number; y: number }
+): boolean {
+  const getAngle = (A: { x: number; y: number }, B: { x: number; y: number }, C: { x: number; y: number }) => {
+    const BAx = A.x - B.x;
+    const BAy = A.y - B.y;
+    const BCx = C.x - B.x;
+    const BCy = C.y - B.y;
+    const dot = BAx * BCx + BAy * BCy;
+    const lenBA = Math.sqrt(BAx * BAx + BAy * BAy);
+    const lenBC = Math.sqrt(BCx * BCx + BCy * BCy);
+    if (lenBA === 0 || lenBC === 0) return 0;
+    return (Math.acos(Math.max(-1, Math.min(1, dot / (lenBA * lenBC)))) * 180) / Math.PI;
+  };
+
+  const a0 = getAngle(tr, tl, bl); // Angle at TL
+  const a1 = getAngle(tl, tr, br); // Angle at TR
+  const a2 = getAngle(tr, br, bl); // Angle at BR
+  const a3 = getAngle(br, bl, tl); // Angle at BL
+
+  return (
+    a0 >= 70 && a0 <= 110 &&
+    a1 >= 70 && a1 <= 110 &&
+    a2 >= 70 && a2 <= 110 &&
+    a3 >= 70 && a3 <= 110
+  );
 }

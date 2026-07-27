@@ -19,8 +19,10 @@ import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt, isAppInstalled } from './components/InstallPWAPrompt';
+import { OmrSettingsView } from './components/OmrSettingsView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
+  Sliders,
   Users,
   UserCheck, 
   FileText, 
@@ -65,7 +67,7 @@ export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings'>('dashboard');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -1833,6 +1835,15 @@ export default function App() {
             >
               <Settings size={18} /> WhatsApp API
             </button>
+            <button 
+              className={`nav-item ${activeTab === 'omr-settings' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('omr-settings');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Sliders size={18} /> OMR Settings
+            </button>
 
             {!isAppInstalled() && (
               <button 
@@ -3316,6 +3327,10 @@ export default function App() {
 
           {activeTab === 'questions-bank' && (
             <QuestionBankManager onBack={() => setActiveTab('dashboard')} />
+          )}
+
+          {activeTab === 'omr-settings' && (
+            <OmrSettingsView />
           )}
         </main>
 

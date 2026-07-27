@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OMR_CONFIG, getDynamicOMRQuestionLayout } from '../utils/omrScanner';
+import { DEFAULT_OMR_SETTINGS, type OmrCustomSettings } from './OmrSettingsView';
 import { Printer, Sliders, Columns, Maximize2 } from 'lucide-react';
+import { db } from '../db';
 
 interface OmrPrintSheetProps {
   examTitle: string;
@@ -11,11 +13,32 @@ interface OmrPrintSheetProps {
 export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQuestions, exam }) => {
   const totalQuestions = Math.min(numQuestions, 200);
 
-  // Customization controls
+  // Customization controls & settings state
   const [customCols, setCustomCols] = useState<number | undefined>(undefined);
   const [density, setDensity] = useState<'auto' | 'compact' | 'normal' | 'spacious'>('auto');
   const [bubbleScale, setBubbleScale] = useState<'normal' | 'large' | 'compact'>('normal');
-  const [instituteName, setInstituteName] = useState('APEX INSTITUTE, JIND');
+  const [omrConfig, setOmrConfig] = useState<OmrCustomSettings>(DEFAULT_OMR_SETTINGS);
+
+  // Load custom OMR settings from storage
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const storedJson = localStorage.getItem('omr_custom_settings');
+        if (storedJson) {
+          setOmrConfig({ ...DEFAULT_OMR_SETTINGS, ...JSON.parse(storedJson) });
+          return;
+        }
+
+        const record = await db.settings.where('key').equals('omr_custom_settings').first();
+        if (record && record.value) {
+          setOmrConfig({ ...DEFAULT_OMR_SETTINGS, ...JSON.parse(record.value) });
+        }
+      } catch (e) {
+        console.warn("Failed loading OMR custom settings in print view:", e);
+      }
+    };
+    loadSettings();
+  }, []);
 
   // Calculate dynamic question layout to fit cleanly between y = 460 and y = 1220
   const layout = getDynamicOMRQuestionLayout(totalQuestions, customCols, density);
@@ -159,13 +182,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             </select>
           </div>
 
-          {/* Institute Title */}
+          {/* Institute Title Header Live Customizer */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: '220px' }}>
             <span style={{ fontWeight: 600, color: '#475569' }}>Header:</span>
             <input 
               type="text"
-              value={instituteName}
-              onChange={(e) => setInstituteName(e.target.value)}
+              value={omrConfig.instituteName}
+              onChange={(e) => setOmrConfig(prev => ({ ...prev, instituteName: e.target.value }))}
               style={{ flex: 1, padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
             />
           </div>
@@ -193,16 +216,16 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
         {/* Institute Name */}
         <div style={{ position: 'absolute', top: toY(30), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
-          <h1 className="omr-institute-title">{instituteName.toUpperCase()}</h1>
+          <h1 className="omr-institute-title">{omrConfig.instituteName.toUpperCase()}</h1>
         </div>
 
         {/* Header section inside the margin frame */}
         <div className="omr-header-section" style={{ top: toY(78) }}>
           <div className="omr-exam-title">{examTitle.toUpperCase()}</div>
-          <div className="omr-subtitle">OMR ANSWER SHEET - {totalQuestions} QUESTIONS</div>
+          <div className="omr-subtitle">{omrConfig.subtitleText.toUpperCase()} - {totalQuestions} QUESTIONS</div>
         </div>
 
-        {/* Decorative Border Cards (Clean English-Only Headers) */}
+        {/* Decorative Border Cards (Custom Editable Box Titles) */}
         <div className="bg-border-card" 
              style={{
                left: toX(70),
@@ -211,7 +234,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                height: toY(260)
              }}
         >
-          <div className="box-title">ROLL NO.</div>
+          <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
         </div>
 
         <div className="bg-border-card" 
@@ -222,7 +245,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                height: toY(260)
              }}
         >
-          <div className="box-title">TEST BOOKLET NO.</div>
+          <div className="box-title">{omrConfig.bookletNoBoxTitle}</div>
         </div>
 
         <div className="bg-border-card" 
@@ -233,7 +256,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                height: toY(260)
              }}
         >
-          <div className="box-title">BOOKLET CODE</div>
+          <div className="box-title">{omrConfig.bookletCodeBoxTitle}</div>
         </div>
 
         {/* ROLL NO DIGIT HEADER BOXES */}
@@ -332,18 +355,18 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           return (
             <div className="candidate-info-table" style={{ left: toX(575 + bookletShift), top: toY(250), width: toX(335 - bookletShift) }}>
               <div className="info-row">
-                <span className="info-label">CANDIDATE'S NAME (IN CAPITAL LETTERS)</span>
+                <span className="info-label">{omrConfig.candidateNameLabel}</span>
                 <div className="info-line" />
               </div>
               <div className="info-row">
-                <span className="info-label">FATHER'S NAME (IN CAPITAL LETTERS)</span>
+                <span className="info-label">{omrConfig.fatherNameLabel}</span>
                 <div className="info-line" />
               </div>
             </div>
           );
         })()}
 
-        {/* DYNAMIC QUESTIONS GRID SECTION (Shifted right to perfectly balance left and right margins inside the frame) */}
+        {/* DYNAMIC QUESTIONS GRID SECTION */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(
             { length: Math.max(0, Math.min(col.qEnd, totalQuestions) - col.qStart + 1) },
@@ -420,29 +443,31 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* Footer boxes: Compact Student & Invigilator Signatures (English Only) */}
-        <div className="sheet-footer-section" 
-             style={{
-               left: toX(70),
-               top: toY(1250),
-               width: toX(860),
-               height: toY(70),
-               display: 'grid',
-               gridTemplateColumns: '1fr 1fr',
-               gap: '20px'
-             }}
-        >
-          <div className="footer-box">
-            <div className="footer-box-label">STUDENT'S SIGNATURE</div>
+        {/* Footer boxes: Student & Invigilator Signatures (Toggleable in OMR Settings) */}
+        {omrConfig.showSignatureBoxes && (
+          <div className="sheet-footer-section" 
+               style={{
+                 left: toX(70),
+                 top: toY(1250),
+                 width: toX(860),
+                 height: toY(70),
+                 display: 'grid',
+                 gridTemplateColumns: '1fr 1fr',
+                 gap: '20px'
+               }}
+          >
+            <div className="footer-box">
+              <div className="footer-box-label">{omrConfig.studentSignatureLabel}</div>
+            </div>
+            <div className="footer-box">
+              <div className="footer-box-label">{omrConfig.invigilatorSignatureLabel}</div>
+            </div>
           </div>
-          <div className="footer-box">
-            <div className="footer-box-label">INVIGILATOR'S SIGNATURE</div>
-          </div>
-        </div>
+        )}
 
-        {/* Bottom disclaimer (English Only) */}
+        {/* Bottom disclaimer */}
         <div className="bottom-disclaimer" style={{ top: toY(1335), left: 0, right: 0, textAlign: 'center' }}>
-          ★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★
+          {omrConfig.disclaimerText}
         </div>
 
         <style>{`

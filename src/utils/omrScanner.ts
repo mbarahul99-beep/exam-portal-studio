@@ -15,10 +15,10 @@ export const OMR_CONFIG = {
   
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 55, y: 45 },
-    tr: { x: 945, y: 45 },
-    bl: { x: 55, y: 1365 },
-    br: { x: 945, y: 1365 }
+    tl: { x: 30, y: 30 },
+    tr: { x: 970, y: 30 },
+    bl: { x: 30, y: 1384 },
+    br: { x: 970, y: 1384 }
   },
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
@@ -44,7 +44,7 @@ export const OMR_CONFIG = {
   // Questions layout coordinates (5 columns of 40 questions each = 200 total)
   questions: {
     bubbleRadius: 6,
-    yStart: 450,
+    yStart: 430,
     yStep: 20,
     columns: [
       { qStart: 1, qEnd: 40, xLabel: 90, xOptions: [120, 145, 170, 195] },
@@ -74,7 +74,7 @@ export interface OMRQuestionLayout {
 
 /**
  * Calculates a dynamic question grid layout that adjusts columns, row counts, and vertical spacing (yStep)
- * to perfectly stretch and fill 100% of the available page height without leaving blank bottom space!
+ * to perfectly fit between y = 430 and y = 1165 so question bubbles NEVER overlap signature boxes!
  */
 export function getDynamicOMRQuestionLayout(
   numQuestions: number,
@@ -96,33 +96,36 @@ export function getDynamicOMRQuestionLayout(
   // 2. Calculate rows per column so all columns are balanced
   const rowsPerCol = Math.ceil(total / numCols);
 
-  // 3. Dynamic yStart & yStep calculation to fit full page height (y: 440 -> 1260)
-  const availableHeight = 820;
-  let yStart = 440;
+  // 3. Dynamic yStart & yStep calculation (y = 430 to 1165)
+  const minY = 430;
+  const maxY = 1165;
+  const maxAvailableHeight = maxY - minY; // 735px
+
   let yStep = 20;
+  if (rowsPerCol > 1) {
+    yStep = maxAvailableHeight / (rowsPerCol - 1);
+  }
 
   if (density === 'auto') {
-    yStep = availableHeight / Math.max(1, rowsPerCol);
     if (total <= 30) {
-      yStep = Math.min(34, Math.max(24, yStep));
+      yStep = Math.min(32, Math.max(22, yStep));
     } else if (total <= 60) {
-      yStep = Math.min(28, Math.max(20, yStep));
+      yStep = Math.min(26, Math.max(19, yStep));
     } else {
-      if (yStep > 28) yStep = 28;
-      if (yStep < 16) yStep = 16;
+      yStep = Math.min(21.0, Math.max(15, yStep));
     }
   } else if (density === 'spacious') {
-    yStep = 26;
+    yStep = 24;
   } else if (density === 'compact') {
-    yStep = 17;
+    yStep = 16;
   } else {
     yStep = 20;
   }
 
-  // Center questions block vertically between y=440 and y=1260
+  let yStart = minY;
   const totalGridHeight = (rowsPerCol - 1) * yStep;
-  if (totalGridHeight < availableHeight) {
-    yStart = 440 + (availableHeight - totalGridHeight) / 2;
+  if (totalGridHeight < maxAvailableHeight) {
+    yStart = minY + (maxAvailableHeight - totalGridHeight) / 2;
   }
 
   // 4. Generate column positions horizontally across 1000px page
@@ -136,9 +139,9 @@ export function getDynamicOMRQuestionLayout(
     if (qStart > total) break;
 
     const colXStart = 70 + c * colWidth;
-    const xLabel = colXStart + (numCols <= 3 ? 22 : 15);
-    const optStart = colXStart + (numCols <= 3 ? 60 : 45);
-    const optStep = numCols <= 3 ? 26 : 23;
+    const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
+    const optStart = colXStart + (numCols <= 3 ? 55 : 38);
+    const optStep = numCols <= 3 ? 25 : 22;
 
     columns.push({
       qStart,

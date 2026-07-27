@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Student, type Exam } from './db';
 import { useOpenCv } from './hooks/useOpenCv';
+import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { scanOMRSheet, OMR_CONFIG } from './utils/omrScanner';
 import { OmrPrintSheet } from './components/OmrPrintSheet';
 import confetti from 'canvas-confetti';
@@ -265,6 +266,9 @@ export default function App() {
   const [enrollDevices, setEnrollDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedEnrollDeviceId, setSelectedEnrollDeviceId] = useState<string>('');
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  const [enrollLandmarks, setEnrollLandmarks] = useState<{ left: number, top: number }[] | null>(null);
+  const lastEnrollLandmarksRef = useRef<any>(null);
   
   // Add Class Form State
   const [newClassName, setNewClassName] = useState('');
@@ -564,35 +568,104 @@ export default function App() {
     }
   };
 
-  // 128-dimensional face embedding generator
-  const generateFaceDescriptor = (canvas: HTMLCanvasElement): number[] => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(128).fill(0).map(() => Math.random());
-    
-    const width = canvas.width;
-    const height = canvas.height;
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const data = imgData.data;
-    
-    const descriptor: number[] = [];
-    const step = Math.floor(data.length / (128 * 4));
-    for (let i = 0; i < 128; i++) {
-      const offset = i * step * 4;
-      const r = data[offset] || 0;
-      const g = data[offset + 1] || 0;
-      const b = data[offset + 2] || 0;
-      const value = ((r + g + b) / 3 - 127.5) / 127.5;
-      descriptor.push(Number(value.toFixed(4)));
+  // Extract 2D geometric landmark descriptor (consistent with AttendancePortal)
+  const extractFaceBiometrics = (_canvas: HTMLCanvasElement | null, landmarks?: any[]): number[] => {
+    if (landmarks && landmarks.length > 0) {
+      // 2D Geometric Landmark descriptor representing robust face proportions (excluding noisy relative depth Z-coordinate)
+      const keyIndices = [10, 152, 234, 454, 33, 133, 159, 145, 263, 362, 386, 374, 70, 107, 300, 336, 4, 1, 197, 2, 64, 294, 61, 291, 13, 14, 172, 397];
+      
+      const p33 = landmarks[33];
+      const p263 = landmarks[263];
+      const scaleDist = Math.sqrt(
+        Math.pow(p33.x - p263.x, 2) +
+        Math.pow(p33.y - p263.y, 2)
+      ) || 1;
+
+      const descriptor: number[] = [];
+      for (let i = 0; i < keyIndices.length; i++) {
+        const ptA = landmarks[keyIndices[i]];
+        for (let j = i + 1; j < keyIndices.length; j++) {
+          const ptB = landmarks[keyIndices[j]];
+          const dist = Math.sqrt(
+            Math.pow(ptA.x - ptB.x, 2) +
+            Math.pow(ptA.y - ptB.y, 2)
+          );
+          descriptor.push(Number((dist / scaleDist).toFixed(6)));
+        }
+      }
+      return descriptor;
     }
-    return descriptor;
+    return Array(378).fill(0);
+  };
+
+  const loadFaceLandmarker = async () => {
+    if (faceLandmarkerRef.current) return faceLandmarkerRef.current;
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+      );
+      if (typeof window !== 'undefined') {
+        (window as any).Module = undefined;
+      }
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numFaces: 1
+      });
+      faceLandmarkerRef.current = landmarker;
+      return landmarker;
+    } catch (err) {
+      console.error("Failed to load FaceLandmarker in App:", err);
+      return null;
+    }
+  };
+
+  const enrollFrameLoop = () => {
+    if (!enrollVideoRef.current || !enrollStream) return;
+    const video = enrollVideoRef.current;
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const landmarkerInstance = faceLandmarkerRef.current;
+      if (landmarkerInstance) {
+        try {
+          const result = landmarkerInstance.detectForVideo(video, performance.now());
+          if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const landmarks = result.faceLandmarks[0];
+            lastEnrollLandmarksRef.current = landmarks;
+
+            // Render live landmarks projection for visual validation
+            const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
+            const nodes = keyIndices.map(idx => ({
+              left: landmarks[idx].x * 100,
+              top: landmarks[idx].y * 100
+            }));
+            setEnrollLandmarks(nodes);
+          } else {
+            setEnrollLandmarks(null);
+          }
+        } catch (e) {
+          console.error("Enroll detection error:", e);
+        }
+      }
+    }
+    if (enrollVideoRef.current && enrollVideoRef.current.srcObject) {
+      requestAnimationFrame(enrollFrameLoop);
+    }
   };
 
   const startFaceEnrollment = async (student: Student) => {
     setEnrollingFaceStudent(student);
     setEnrollSuccess(false);
     setEnrollCountdown(null);
-    setEnrollMessage('Center face inside the oval');
+    setEnrollMessage('Loading face engine...');
+    setEnrollLandmarks(null);
+    lastEnrollLandmarksRef.current = null;
     try {
+      await loadFaceLandmarker();
+      setEnrollMessage('Center face inside the oval');
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setEnrollStream(stream);
 
@@ -608,6 +681,8 @@ export default function App() {
       setTimeout(() => {
         if (enrollVideoRef.current) {
           enrollVideoRef.current.srcObject = stream;
+          enrollVideoRef.current.play().catch(() => {});
+          requestAnimationFrame(enrollFrameLoop);
         }
       }, 300);
     } catch (err) {
@@ -643,6 +718,8 @@ export default function App() {
     setEnrollCountdown(null);
     setEnrollDevices([]);
     setSelectedEnrollDeviceId('');
+    setEnrollLandmarks(null);
+    lastEnrollLandmarksRef.current = null;
   };
 
   const captureFace = () => {
@@ -665,46 +742,30 @@ export default function App() {
 
   const executeCapture = async () => {
     if (!enrollVideoRef.current || !enrollingFaceStudent) return;
-    const video = enrollVideoRef.current;
+    if (!lastEnrollLandmarksRef.current) {
+      setEnrollMessage('⚠️ Face landmarks not detected yet. Please look straight at the camera.');
+      setEnrollCountdown(null);
+      return;
+    }
     
-    const canvas = document.createElement('canvas');
-    canvas.width = 150;
-    canvas.height = 150;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-      const size = Math.min(videoWidth, videoHeight) * 0.65;
-      const x = (videoWidth - size) / 2;
-      const y = (videoHeight - size) / 2;
-      ctx.drawImage(video, x, y, size, size, 0, 0, 150, 150);
-      
-      playShutterSound();
-      const descriptor = generateFaceDescriptor(canvas);
-
-      // Perform strict lighting and contrast analysis on the descriptor
-      const mean = descriptor.reduce((sum, v) => sum + v, 0) / descriptor.length;
-      const variance = descriptor.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / descriptor.length;
-      const stdDev = Math.sqrt(variance);
-
-      if (mean < -0.75 || stdDev < 0.08) {
-        setEnrollMessage('Lighting too dark or poor contrast. Please move to a well-lit area and try again.');
-        setEnrollCountdown(null);
-        return;
-      }
-      
-      try {
-        await db.students.update(enrollingFaceStudent.id!, { faceDescriptor: descriptor });
-        setEnrollSuccess(true);
-        setEnrollMessage('Face successfully enrolled!');
-        setTimeout(() => {
-          stopFaceEnrollment();
-        }, 1500);
-      } catch (err) {
-        console.error("Failed to save face descriptor:", err);
-        setEnrollMessage('Saving failed. Try again.');
-        setEnrollCountdown(null);
-      }
+    // Play shutter sound
+    playShutterSound();
+    const descriptor = extractFaceBiometrics(null, lastEnrollLandmarksRef.current);
+    
+    try {
+      await db.students.update(enrollingFaceStudent.id!, { 
+        faceDescriptor: descriptor,
+        faceDescriptors: [descriptor, descriptor, descriptor]
+      });
+      setEnrollSuccess(true);
+      setEnrollMessage('Face successfully enrolled!');
+      setTimeout(() => {
+        stopFaceEnrollment();
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to save face descriptor:", err);
+      setEnrollMessage('Saving failed. Try again.');
+      setEnrollCountdown(null);
     }
   };
 
@@ -3660,6 +3721,21 @@ export default function App() {
                 pointerEvents: 'none',
                 transition: 'border 0.3s ease'
               }} />
+
+              {/* Live Enrollment Landmarks mesh */}
+              {enrollLandmarks && enrollLandmarks.map((n, i) => (
+                <div key={`enroll-dot-${i}`} style={{
+                  position: 'absolute',
+                  left: `${100 - n.left}%`,
+                  top: `${n.top}%`,
+                  width: '6px',
+                  height: '6px',
+                  background: '#10b981',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 5px #10b981',
+                  zIndex: 5
+                }} />
+              ))}
 
               {/* Countdown overlay */}
               {enrollCountdown !== null && enrollCountdown > 0 && (

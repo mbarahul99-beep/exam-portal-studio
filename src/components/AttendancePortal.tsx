@@ -1141,7 +1141,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{cls.name}</h4>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {clsStudents.length} Students</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {clsStudents.length}</span>
                       <span style={{ color: '#cbd5e1' }}>|</span>
                       <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
                     </div>
@@ -1215,7 +1215,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Users size={12} color="#64748b" />
-                <span style={{ fontWeight: 600 }}>{classStudents.length} Students</span>
+                <span style={{ fontWeight: 600 }}>{classStudents.length}</span>
               </div>
 
               <div style={{ marginLeft: 'auto' }}>

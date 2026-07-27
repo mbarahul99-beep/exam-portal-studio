@@ -1,9 +1,23 @@
 import React, { useState, useRef } from 'react';
 import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Calendar, Users, Check, X, Clock, Download, CheckSquare, Camera, Trash2 } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Calendar, 
+  Users, 
+  Check, 
+  X, 
+  Camera, 
+  FileSpreadsheet, 
+  ChevronRight,
+  UserCheck,
+  UserX,
+  Edit2,
+  ListOrdered,
+  Globe,
+  CheckCircle2
+} from 'lucide-react';
 import jsQR from 'jsqr';
-import { syncStudentToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface AttendancePortalProps {
   classes: ClassEntity[];
@@ -20,23 +34,29 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   };
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
-  const [selectedClass, setSelectedClass] = useState<string>(classes[0]?.name || 'NEET');
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [editingStudentIds, setEditingStudentIds] = useState<Record<number, boolean>>({});
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Scanner States
   const [isScanning, setIsScanning] = useState(false);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [scanStream, setScanStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   
   const [scannedFeedback, setScannedFeedback] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<'QR' | 'Face'>('QR');
-  const [trackedFace, setTrackedFace] = useState<{ x: number, y: number, w: number, h: number, name?: string, pct?: number } | null>(null);
   const requestRef = useRef<number | null>(null);
   const isCooldownRef = useRef<boolean>(false);
   const facePresenceStartRef = useRef<number | null>(null);
+  const isScanningRef = useRef<boolean>(false);
 
-  // Play a browser native synth barcode beep
+  // Show temporary toast notification
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Play browser synth audio beep
   const playBeep = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -47,7 +67,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       gainNode.connect(audioCtx.destination);
 
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
       gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
 
       oscillator.start();
@@ -63,7 +83,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(`${name}, Present`);
-        utterance.rate = 0.9;
+        utterance.rate = 0.95;
         window.speechSynthesis.speak(utterance);
       }
     } catch (err) {
@@ -71,33 +91,78 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
+  // Reactive live queries from IndexedDB
+  const dbStudents = useLiveQuery(() => db.students.toArray(), []) || students;
+  const dbClasses = useLiveQuery(() => db.classes.toArray(), []) || classes;
 
+  const attendanceRecords = useLiveQuery(
+    () => db.attendance.where('date').equals(selectedDate).toArray(),
+    [selectedDate]
+  ) || [];
 
-  const handleCentralSetStatus = async (studentId: number, className: string, status: 'Present' | 'Absent' | 'Late', method: 'QR' | 'Face') => {
+  // Map student ID -> Attendance Record
+  const attendanceMap = new Map<number, AttendanceRecord>(
+    attendanceRecords.map(r => [r.studentId, r])
+  );
+
+  // Set individual attendance status in DB
+  const handleSetStatus = async (studentId: number, className: string, status: 'Present' | 'Absent') => {
     try {
-      const existing = await db.attendance.where('[date+studentId]').equals([selectedDate, studentId]).first();
+      const existing = attendanceMap.get(studentId);
       if (existing) {
-        await db.attendance.update(existing.id!, { status, attendanceMethod: method });
+        await db.attendance.update(existing.id!, { status, className });
       } else {
         await db.attendance.add({
           date: selectedDate,
           studentId,
           className,
           status,
-          createdAt: new Date(),
-          attendanceMethod: method
+          createdAt: new Date()
         });
       }
-    } catch (err) {
-      console.error("Central check-in failed:", err);
+    } catch (err: any) {
+      console.error("Set attendance failed:", err);
     }
   };
 
-  // Detect if a real human face exists inside the frame canvas (Skin/Face Structure & Contrast Profile)
+  // Toggle Edit Mode for a student row
+  const toggleEditStudent = (studentId: number) => {
+    setEditingStudentIds(prev => ({ ...prev, [studentId]: !prev[studentId] }));
+  };
+
+  // Export CSV Action for selected class or all classes
+  const handleExportCSV = (clsName?: string) => {
+    const targetClass = clsName || selectedClass;
+    if (!targetClass) return;
+
+    const classSts = dbStudents.filter(s => s.className === targetClass);
+    if (classSts.length === 0) {
+      alert(`No students found in class ${targetClass}.`);
+      return;
+    }
+
+    let csvContent = 'Roll ID,Student Name,Class,Status,Date,Check-In Time\n';
+    classSts.forEach((s, idx) => {
+      const rec = attendanceMap.get(s.id!);
+      const statusStr = rec ? rec.status : 'Unmarked';
+      const timeStr = rec ? rec.createdAt.toLocaleTimeString() : 'N/A';
+      csvContent += `"${s.studentNum || (idx + 1)}","${s.name.replace(/"/g, '""')}","${s.className}","${statusStr}","${selectedDate}","${timeStr}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Attendance_${targetClass}_${selectedDate}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // SCANNER LOGIC (QR Code & Face Recognition)
   const isHumanFacePresent = (canvas: HTMLCanvasElement): boolean => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
-
     const width = canvas.width;
     const height = canvas.height;
     const imgData = ctx.getImageData(0, 0, width, height);
@@ -107,7 +172,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     const totalPixels = width * height;
     const blockMeans: number[] = [];
 
-    // Evaluate 4x4 spatial sub-grid
     const blockW = Math.floor(width / 4);
     const blockH = Math.floor(height / 4);
 
@@ -130,25 +194,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
 
     const overallAvg = totalLuminance / totalPixels;
-
-    // Reject dark pitch black frames or blinding bright glare
     if (overallAvg < 15 || overallAvg > 245) return false;
 
-    // Spatial intensity variance (Human faces have distinct features; flat walls are uniform)
     const variance = blockMeans.reduce((acc, m) => acc + Math.pow(m - overallAvg, 2), 0) / blockMeans.length;
     const stdDev = Math.sqrt(variance);
 
-    // Flat wall or empty scene check
-    if (stdDev < 15) return false;
-
-    // Eye-row vs cheek-row luminance contrast
-    const topRowAvg = (blockMeans[4] + blockMeans[5] + blockMeans[6] + blockMeans[7]) / 4;
-    const midRowAvg = (blockMeans[8] + blockMeans[9] + blockMeans[10] + blockMeans[11]) / 4;
-
-    return Math.abs(topRowAvg - midRowAvg) >= 2 || stdDev >= 18;
+    return stdDev >= 15;
   };
 
-  // 128-Element Lighting-Invariant Facial Biometric Extractor (Zero-Mean Unit-Variance + Gradients)
   const extractFaceBiometrics = (canvas: HTMLCanvasElement): number[] => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return Array(128).fill(0);
@@ -158,7 +211,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     const imgData = ctx.getImageData(0, 0, width, height);
     const pixels = imgData.data;
 
-    // Convert to grayscale 2D array
     const gray: number[][] = [];
     let sumGray = 0;
     const totalPixels = width * height;
@@ -174,7 +226,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       gray.push(row);
     }
 
-    // Zero-Mean Unit-Variance Standardization (Strips lighting & ambient shadow variations)
     const meanGray = sumGray / totalPixels;
     let varSum = 0;
     for (let y = 0; y < height; y++) {
@@ -194,8 +245,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
 
     const descriptor: number[] = [];
-
-    // Part A: 8x8 Spatial Grid Means (64 elements)
     const blockW = Math.floor(width / 8);
     const blockH = Math.floor(height / 8);
 
@@ -215,7 +264,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       }
     }
 
-    // Part B: 4x4 Gradient Magnitude Grid (32 elements)
     const gBlockW = Math.floor(width / 4);
     const gBlockH = Math.floor(height / 4);
 
@@ -237,7 +285,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       }
     }
 
-    // Part C: 8 Sub-region Landmark Contrast Ratios (32 elements)
     const subW = Math.floor(width / 4);
     const subH = Math.floor(height / 8);
     for (let r = 0; r < 8; r++) {
@@ -256,18 +303,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       }
     }
 
-    // L2 Vector Normalization
     const norm = Math.sqrt(descriptor.reduce((acc, val) => acc + val * val, 0)) || 1;
     return descriptor.map(val => Number((val / norm).toFixed(6)));
   };
 
-  // Cosine Similarity between two normalized L2 biometric vectors (0.0 to 1.0)
   const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
-
+    let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < vecA.length; i++) {
       dot += vecA[i] * vecB[i];
       normA += vecA[i] * vecA[i];
@@ -277,334 +319,116 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
   };
 
-  // Face Enrollment & Removal States
-  const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null);
-  const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
-  const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
-
-  const isScanningRef = useRef<boolean>(false);
-
-  const handleRemoveFace = async (student: Student) => {
-    const primaryName = student.name.split('/')[0].trim();
-    if (window.confirm(`Are you sure you want to remove the registered face record for ${primaryName}?`)) {
-      try {
-        await db.students.update(student.id!, { faceDescriptor: undefined });
-        try {
-          await fetch(`/api/students/${student.id}/face`, { method: 'DELETE' });
-        } catch (e) {
-          console.warn("Delete face API warning:", e);
-        }
-        const updatedStudent = await db.students.get(student.id!);
-        if (updatedStudent) {
-          await syncStudentToCloud(updatedStudent);
-        }
-        pullCloudUpdatesToIndexedDB();
-        alert(`Face record removed for ${primaryName}. You can enroll a fresh face photo anytime.`);
-      } catch (err) {
-        console.error("Failed to remove face descriptor:", err);
-      }
-    }
-  };
-
-  const startEnrollmentCamera = async (student: Student) => {
-    setEnrollingStudent(student);
-    setEnrollMsg("Step 1/2: Align your face inside the green oval.");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setEnrollStream(stream);
-      setTimeout(() => {
-        if (enrollVideoRef.current) {
-          enrollVideoRef.current.srcObject = stream;
-          enrollVideoRef.current.play().catch(() => {});
-        }
-      }, 300);
-    } catch (err) {
-      console.error("Enrollment camera access failed:", err);
-      alert("Please allow camera access to register student face biometrics.");
-      setEnrollingStudent(null);
-    }
-  };
-
-  const stopEnrollmentCamera = () => {
-    if (enrollStream) {
-      enrollStream.getTracks().forEach(track => track.stop());
-      setEnrollStream(null);
-    }
-    setEnrollingStudent(null);
-    setEnrollMsg(null);
-  };
-
-  const captureAndEnrollFace = async () => {
-    if (!enrollingStudent || !enrollVideoRef.current) return;
-    const video = enrollVideoRef.current;
-    if (video.readyState < 2) {
-      setEnrollMsg("Camera loading... Please wait a moment.");
-      return;
-    }
-
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const size = Math.min(width, height) * 0.65;
-      const x = (width - size) / 2;
-      const y = (height - size) / 2;
-      ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
-
-      // Verify that a human face is actually present before enrolling
-      if (!isHumanFacePresent(canvas)) {
-        setEnrollMsg("⚠️ No clear face detected! Please position face inside green oval & blink.");
-        return;
-      }
-
-      const biometrics = extractFaceBiometrics(canvas);
-      
-      try {
-        await db.students.update(enrollingStudent.id!, { faceDescriptor: biometrics });
-        const updatedStudent = await db.students.get(enrollingStudent.id!);
-        if (updatedStudent) {
-          await syncStudentToCloud(updatedStudent);
-        }
-        pullCloudUpdatesToIndexedDB();
-        playBeep();
-        const primaryName = enrollingStudent.name.split('/')[0].trim();
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(`Face Enrolled for ${primaryName}`);
-          window.speechSynthesis.speak(utterance);
-        }
-        setEnrollMsg(`✅ Face Biometric successfully registered & synced for ${primaryName}!`);
-        setTimeout(() => {
-          stopEnrollmentCamera();
-        }, 1500);
-      } catch (err) {
-        console.error("Failed to save face descriptor:", err);
-        setEnrollMsg("❌ Failed to save biometric data. Please try again.");
-      }
-    }
-  };
-
-  const scanFrame = () => {
-    if (!isScanningRef.current) return;
-    if (!videoRef.current) {
-      requestRef.current = requestAnimationFrame(scanFrame);
-      return;
-    }
-
-    const video = videoRef.current;
-    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, width, height);
-        
-        if (scanMode === 'QR') {
-          setTrackedFace(null);
-          if (isCooldownRef.current) {
-            requestRef.current = requestAnimationFrame(scanFrame);
-            return;
-          }
-          try {
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
-            if (code && code.data && !isCooldownRef.current) {
-              const scannedNum = code.data.trim();
-              const stripLeadingZeros = (val: string) => {
-                const cleaned = val.replace(/^0+/, '');
-                return cleaned === '' ? '0' : cleaned;
-              };
-              const cvRollStripped = stripLeadingZeros(scannedNum);
-              const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
-              
-              if (matchedStudent) {
-                const primaryName = matchedStudent.name.split('/')[0].trim();
-                handleCentralSetStatus(matchedStudent.id!, matchedStudent.className, 'Present', 'QR');
-                playBeep();
-                speakAttendance(primaryName);
-                setScannedFeedback(`Checked-in: ${primaryName} (Class: ${matchedStudent.className})`);
-                
-                isCooldownRef.current = true;
-                setTimeout(() => {
-                  isCooldownRef.current = false;
-                  setScannedFeedback(null);
-                }, 2500);
-              }
-            }
-          } catch (e) {
-            console.error("jsQR scan error:", e);
-          }
-        } else {
-          // Automatic Face Recognition Mode
-          const jitterX = Math.round(Math.random() * 4 - 2);
-          const jitterY = Math.round(Math.random() * 4 - 2);
-          const trackingBox = {
-            x: Math.round(width * 0.32) + jitterX,
-            y: Math.round(height * 0.18) + jitterY,
-            w: Math.round(width * 0.36),
-            h: Math.round(height * 0.58)
-          };
-
-          if (isCooldownRef.current) {
-            requestRef.current = requestAnimationFrame(scanFrame);
-            return;
-          }
-
-          const faceCanvas = document.createElement('canvas');
-          faceCanvas.width = 160;
-          faceCanvas.height = 160;
-          const faceCtx = faceCanvas.getContext('2d');
-          if (faceCtx) {
-            const size = Math.min(width, height) * 0.65;
-            const x = (width - size) / 2;
-            const y = (height - size) / 2;
-            faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
-
-            // Step 1: Detect if a real human face is in the scanner frame
-            if (!isHumanFacePresent(faceCanvas)) {
-              setTrackedFace(null);
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
-
-            const liveDescriptor = extractFaceBiometrics(faceCanvas);
-            const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
-            
-            if (enrolledStudents.length === 0) {
-              setTrackedFace({
-                ...trackingBox,
-                name: "⚠️ No Enrolled Student Faces (Click 'Enroll Face' next to student)",
-                pct: undefined
-              });
-              requestRef.current = requestAnimationFrame(scanFrame);
-              return;
-            }
-
-            // Calculate similarity scores for ALL enrolled candidates
-            const matchScores: { student: Student, similarity: number }[] = [];
-
-            for (const student of enrolledStudents) {
-              const sim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor!);
-              matchScores.push({ student, similarity: sim });
-            }
-
-            // Sort by highest similarity score
-            matchScores.sort((a, b) => b.similarity - a.similarity);
-
-            const topMatch = matchScores[0];
-            const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
-
-            const topScore = topMatch.similarity;
-            const secondScore = secondMatch ? secondMatch.similarity : 0;
-            const margin = topScore - secondScore;
-
-            // Instant & Accurate Matching Rules:
-            // 1. Top Cosine similarity score >= 0.78 (78% Match)
-            // 2. Clear margin over 2nd best candidate >= 0.05 (unless only 1 candidate is enrolled)
-            if (topMatch && topScore >= 0.78 && (matchScores.length === 1 || margin >= 0.05)) {
-              const matchPct = Math.round(topScore * 100);
-              const primaryName = topMatch.student.name.split('/')[0].trim();
-
-              handleCentralSetStatus(topMatch.student.id!, topMatch.student.className, 'Present', 'Face');
-              playBeep();
-              speakAttendance(primaryName);
-
-              setScannedFeedback(`✅ Auto-Checked In: ${primaryName} (${matchPct}% Match)`);
-              setTrackedFace({
-                ...trackingBox,
-                name: `👤 ${primaryName} (${matchPct}% Match)`,
-                pct: matchPct
-              });
-
-              isCooldownRef.current = true;
-              setTimeout(() => {
-                isCooldownRef.current = false;
-                setScannedFeedback(null);
-                setTrackedFace(null);
-              }, 2500);
-            } else if (topMatch && topScore >= 0.65 && margin < 0.05 && matchScores.length > 1) {
-              setTrackedFace({
-                ...trackingBox,
-                name: "👤 Face Ambiguous - Please Position Face Closer to Camera",
-                pct: undefined
-              });
-            } else {
-              setTrackedFace({
-                ...trackingBox,
-                name: "👤 Unregistered Face (Click 'Enroll Face' on roster)",
-                pct: undefined
-              });
-            }
-          }
-        }
-      }
-    }
-    requestRef.current = requestAnimationFrame(scanFrame);
-  };
-
   const startScanner = async () => {
     setIsScanning(true);
     isScanningRef.current = true;
     setScannedFeedback(null);
-    isCooldownRef.current = false;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setScanStream(stream);
+    facePresenceStartRef.current = null;
 
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
-      setDevices(videoDevices);
-      
-      const activeTrack = stream.getVideoTracks()[0];
-      const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
-      setSelectedDeviceId(activeDeviceId);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setScanStream(stream);
 
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
-          if (requestRef.current) {
-            cancelAnimationFrame(requestRef.current);
-          }
           requestRef.current = requestAnimationFrame(scanFrame);
         }
-      }, 200);
+      }, 300);
     } catch (err) {
-      console.error("Camera access failed:", err);
-      alert("Please allow camera permissions to use the scanner.");
+      console.error("Camera access error:", err);
+      alert("Please allow camera access to scan attendance.");
       setIsScanning(false);
-      isScanningRef.current = false;
     }
   };
 
-  const attachStream = async (deviceId: string) => {
-    if (scanStream) {
-      scanStream.getTracks().forEach(track => track.stop());
-    }
-    if (requestRef.current) {
-      cancelAnimationFrame(requestRef.current);
-    }
-    try {
-      const constraints = { video: { deviceId: { exact: deviceId } } };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setScanStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-        requestRef.current = requestAnimationFrame(scanFrame);
+  const scanFrame = () => {
+    if (!isScanningRef.current) return;
+
+    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (scanMode === 'QR') {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+
+          if (code && code.data && !isCooldownRef.current) {
+            const rawRoll = code.data.trim();
+            const student = dbStudents.find(s => s.studentNum === rawRoll);
+
+            if (student) {
+              isCooldownRef.current = true;
+              playBeep();
+              const primaryName = student.name.split('/')[0].trim();
+              speakAttendance(primaryName);
+              handleSetStatus(student.id!, student.className, 'Present');
+              setScannedFeedback(`✔ Checked-In: ${primaryName} (${student.className})`);
+
+              setTimeout(() => {
+                isCooldownRef.current = false;
+                setScannedFeedback(null);
+              }, 2200);
+            } else {
+              setScannedFeedback(`⚠️ Unknown Roll ID: ${rawRoll}`);
+            }
+          }
+        } else if (scanMode === 'Face') {
+          const isFace = isHumanFacePresent(canvas);
+          if (isFace) {
+            if (!facePresenceStartRef.current) {
+              facePresenceStartRef.current = Date.now();
+            }
+
+            const frameDescriptor = extractFaceBiometrics(canvas);
+            let bestMatch: Student | null = null;
+            let highestSim = 0;
+
+            for (const st of dbStudents) {
+              if (st.faceDescriptor && st.faceDescriptor.length > 0) {
+                const sim = computeFaceSimilarity(frameDescriptor, st.faceDescriptor);
+                if (sim > highestSim) {
+                  highestSim = sim;
+                  bestMatch = st;
+                }
+              }
+            }
+
+            if (bestMatch && highestSim >= 0.72) {
+              const primaryName = bestMatch.name.split('/')[0].trim();
+
+              if (!isCooldownRef.current) {
+                isCooldownRef.current = true;
+                playBeep();
+                speakAttendance(primaryName);
+                handleSetStatus(bestMatch.id!, bestMatch.className, 'Present');
+                setScannedFeedback(`✔ Face Recognized: ${primaryName} (${Math.round(highestSim * 100)}%)`);
+
+                setTimeout(() => {
+                  isCooldownRef.current = false;
+                  setScannedFeedback(null);
+                  facePresenceStartRef.current = null;
+                }, 2500);
+              }
+            }
+          } else {
+            facePresenceStartRef.current = null;
+          }
+        }
       }
-    } catch (err) {
-      console.error("Failed to attach camera stream:", err);
+    }
+
+    if (isScanningRef.current) {
+      requestRef.current = requestAnimationFrame(scanFrame);
     }
   };
 
@@ -623,746 +447,535 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setScannedFeedback(null);
   };
 
-  // Reactive live query for all students from IndexedDB
-  const dbStudents = useLiveQuery(() => db.students.toArray(), []) || students;
-
-  // Load existing attendance records for the selected class and date
-  const attendanceRecords = useLiveQuery(
-    () => db.attendance.where('date').equals(selectedDate).and(r => r.className === selectedClass).toArray(),
-    [selectedDate, selectedClass]
-  ) || [];
-
-  // Filter students based on selected class using live DB students array
-  const classStudents = dbStudents.filter(s => s.className === selectedClass);
-
-  // Map student ID to attendance record for fast lookups
-  const attendanceMap = new Map<number, AttendanceRecord>(
-    attendanceRecords.map(r => [r.studentId, r])
-  );
-
-  // Calculate statistics from the current enrolled class students roster
-  const totalCount = classStudents.length;
-  let presentCount = 0;
-  let absentCount = 0;
-  let lateCount = 0;
-
-  classStudents.forEach(s => {
-    const r = attendanceMap.get(s.id!);
-    if (r) {
-      if (r.status === 'Present') presentCount++;
-      else if (r.status === 'Absent') absentCount++;
-      else if (r.status === 'Late') lateCount++;
+  // Helper to format date display (DD-MM-YYYY)
+  const formatDateDisplay = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
-  });
-
-  const attendanceRate = totalCount > 0 ? Math.round(((presentCount + lateCount) / totalCount) * 100) : 0;
-
-  // Handler to toggle individual attendance status
-  const handleSetStatus = async (studentId: number, status: 'Present' | 'Absent' | 'Late') => {
-    const existing = attendanceMap.get(studentId);
-    try {
-      if (existing) {
-        if (existing.status === status) {
-          // If clicked the same status, remove it (make unmarked)
-          await db.attendance.delete(existing.id!);
-        } else {
-          // Otherwise, update status
-          await db.attendance.update(existing.id!, { status });
-        }
-      } else {
-        // Create new record
-        await db.attendance.add({
-          date: selectedDate,
-          studentId,
-          className: selectedClass,
-          status,
-          createdAt: new Date()
-        });
-      }
-    } catch (err: any) {
-      console.error("Failed to save attendance:", err);
-    }
+    return dateStr;
   };
 
-  // Batch actions
-  const handleMarkAll = async (status: 'Present' | 'Absent') => {
-    try {
-      for (const student of classStudents) {
-        const existing = attendanceMap.get(student.id!);
-        if (existing) {
-          await db.attendance.update(existing.id!, { status });
-        } else {
-          await db.attendance.add({
-            date: selectedDate,
-            studentId: student.id!,
-            className: selectedClass,
-            status,
-            createdAt: new Date()
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Batch attendance update failed:", err);
-    }
-  };
+  // Class Students Roster for currently selected class
+  const classStudents = selectedClass ? dbStudents.filter(s => s.className === selectedClass) : [];
+  const filteredStudents = classStudents;
 
-  // Export CSV Action
-  const handleExportCSV = () => {
-    if (classStudents.length === 0) return;
-    
-    let csvContent = 'Roll ID,Name,Class,Status,Checked-In Date,Created At\n';
-    classStudents.forEach(s => {
-      const record = attendanceMap.get(s.id!);
-      const statusStr = record ? record.status : 'Unmarked';
-      const createdStr = record ? record.createdAt.toLocaleTimeString() : 'N/A';
-      csvContent += `"${s.studentNum}","${s.name}","${s.className}","${statusStr}","${selectedDate}","${createdStr}"\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Attendance_${selectedClass}_${selectedDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  // Present count for selected class
+  const presentCountForSelected = classStudents.filter(s => {
+    const rec = attendanceMap.get(s.id!);
+    return rec && rec.status === 'Present';
+  }).length;
 
   return (
-    <div className="attendance-portal animate-fade-in">
-      {/* Tab Header */}
-      <header className="pane-header">
+    <div className="attendance-clean-portal animate-fade-in" style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '80px' }}>
+      
+      {/* Toast Feedback Banner */}
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: '#0f172a',
+          color: '#ffffff',
+          padding: '10px 20px',
+          borderRadius: '20px',
+          fontSize: '0.88rem',
+          fontWeight: 600,
+          boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <CheckCircle2 size={16} color="#48bb78" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* VIEW 1: CLASSES SELECTION LIST VIEW (WHEN NO CLASS IS SELECTED)       */}
+      {/* ==================================================================== */}
+      {!selectedClass && (
         <div>
-          <h2>Daily Attendance</h2>
-          <p className="subtitle">Track and review student roll calls, check-in histories, and daily attendance logs.</p>
-        </div>
-        
-        {/* Date and Class Selectors */}
-        <div className="attendance-selectors">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '8px' }}>
-            <Calendar size={16} style={{ color: 'var(--text-secondary)' }} />
-            <input 
-              type="date" 
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: '0.9rem', outline: 'none', color: 'var(--text-primary)' }}
-            />
-          </div>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '4px 0' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>Attendance Roster</h2>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Select a class or use camera scanner to take roll call.</p>
+            </div>
 
-          <select 
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#ffffff', fontSize: '0.9rem', outline: 'none' }}
-          >
-            {classes.map(c => (
-              <option key={`att-cls-${c.id}`} value={c.name}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-      </header>
-
-      {/* Analytics widgets row */}
-      <div className="attendance-stats-grid mb-4">
-        <div className="glass-card flex-between-stat">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span className="box-label">Enrolled Students</span>
-            <span className="box-val text-indigo" style={{ fontSize: '1.75rem', fontWeight: '800' }}>{totalCount}</span>
-          </div>
-          <Users size={28} style={{ opacity: 0.2 }} />
-        </div>
-
-        <div className="glass-card flex-between-stat">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span className="box-label">Check-in Status</span>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.85rem' }}><Check size={14} style={{ color: '#48bb78', verticalAlign: 'middle', marginRight: '2px' }} />Present: <strong>{presentCount}</strong></span>
-              <span style={{ fontSize: '0.85rem' }}><Clock size={14} style={{ color: '#ecc94b', verticalAlign: 'middle', marginRight: '2px' }} />Late: <strong>{lateCount}</strong></span>
-              <span style={{ fontSize: '0.85rem' }}><X size={14} style={{ color: '#f56565', verticalAlign: 'middle', marginRight: '2px' }} />Absent: <strong>{absentCount}</strong></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '10px' }}>
+              <Calendar size={16} color="#64748b" />
+              <input 
+                type="date" 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                style={{ border: 'none', background: 'transparent', fontSize: '0.88rem', fontWeight: 700, outline: 'none', color: '#0f172a' }}
+              />
             </div>
           </div>
-        </div>
 
-        <div className="glass-card flex-between-stat">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span className="box-label">Attendance Rate</span>
-            <span className={`box-val ${attendanceRate >= 75 ? 'text-success' : attendanceRate >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.75rem', fontWeight: '800' }}>
-              {attendanceRate}%
+          {/* PROMINENT SCANNER CARD AT TOP */}
+          <div 
+            onClick={startScanner}
+            style={{
+              background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
+              border: '1.5px solid #bfdbfe',
+              borderRadius: '16px',
+              padding: '18px 20px',
+              marginBottom: '24px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 12px rgba(37,99,235,0.06)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #93c5fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Camera size={24} color="#2563eb" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>
+                  Live Attendance Scanner
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#3b82f6', fontWeight: 600 }}>
+                  Instant QR ID Card & Facial Recognition Check-In
+                </p>
+              </div>
+            </div>
+
+            <span style={{
+              background: '#2563eb',
+              color: '#ffffff',
+              padding: '8px 16px',
+              borderRadius: '20px',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(37,99,235,0.3)'
+            }}>
+              Start Scan
             </span>
           </div>
-          <CheckSquare size={28} style={{ opacity: 0.2 }} />
-        </div>
-      </div>
 
-      {/* Control panel and table */}
-      <div className="glass-card">
-        {/* Roster Controls */}
-        <div className="roster-header mb-4" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button 
-              className="btn-secondary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '0.85rem', color: '#48bb78', borderColor: 'rgba(72,187,120,0.2)', background: 'rgba(72,187,120,0.05)' }} 
-              onClick={() => handleMarkAll('Present')}
-              disabled={classStudents.length === 0}
-            >
-              <Check size={14} /> Mark All Present
-            </button>
-            <button 
-              className="btn-secondary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '0.85rem', color: '#f56565', borderColor: 'rgba(245,101,101,0.2)', background: 'rgba(245,101,101,0.05)' }} 
-              onClick={() => handleMarkAll('Absent')}
-              disabled={classStudents.length === 0}
-            >
-              <X size={14} /> Mark All Absent
-            </button>
-            <button 
-              className="btn-primary-wizard" 
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '0.85rem' }} 
-              onClick={startScanner}
-              disabled={classStudents.length === 0}
-            >
-              <Camera size={14} /> Scan Attendance
-            </button>
-          </div>
+          {/* CLASSES LIST (MATCHING CLASSES THEME) */}
+          <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
+            Select Class ({dbClasses.length})
+          </h3>
 
-          <button 
-            className="btn-secondary" 
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', fontSize: '0.85rem' }}
-            onClick={handleExportCSV}
-            disabled={classStudents.length === 0}
-          >
-            <Download size={14} /> Export CSV
-          </button>
-        </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {dbClasses.map((cls) => {
+              const clsStudents = dbStudents.filter(s => s.className === cls.name);
+              const clsPresent = clsStudents.filter(s => {
+                const rec = attendanceMap.get(s.id!);
+                return rec && rec.status === 'Present';
+              }).length;
 
-        {/* Student List Grid */}
-        {classStudents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-            <Users size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-            <p>No students enrolled in Class {selectedClass} yet.</p>
-          </div>
-        ) : (
-          <>
-            {/* Desktop Table View */}
-            <div className="attendance-desktop-table-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-              <table className="app-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '110px' }}>Roll ID</th>
-                    <th>Student Name</th>
-                    <th style={{ width: '160px' }}>Face Biometric</th>
-                    <th style={{ width: '130px' }}>Current Status</th>
-                    <th style={{ width: '280px', textAlign: 'right' }}>Attendance Triggers</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classStudents.map(student => {
-                    const record = attendanceMap.get(student.id!);
-                    const currentStatus = record ? record.status : 'Unmarked';
-                    const hasFace = !!(student.faceDescriptor && student.faceDescriptor.length > 0);
-                    const primaryName = student.name.split('/')[0].trim();
+              const pct = clsStudents.length > 0 ? Math.round((clsPresent / clsStudents.length) * 100) : 0;
 
-                    return (
-                      <tr key={`att-row-${student.id}`} className="hover-row">
-                        <td><code>{student.studentNum}</code></td>
-                        <td><strong>{primaryName}</strong></td>
-                        <td>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            <button
-                              onClick={() => startEnrollmentCamera(student)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '5px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
-                                background: hasFace ? '#f0fdf4' : '#2563eb',
-                                color: hasFace ? '#15803d' : '#ffffff',
-                                transition: 'all 0.15s ease'
-                              }}
-                              title={hasFace ? "Face Enrolled - Click to Re-register" : "Click to Register Student Face"}
-                            >
-                              <Camera size={13} />
-                              {hasFace ? '✔ Enrolled' : 'Enroll Face'}
-                            </button>
-                            {hasFace && (
-                              <button
-                                onClick={() => handleRemoveFace(student)}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  border: '1px solid #fecaca',
-                                  background: '#fef2f2',
-                                  color: '#dc2626',
-                                  transition: 'all 0.15s ease'
-                                }}
-                                title="Remove Registered Face Biometric Record"
-                              >
-                                <Trash2 size={13} /> Remove
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`status-badge ${
-                            currentStatus === 'Present' ? 'success' :
-                            currentStatus === 'Late' ? 'warning' :
-                            currentStatus === 'Absent' ? 'fail' : 'loading'
-                          }`} style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                            {currentStatus}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="attendance-btn-group" style={{ display: 'inline-flex', gap: '6px' }}>
-                            <button 
-                              className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
-                              onClick={() => handleSetStatus(student.id!, 'Present')}
-                              title="Mark Present"
-                            >
-                              <Check size={14} /> Present
-                            </button>
-                            <button 
-                              className={`btn-att btn-late ${currentStatus === 'Late' ? 'active' : ''}`}
-                              onClick={() => handleSetStatus(student.id!, 'Late')}
-                              title="Mark Late"
-                            >
-                              <Clock size={14} /> Late
-                            </button>
-                            <button 
-                              className={`btn-att btn-absent ${currentStatus === 'Absent' ? 'active' : ''}`}
-                              onClick={() => handleSetStatus(student.id!, 'Absent')}
-                              title="Mark Absent"
-                            >
-                              <X size={14} /> Absent
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+              return (
+                <div
+                  key={`cls-card-${cls.id}`}
+                  onClick={() => setSelectedClass(cls.name)}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: '16px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.1rem' }}>
+                      {cls.name.charAt(0).toUpperCase()}
+                    </div>
 
-            {/* Mobile Cards View */}
-            <div className="attendance-mobile-cards-view">
-              {classStudents.map(student => {
-                const record = attendanceMap.get(student.id!);
-                const currentStatus = record ? record.status : 'Unmarked';
-                const hasFace = !!(student.faceDescriptor && student.faceDescriptor.length > 0);
-                const primaryName = student.name.split('/')[0].trim();
-
-                return (
-                  <div key={`att-card-${student.id}`} className="attendance-mobile-card mb-3">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1.2' }}>{primaryName}</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Roll ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{student.studentNum}</code></span>
-                          <button
-                            onClick={() => startEnrollmentCamera(student)}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              border: hasFace ? '1px solid #bcf0da' : '1px solid #2563eb',
-                              background: hasFace ? '#f0fdf4' : '#2563eb',
-                              color: hasFace ? '#15803d' : '#ffffff'
-                            }}
-                          >
-                            <Camera size={11} /> {hasFace ? '✔ Enrolled' : 'Enroll Face'}
-                          </button>
-                          {hasFace && (
-                            <button
-                              onClick={() => handleRemoveFace(student)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                border: '1px solid #fecaca',
-                                background: '#fef2f2',
-                                color: '#dc2626'
-                              }}
-                            >
-                              <Trash2 size={11} /> Remove
-                            </button>
-                          )}
-                        </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>{cls.name}</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                        <span><Users size={13} style={{ verticalAlign: 'middle' }} /> {clsStudents.length} Students</span>
+                        <span>•</span>
+                        <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
                       </div>
-                      <span className={`status-badge ${
-                        currentStatus === 'Present' ? 'success' :
-                        currentStatus === 'Late' ? 'warning' :
-                        currentStatus === 'Absent' ? 'fail' : 'loading'
-                      }`} style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                        {currentStatus}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : '#d97706' }}>
+                        {pct}%
                       </span>
                     </div>
-                    
-                    <div className="attendance-btn-group" style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '10px' }}>
-                      <button 
-                        className={`btn-att btn-present ${currentStatus === 'Present' ? 'active' : ''}`}
-                        onClick={() => handleSetStatus(student.id!, 'Present')}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                      >
-                        <Check size={14} /> Present
-                      </button>
-                      <button 
-                        className={`btn-att btn-late ${currentStatus === 'Late' ? 'active' : ''}`}
-                        onClick={() => handleSetStatus(student.id!, 'Late')}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                      >
-                        <Clock size={14} /> Late
-                      </button>
-                      <button 
-                        className={`btn-att btn-absent ${currentStatus === 'Absent' ? 'active' : ''}`}
-                        onClick={() => handleSetStatus(student.id!, 'Absent')}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                      >
-                        <X size={14} /> Absent
-                      </button>
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* VIEW 2: SESSION DETAIL ATTENDANCE SCREEN (EXACT MATCH SCREENSHOT)   */}
+      {/* ==================================================================== */}
+      {selectedClass && (
+        <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          
+          {/* SCREENSHOT TOP HEADER BAR */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '1px solid #f1f5f9',
+            background: '#ffffff',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <button
+                onClick={() => setSelectedClass(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+              >
+                <ArrowLeft size={22} color="#0f172a" />
+              </button>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                Session Detail
+              </h2>
+            </div>
+
+            <button
+              onClick={() => handleExportCSV(selectedClass)}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+              title="Export CSV Spreadsheet"
+            >
+              <FileSpreadsheet size={22} color="#2563eb" />
+            </button>
+          </div>
+
+          {/* SCREENSHOT CLASS & SESSION META TOP CARD */}
+          <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
+            <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
+              {selectedClass}
+            </h3>
+            <span style={{ fontSize: '0.9rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
+              attendance
+            </span>
+
+            {/* Metadata Line matching screenshot */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', fontSize: '0.88rem', color: '#475569' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Calendar size={16} color="#64748b" />
+                <span style={{ fontWeight: 600 }}>{formatDateDisplay(selectedDate)}</span>
+              </div>
+
+              <span style={{ color: '#cbd5e1' }}>|</span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Users size={16} color="#64748b" />
+                <span style={{ fontWeight: 600 }}>{classStudents.length}</span>
+              </div>
+
+              <div style={{ marginLeft: 'auto' }}>
+                <span style={{
+                  background: '#e6f4ea',
+                  color: '#137333',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <Globe size={13} /> Public
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* SCREENSHOT STUDENT ROSTER LIST */}
+          <div style={{ flex: 1, padding: '0 20px' }}>
+            {filteredStudents.length === 0 ? (
+              <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                No students found in class {selectedClass}.
+              </div>
+            ) : (
+              filteredStudents.map((student, index) => {
+                const record = attendanceMap.get(student.id!);
+                const isPresent = record?.status === 'Present';
+                const isAbsent = record?.status === 'Absent';
+                const isEditing = editingStudentIds[student.id!] || (!isPresent && !isAbsent);
+                const primaryName = student.name.split('/')[0].trim();
+                const initial = primaryName.charAt(0).toUpperCase();
+                const rollDisplay = student.studentNum || (index + 1);
+
+                return (
+                  <div
+                    key={`st-row-${student.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '16px 0',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    {/* Left: Circular Avatar & Name */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{
+                        width: '46px',
+                        height: '46px',
+                        borderRadius: '50%',
+                        background: '#eff6ff',
+                        color: '#2563eb',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 700,
+                        fontSize: '1.1rem'
+                      }}>
+                        {initial}
+                      </div>
+
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                          {primaryName}
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                          <ListOrdered size={14} color="#94a3b8" />
+                          <span>{rollDisplay}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Actions matching Screenshot Exactly */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      
+                      {/* EDITING / SELECTION STATE (Show Red ❌ and Green ✔️ round buttons) */}
+                      {isEditing ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          {/* Red Circular Absent Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSetStatus(student.id!, selectedClass, 'Absent');
+                              setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
+                            }}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              background: '#ef4444',
+                              color: '#ffffff',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 6px rgba(239,68,68,0.3)',
+                              transition: 'transform 0.15s ease'
+                            }}
+                            title="Mark Absent"
+                          >
+                            <X size={20} strokeWidth={2.5} />
+                          </button>
+
+                          {/* Green Circular Present Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSetStatus(student.id!, selectedClass, 'Present');
+                              setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
+                            }}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              background: '#16a34a',
+                              color: '#ffffff',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
+                              transition: 'transform 0.15s ease'
+                            }}
+                            title="Mark Present"
+                          >
+                            <Check size={20} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      ) : (
+                        /* SAVED STATE (Show green user check icon or red user cross icon + edit pen) */
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          {isPresent && (
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#16a34a' }} title="Present">
+                              <UserCheck size={24} />
+                            </div>
+                          )}
+
+                          {isAbsent && (
+                            <div style={{ display: 'flex', alignItems: 'center', color: '#dc2626' }} title="Absent">
+                              <UserX size={24} />
+                            </div>
+                          )}
+
+                          {/* Edit Pen Icon */}
+                          <button
+                            type="button"
+                            onClick={() => toggleEditStudent(student.id!)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#2563eb',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                            title="Change Attendance Status"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        </div>
+                      )}
+
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </>
-        )}
-      </div>
+              })
+            )}
+          </div>
 
-      {/* Face Scanner Overlay Modal */}
+          {/* SCREENSHOT BOTTOM STICKY ACTION BUTTONS */}
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: '#ffffff',
+            borderTop: '1px solid #e2e8f0',
+            padding: '12px 20px',
+            display: 'flex',
+            gap: '14px',
+            zIndex: 100
+          }}>
+            <button
+              type="button"
+              onClick={() => setSelectedClass(null)}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '8px',
+                background: '#ffffff',
+                color: '#2563eb',
+                border: '1.5px solid #2563eb',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                showToast(`Saved attendance for ${selectedClass} (${presentCountForSelected}/${classStudents.length} Present)!`);
+              }}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '8px',
+                background: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+              }}
+            >
+              Save
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* SCANNER OVERLAY MODAL */}
       {isScanning && (
-        <div className="scanner-overlay">
-          <div className="scanner-modal-responsive text-center">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 'bold' }}>Scan Attendance</h3>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#ffffff', width: '100%', maxWidth: '440px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Attendance Camera Scanner</h3>
+              <button onClick={stopScanner} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}><X size={20} color="#64748b" /></button>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
               <button 
-                onClick={stopScanner}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                onClick={() => { setScanMode('QR'); setScannedFeedback(null); }}
+                style={{
+                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                  borderBottom: scanMode === 'QR' ? '3px solid #2563eb' : 'none', color: scanMode === 'QR' ? '#2563eb' : '#64748b'
+                }}
               >
-                <X size={20} />
+                QR ID Card
+              </button>
+              <button 
+                onClick={() => { setScanMode('Face'); setScannedFeedback(null); }}
+                style={{
+                  flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                  borderBottom: scanMode === 'Face' ? '3px solid #2563eb' : 'none', color: scanMode === 'Face' ? '#2563eb' : '#64748b'
+                }}
+              >
+                Face Biometrics
               </button>
             </div>
 
-            {/* Mode Select Tabs */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '4px' }}>
-              <button 
-                onClick={() => { setScanMode('QR'); setScannedFeedback(null); setTrackedFace(null); facePresenceStartRef.current = null; }}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  border: 'none',
-                  background: 'transparent',
-                  fontWeight: 'bold',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  borderBottom: scanMode === 'QR' ? '3px solid #1058ca' : 'none',
-                  color: scanMode === 'QR' ? '#1058ca' : 'var(--text-secondary)',
-                  outline: 'none'
-                }}
-              >
-                QR ID Card Scanner
-              </button>
-              <button 
-                onClick={() => { setScanMode('Face'); setScannedFeedback(null); setTrackedFace(null); facePresenceStartRef.current = null; }}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  border: 'none',
-                  background: 'transparent',
-                  fontWeight: 'bold',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  borderBottom: scanMode === 'Face' ? '3px solid #1058ca' : 'none',
-                  color: scanMode === 'Face' ? '#1058ca' : 'var(--text-secondary)',
-                  outline: 'none'
-                }}
-              >
-                Face Recognition
-              </button>
-            </div>
-
-            {/* Video container with target overlay */}
-            <div className="camera-container" style={{
-              position: 'relative',
-              width: '100%',
-              aspectRatio: '4/3',
-              background: '#000000',
-              borderRadius: '8px',
-              overflow: 'hidden'
-            }}>
-              <video 
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover'
-                }}
-              />
+            {/* Video Viewport */}
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000000', overflow: 'hidden' }}>
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               
-              {/* QR Mode Scanning reticle */}
-              {scanMode === 'QR' && (
-                <div className="scanning-box" style={{
-                  position: 'absolute',
-                  top: '15%',
-                  left: '15%',
-                  right: '15%',
-                  bottom: '15%',
-                  border: '2px dashed #dc0045',
-                  borderRadius: '8px',
-                  pointerEvents: 'none',
-                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.4)'
-                }}>
-                  <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '2px',
-                    background: '#dc0045',
-                    boxShadow: '0 0 8px #dc0045',
-                    animation: 'scanLaser 2s infinite linear'
-                  }} />
-                </div>
-              )}
-
-              {/* Face Mode biometric tracking box & landmarks mesh */}
-              {scanMode === 'Face' && (
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  pointerEvents: 'none',
-                  boxShadow: 'inset 0 0 80px rgba(0,0,0,0.6)'
-                }}>
-                  {/* Face oval guidelines overlay */}
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: '180px',
-                    height: '240px',
-                    border: '2px dashed rgba(72,187,120,0.4)',
-                    borderRadius: '50%'
-                  }} />
-
-                  {trackedFace && (
-                    (() => {
-                      const vW = (videoRef.current && videoRef.current.videoWidth > 0) ? videoRef.current.videoWidth : 640;
-                      const vH = (videoRef.current && videoRef.current.videoHeight > 0) ? videoRef.current.videoHeight : 480;
-
-                      const leftPct = (trackedFace.x / vW) * 100;
-                      const topPct = (trackedFace.y / vH) * 100;
-                      const widthPct = (trackedFace.w / vW) * 100;
-                      const heightPct = (trackedFace.h / vH) * 100;
-
-                      const fx = leftPct;
-                      const fy = topPct;
-                      const fw = widthPct;
-                      const fh = heightPct;
-
-                      const isMatched = trackedFace.name?.includes('Match');
-
-                      const nodes = [
-                        { left: fx + fw * 0.25, top: fy + fh * 0.3 },
-                        { left: fx + fw * 0.75, top: fy + fh * 0.3 },
-                        { left: fx + fw * 0.5, top: fy + fh * 0.5 },
-                        { left: fx + fw * 0.3, top: fy + fh * 0.7 },
-                        { left: fx + fw * 0.7, top: fy + fh * 0.7 },
-                        { left: fx + fw * 0.5, top: fy + fh * 0.85 },
-                        { left: fx + fw * 0.15, top: fy + fh * 0.45 },
-                        { left: fx + fw * 0.85, top: fy + fh * 0.45 }
-                      ];
-
-                      return (
-                        <>
-                          {/* Live Biometric Bounding Box */}
-                          <div style={{
-                            position: 'absolute',
-                            border: isMatched ? '3px solid #16a34a' : '2px dashed #f59e0b',
-                            borderRadius: '12px',
-                            left: `${leftPct}%`,
-                            top: `${topPct}%`,
-                            width: `${widthPct}%`,
-                            height: `${heightPct}%`,
-                            boxShadow: isMatched ? '0 0 20px rgba(22,163,74,0.5)' : '0 0 10px rgba(245,158,11,0.3)',
-                            boxSizing: 'border-box',
-                            transition: 'all 0.1s linear'
-                          }}>
-                            {/* Live Name / Status Tag */}
-                            <div style={{
-                              position: 'absolute',
-                              top: '-32px',
-                              left: '0',
-                              background: isMatched ? '#16a34a' : '#f59e0b',
-                              color: '#ffffff',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '0.78rem',
-                              fontWeight: 800,
-                              whiteSpace: 'nowrap',
-                              boxShadow: '0 4px 6px rgba(0,0,0,0.15)'
-                            }}>
-                              {trackedFace.name}
-                            </div>
-                          </div>
-
-                          {/* 8 Landmark mesh nodes */}
-                          {nodes.map((n, i) => (
-                            <div key={`dot-${i}`} style={{
-                              position: 'absolute',
-                              left: `${n.left}%`,
-                              top: `${n.top}%`,
-                              width: '6px',
-                              height: '6px',
-                              background: isMatched ? '#16a34a' : '#f59e0b',
-                              borderRadius: '50%',
-                              boxShadow: isMatched ? '0 0 6px #16a34a' : '0 0 4px #f59e0b',
-                              transition: 'all 0.1s linear'
-                            }} />
-                          ))}
-                        </>
-                      );
-                    })()
-                  )}
-                </div>
-              )}
+              <div style={{ position: 'absolute', inset: 0, border: '2px solid rgba(37,99,235,0.4)', pointerEvents: 'none' }} />
 
               {scannedFeedback && (
-                <div className="animate-fade-in" style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  left: '12px',
-                  right: '12px',
-                  background: '#16a34a',
-                  color: '#ffffff',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.88rem',
-                  fontWeight: 800,
-                  textAlign: 'center',
-                  boxShadow: '0 4px 15px rgba(22,163,74,0.4)',
-                  zIndex: 20
+                <div style={{
+                  position: 'absolute', bottom: '16px', left: '16px', right: '16px',
+                  background: '#0f172a', color: '#ffffff', padding: '10px 14px', borderRadius: '10px',
+                  fontSize: '0.85rem', fontWeight: 700, textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                 }}>
                   {scannedFeedback}
                 </div>
               )}
             </div>
 
-            {/* Camera Select dropdown */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                📷 SELECT CONNECTED CAMERA DEVICE ({devices.length > 0 ? `${devices.length} Detected` : 'Scanning...'})
-              </label>
-              <select 
-                value={selectedDeviceId}
-                onChange={(e) => {
-                  setSelectedDeviceId(e.target.value);
-                  attachStream(e.target.value);
-                }}
-                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.88rem', width: '100%', background: '#f8fafc', fontWeight: 600, color: '#0f172a' }}
-              >
-                {devices.length === 0 ? (
-                  <option value="">Default System Camera</option>
-                ) : (
-                  devices.map((d, i) => (
-                    <option key={`cam-${d.deviceId}`} value={d.deviceId}>{d.label || `Camera Device ${i + 1}`}</option>
-                  ))
-                )}
-              </select>
+            <div style={{ padding: '14px', textAlign: 'center' }}>
+              <button onClick={stopScanner} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: '#f1f5f9', color: '#334155', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
+                Done Scanning
+              </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={stopScanner}>Cancel</button>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Face Registration Modal */}
-      {enrollingStudent && (
-        <div className="scanner-overlay">
-          <div className="scanner-modal-responsive text-center">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
-                📷 Register Face Biometric
-              </h3>
-              <button onClick={stopEnrollmentCamera} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-              Position <strong style={{ color: '#0f172a' }}>{enrollingStudent.name.split('/')[0].trim()}</strong> inside the green guide oval.
-            </p>
-
-            <div style={{
-              position: 'relative', width: '100%', aspectRatio: '4/3',
-              background: '#000000', borderRadius: '12px', overflow: 'hidden'
-            }}>
-              <video
-                ref={enrollVideoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-              <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '180px', height: '240px',
-                border: '3px dashed #16a34a', borderRadius: '50%',
-                boxShadow: '0 0 20px rgba(22,163,74,0.4)',
-                pointerEvents: 'none'
-              }} />
-            </div>
-
-            {enrollMsg && (
-              <div style={{
-                padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold',
-                background: enrollMsg.includes('✅') ? '#f0fdf4' : '#fef2f2',
-                color: enrollMsg.includes('✅') ? '#16a34a' : '#dc2626',
-                border: enrollMsg.includes('✅') ? '1px solid #bcf0da' : '1px solid #fecaca'
-              }}>
-                {enrollMsg}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={stopEnrollmentCamera}>
-                Cancel
-              </button>
-              <button className="btn-primary-wizard" style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={captureAndEnrollFace}>
-                <Camera size={16} /> Snap & Register Face
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

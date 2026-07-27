@@ -4791,8 +4791,10 @@ export default function App() {
             padding: 12px 20px;
             background: #ffffff;
             border-bottom: 1px solid var(--border-color);
-            position: sticky;
+            position: fixed;
             top: 0;
+            left: 0;
+            right: 0;
             z-index: 999;
             width: 100%;
             height: 60px;
@@ -4810,6 +4812,7 @@ export default function App() {
           .app-layout {
             flex-direction: column;
             min-height: calc(100vh - 60px);
+            padding-top: 60px;
           }
 
           .sidebar {

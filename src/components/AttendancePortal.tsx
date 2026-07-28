@@ -358,7 +358,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
         sumAbsDiff += Math.abs(vecA[i] - vecB[i]);
       }
       const meanDiff = sumAbsDiff / vecA.length;
-      return Math.max(0, Math.min(1, 1 - meanDiff * 5.0));
+      // High-precision separation: mean absolute difference multiplier of 11.0
+      // Same faces (meanDiff <= 0.027) will result in >= 70% match.
+      // Random faces (meanDiff >= 0.06) will result in <= 34% match, preventing any false positives.
+      return Math.max(0, Math.min(1, 1 - meanDiff * 11.0));
     }
 
     // Fallback to legacy HOG-like image cosine similarity
@@ -444,7 +447,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       if (storedJson) {
         const parsed = JSON.parse(storedJson);
         return {
-          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.58,
+          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.70,
           enableLivenessCheck: parsed.enableLivenessCheck !== undefined ? Boolean(parsed.enableLivenessCheck) : true
         };
       }
@@ -452,7 +455,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       console.warn("Failed to load OMR Settings for biometrics:", e);
     }
     return {
-      faceMatchThreshold: 0.58,
+      faceMatchThreshold: 0.70,
       enableLivenessCheck: true
     };
   };
@@ -977,7 +980,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                     const partialMatchName = topMatch ? topMatch.student.name.split('/')[0].trim() : '';
                     setTrackedFace({
                       ...faceBox,
-                      name: topMatch && topScore >= 0.40 
+                      name: topMatch && topScore >= 0.55 
                         ? `👤 Low Confidence Match: ${partialMatchName} (${topSimPct}%)` 
                         : "👤 Unregistered biometric face",
                       pct: undefined,

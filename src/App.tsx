@@ -568,34 +568,100 @@ export default function App() {
     }
   };
 
-  // Extract 2D geometric landmark descriptor (consistent with AttendancePortal)
-  const extractFaceBiometrics = (_canvas: HTMLCanvasElement | null, landmarks?: any[]): number[] => {
-    if (landmarks && landmarks.length > 0) {
-      // 2D Geometric Landmark descriptor representing robust face proportions (excluding noisy relative depth Z-coordinate)
-      const keyIndices = [10, 152, 234, 454, 33, 133, 159, 145, 263, 362, 386, 374, 70, 107, 300, 336, 4, 1, 197, 2, 64, 294, 61, 291, 13, 14, 172, 397];
-      
-      const p33 = landmarks[33];
-      const p263 = landmarks[263];
-      const scaleDist = Math.sqrt(
-        Math.pow(p33.x - p263.x, 2) +
-        Math.pow(p33.y - p263.y, 2)
-      ) || 1;
+  // Extract aligned HOG descriptor (consistent with AttendancePortal)
+  const extractAlignedHogDescriptor = (video: HTMLVideoElement, landmarks: any[]): number[] => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 120;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return Array(512).fill(0);
 
-      const descriptor: number[] = [];
-      for (let i = 0; i < keyIndices.length; i++) {
-        const ptA = landmarks[keyIndices[i]];
-        for (let j = i + 1; j < keyIndices.length; j++) {
-          const ptB = landmarks[keyIndices[j]];
-          const dist = Math.sqrt(
-            Math.pow(ptA.x - ptB.x, 2) +
-            Math.pow(ptA.y - ptB.y, 2)
-          );
-          descriptor.push(Number((dist / scaleDist).toFixed(6)));
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+
+    const p33 = landmarks[33];
+    const p263 = landmarks[263];
+    const eyeLX = p33.x * vw;
+    const eyeLY = p33.y * vh;
+    const eyeRX = p263.x * vw;
+    const eyeRY = p263.y * vh;
+
+    const dx = eyeRX - eyeLX;
+    const dy = eyeRY - eyeLY;
+    const angle = Math.atan2(dy, dx);
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const desiredDist = 50;
+    const scale = desiredDist / dist;
+    const eyeCX = (eyeLX + eyeRX) / 2;
+    const eyeCY = (eyeLY + eyeRY) / 2;
+
+    ctx.save();
+    ctx.translate(60, 45);
+    ctx.rotate(-angle);
+    ctx.scale(scale, scale);
+    ctx.translate(-eyeCX, -eyeCY);
+    ctx.drawImage(video, 0, 0, vw, vh);
+    ctx.restore();
+
+    const imgData = ctx.getImageData(0, 0, 120, 120);
+    const pixels = imgData.data;
+    const gray = new Float32Array(120 * 120);
+    for (let i = 0; i < 120 * 120; i++) {
+      const idx = i * 4;
+      gray[i] = 0.299 * pixels[idx] + 0.587 * pixels[idx+1] + 0.114 * pixels[idx+2];
+    }
+
+    const mag = new Float32Array(120 * 120);
+    const ori = new Float32Array(120 * 120);
+    for (let y = 1; y < 119; y++) {
+      for (let x = 1; x < 119; x++) {
+        const idx = y * 120 + x;
+        const gradX = gray[idx + 1] - gray[idx - 1];
+        const gradY = gray[idx + 120] - gray[idx - 120];
+        mag[idx] = Math.sqrt(gradX * gradX + gradY * gradY);
+        let angleVal = Math.atan2(gradY, gradX) * (180 / Math.PI);
+        if (angleVal < 0) angleVal += 180;
+        ori[idx] = angleVal;
+      }
+    }
+
+    const numBins = 8;
+    const binSize = 180 / numBins;
+    const descriptor = new Float32Array(8 * 8 * numBins);
+
+    for (let by = 0; by < 8; by++) {
+      for (let bx = 0; bx < 8; bx++) {
+        const startX = bx * 15;
+        const startY = by * 15;
+        const blockIdx = (by * 8 + bx) * numBins;
+
+        for (let y = 0; y < 15; y++) {
+          for (let x = 0; x < 15; x++) {
+            const px = startX + x;
+            const py = startY + y;
+            const idx = py * 120 + px;
+            const m = mag[idx];
+            const o = ori[idx];
+
+            const bin = Math.min(numBins - 1, Math.floor(o / binSize));
+            descriptor[blockIdx + bin] += m;
+          }
         }
       }
-      return descriptor;
     }
-    return Array(378).fill(0);
+
+    let normSum = 0;
+    for (let i = 0; i < descriptor.length; i++) {
+      normSum += descriptor[i] * descriptor[i];
+    }
+    const norm = Math.sqrt(normSum) || 1;
+    const finalVec = [];
+    for (let i = 0; i < descriptor.length; i++) {
+      finalVec.push(Number((descriptor[i] / norm).toFixed(6)));
+    }
+
+    return finalVec;
   };
 
   const loadFaceLandmarker = async () => {
@@ -753,7 +819,7 @@ export default function App() {
     
     // Play shutter sound
     playShutterSound();
-    const descriptor = extractFaceBiometrics(null, lastEnrollLandmarksRef.current);
+    const descriptor = extractAlignedHogDescriptor(enrollVideoRef.current, lastEnrollLandmarksRef.current);
     
     try {
       await db.students.update(enrollingFaceStudent.id!, { 

@@ -326,10 +326,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       for (let i = 0; i < vecA.length; i++) {
         dot += vecA[i] * vecB[i];
       }
-      // Strict Cosine Similarity scaling: map [0.55, 1.0] to [0.0, 1.0]
-      // Same person (cosine >= 0.87) will result in >= 71% match.
-      // Different person (cosine <= 0.65) will result in <= 22% match, guaranteeing 0 false positives.
-      const sim = (dot - 0.55) / 0.45;
+      // Balanced Cosine Similarity scaling: map [0.50, 1.0] to [0.0, 1.0]
+      // Same person (cosine >= 0.84) will result in >= 68% match.
+      // Different person (cosine <= 0.65) will result in <= 30% match, guaranteeing 0 false positives.
+      const sim = (dot - 0.50) / 0.50;
       return Math.max(0, Math.min(1, sim));
     }
 
@@ -416,7 +416,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       if (storedJson) {
         const parsed = JSON.parse(storedJson);
         return {
-          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.70,
+          faceMatchThreshold: parsed.faceMatchThreshold !== undefined ? Number(parsed.faceMatchThreshold) : 0.65,
           enableLivenessCheck: parsed.enableLivenessCheck !== undefined ? Boolean(parsed.enableLivenessCheck) : true
         };
       }
@@ -424,7 +424,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       console.warn("Failed to load OMR Settings for biometrics:", e);
     }
     return {
-      faceMatchThreshold: 0.70,
+      faceMatchThreshold: 0.65,
       enableLivenessCheck: true
     };
   };

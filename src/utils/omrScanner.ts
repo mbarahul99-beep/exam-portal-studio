@@ -515,6 +515,33 @@ export async function scanOMRSheet(
       }
     }
 
+    // 5.8. Dynamic White Level Auto-Calibration
+    // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting
+    const samples: number[] = [];
+    const qConf = getDynamicOMRQuestionLayout(numQuestions);
+    for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
+      let colConf = null;
+      for (const col of qConf.columns) {
+        if (q >= col.qStart && q <= col.qEnd) { colConf = col; break; }
+      }
+      if (!colConf) continue;
+      const qIndex = q - colConf.qStart;
+      const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
+      let maxVal = -1;
+      for (let o = 0; o < 4; o++) {
+        const x = colConf.xOptions[o];
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        if (val > maxVal) maxVal = val;
+      }
+      if (maxVal > 0) samples.push(maxVal);
+    }
+    samples.sort((a, b) => a - b);
+    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
+    console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
+
+    const fillDiffThreshold = 30; // Bubble must be at least 30 gray levels darker than the local maximum
+    const maxAbsoluteFillVal = whitePaperLevel - 35; // Bubble must be at least 35 gray levels darker than page white paper
+
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
@@ -545,8 +572,8 @@ export async function scanOMRSheet(
         }
       }
 
-      // Determine if a digit is filled: must be at least 40 units darker than brightest bubble, and darkest value < 155
-      if (maxVal - minVal > 40 && minVal < 155) {
+      // Determine if a digit is filled: must satisfy adaptive thresholds
+      if (maxVal - minVal > fillDiffThreshold && minVal < maxAbsoluteFillVal) {
         studentNum += digitValuesList[minIdx].toString();
       } else {
         studentNum += '0'; // default fallback
@@ -555,7 +582,6 @@ export async function scanOMRSheet(
 
     // 7. Scan Answers (Dynamic Grid Layout matching printed OMR sheet)
     const answers: Record<number, string> = {};
-    const qConf = getDynamicOMRQuestionLayout(numQuestions);
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
     for (let q = 1; q <= numQuestions; q++) {
@@ -596,11 +622,11 @@ export async function scanOMRSheet(
         }
       }
 
-      // Detect all filled options for this question using strict thresholds to prevent stray lines/folds
+      // Detect all filled options for this question using adaptive thresholds
       const filledOptions: number[] = [];
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        if (maxVal - val > 40 && val < 155) {
+        if (maxVal - val > fillDiffThreshold && val < maxAbsoluteFillVal) {
           filledOptions.push(o);
         }
       }
@@ -738,8 +764,8 @@ export function findOMRSheetCornersLive(
       const aspectRatio = rect.width / rect.height;
 
       // Anchors are square-like black marks
-      const isCorrectSize = area > pageArea * 0.0001 && area < pageArea * 0.015;
-      const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
+      const isCorrectSize = area > pageArea * 0.00001 && area < pageArea * 0.02;
+      const isSquare = aspectRatio >= 0.6 && aspectRatio <= 1.6;
 
       if (isCorrectSize && isSquare) {
         const center = {

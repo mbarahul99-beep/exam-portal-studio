@@ -13,6 +13,9 @@ import {
   Eye,
   Search,
   CheckCircle,
+  CheckCircle2,
+  XCircle,
+  MinusCircle,
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
@@ -61,6 +64,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const stableFramesRef = useRef<number>(0);
 
   // Registered students in this exam's class limit validation
+  const [lastScanOverlay, setLastScanOverlay] = useState<{ studentName: string; studentNum: string; score: number; correctCount: number; wrongCount: number; unansweredCount: number } | null>(null);
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
   const scannedCount = existingSubmissions.length;
@@ -125,6 +129,18 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
   // Real-time sheet contour tracker
   const runCameraAnalysisLoop = () => {
+    if (lastScanOverlay) {
+      const canvas = overlayCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      setDetectorStatus('searching');
+      stableFramesRef.current = 0;
+      analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
+      return;
+    }
+
     if (!videoRef.current || !overlayCanvasRef.current || !cvLoaded) {
       analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
       return;
@@ -477,8 +493,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       setActiveResult(scanResultData);
       setDetectedStudentId(studentId || null);
 
+      setLastScanOverlay({
+        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+        studentNum: cvResult.studentNum,
+        score,
+        correctCount,
+        wrongCount,
+        unansweredCount
+      });
+
       confetti({ particleCount: 60, spread: 60 });
-      setShowCameraModal(false);
     } catch (err: any) {
       alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Align sheet inside frame."));
     } finally {
@@ -1334,6 +1358,129 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 )}
               </button>
             </div>
+
+            {lastScanOverlay && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.85)',
+                backdropFilter: 'blur(12px)',
+                zIndex: 40,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px',
+                animation: 'fadeIn 0.3s ease-out'
+              }}>
+                <div style={{
+                  background: '#ffffff',
+                  borderRadius: '24px',
+                  width: '100%',
+                  maxWidth: '440px',
+                  padding: '28px',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+                  color: '#0f172a',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  <div style={{ textAlign: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+                    <div style={{ 
+                      width: '56px', 
+                      height: '56px', 
+                      borderRadius: '50%', 
+                      background: '#d1fae5', 
+                      color: '#059669', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      margin: '0 auto 12px auto' 
+                    }}>
+                      <CheckCircle2 size={32} />
+                    </div>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>OMR Sheet Processed</h2>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Candidate matches registered roster records</p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px' }}>
+                      <span style={{ color: '#475569', fontSize: '0.88rem', fontWeight: 600 }}>Student Name</span>
+                      <span style={{ color: '#0f172a', fontSize: '0.88rem', fontWeight: 700 }}>{lastScanOverlay.studentName}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px' }}>
+                      <span style={{ color: '#475569', fontSize: '0.88rem', fontWeight: 600 }}>Roll Number</span>
+                      <span style={{ color: '#0f172a', fontSize: '0.88rem', fontWeight: 700 }}>{lastScanOverlay.studentNum}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #34d399' }}>
+                      <span style={{ color: '#059669', fontSize: '0.88rem', fontWeight: 700 }}>Total Score</span>
+                      <span style={{ color: '#059669', fontSize: '0.88rem', fontWeight: 800 }}>{lastScanOverlay.score} Marks</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
+                    <div style={{ padding: '12px 6px', background: '#ecfdf5', borderRadius: '16px', border: '1px solid #a7f3d0' }}>
+                      <div style={{ color: '#059669', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><CheckCircle size={18} /></div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857' }}>{lastScanOverlay.correctCount}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Correct</div>
+                    </div>
+                    <div style={{ padding: '12px 6px', background: '#fef2f2', borderRadius: '16px', border: '1px solid #fecaca' }}>
+                      <div style={{ color: '#dc2626', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><XCircle size={18} /></div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#b91c1c' }}>{lastScanOverlay.wrongCount}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: 600 }}>Incorrect</div>
+                    </div>
+                    <div style={{ padding: '12px 6px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ color: '#64748b', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><MinusCircle size={18} /></div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#475569' }}>{lastScanOverlay.unansweredCount}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>Left</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                    <button 
+                      type="button"
+                      onClick={() => setLastScanOverlay(null)}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '16px',
+                        background: '#10b981',
+                        color: '#ffffff',
+                        border: 'none',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+                        transition: 'all 0.2s ease',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      🟢 Scan Next Sheet
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        stopCameraStream();
+                        setShowCameraModal(false);
+                        setLastScanOverlay(null);
+                      }}
+                      style={{
+                        padding: '12px 20px',
+                        borderRadius: '16px',
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      Finish
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>

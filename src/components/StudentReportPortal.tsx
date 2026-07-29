@@ -25,9 +25,11 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
 
+  const numStudentId = Number(studentId);
+
   // Live queries
-  const student = useLiveQuery(() => db.students.get(studentId), [studentId]);
-  const submissions = useLiveQuery(() => db.submissions.where('studentId').equals(studentId).toArray(), [studentId]) || [];
+  const student = useLiveQuery(() => db.students.get(numStudentId), [numStudentId]);
+  const submissions = useLiveQuery(() => db.submissions.where('studentId').equals(numStudentId).toArray(), [numStudentId]) || [];
   const exams = useLiveQuery(() => db.exams.toArray()) || [];
   const allSubmissions = useLiveQuery(() => db.submissions.toArray()) || [];
 
@@ -55,7 +57,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       } else {
         countInTie++;
       }
-      if (s.studentId === studentId) {
+      if (Number(s.studentId) === numStudentId) {
         studentRank = rank;
       }
     });

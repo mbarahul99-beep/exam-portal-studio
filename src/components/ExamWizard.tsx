@@ -657,11 +657,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         </header>
 
         {/* Stepper Progress Bar (Displays only active step at the top for clean mobile layout) */}
-        <div className="wizard-stepper" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #edf2f7' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="wizard-stepper" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '6px 16px', background: '#f8fafc', borderBottom: '1px solid #edf2f7' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
-              width: '32px',
-              height: '32px',
+              width: '24px',
+              height: '24px',
               borderRadius: '50%',
               background: 'var(--primary)',
               color: '#ffffff',
@@ -669,15 +669,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
               alignItems: 'center',
               justifyContent: 'center',
               fontWeight: 'bold',
-              fontSize: '0.9rem'
+              fontSize: '0.8rem'
             }}>
               {step}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+              <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Step {step} of {getTotalSteps()}
               </span>
-              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>
                 {getStepName(step)}
               </span>
             </div>

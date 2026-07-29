@@ -59,7 +59,16 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number } | null>(null);
-  const [editableKeys, setEditableKeys] = useState<Record<number, string>>(() => ({ ...(exam.answerKey || {}) }));
+  const [activeAnswerKeySet, setActiveAnswerKeySet] = useState<string>('A');
+  const [editableKeys, setEditableKeys] = useState<Record<string, Record<number, string>>>(() => {
+    const initialKeys: Record<string, Record<number, string>> = {};
+    const setsCount = exam.examSetsCount || 1;
+    const sets = Array.from({ length: Math.max(setsCount, 4) }).map((_, i) => String.fromCharCode(65 + i));
+    sets.forEach(setName => {
+      initialKeys[setName] = { ...(exam.answerKeys?.[setName] || (setName === 'A' ? exam.answerKey : {}) || {}) };
+    });
+    return initialKeys;
+  });
   const [isSavingKey, setIsSavingKey] = useState(false);
 
   // WhatsApp Broadcast States
@@ -219,8 +228,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const handleSaveAnswerKeys = async () => {
     setIsSavingKey(true);
     try {
-      // 1. Update exam answerKey in DB
-      await db.exams.update(exam.id!, { answerKey: editableKeys });
+      // 1. Update exam answerKey and answerKeys in DB
+      await db.exams.update(exam.id!, { 
+        answerKey: editableKeys['A'] || {}, 
+        answerKeys: editableKeys 
+      });
 
       // Sync exam to Hostinger MySQL
       const updatedExam = await db.exams.get(exam.id!);
@@ -242,10 +254,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       const uMarks = exam.unansweredMarks ?? 0;
 
       for (const sub of examSubs) {
+        const bookletSet = sub.bookletSet || 'A';
+        const correctKey = editableKeys[bookletSet] || editableKeys['A'] || {};
+
         let newScore = 0;
         for (let q = 1; q <= exam.numQuestions; q++) {
           const ans = sub.answers ? sub.answers[q] : '';
-          const key = editableKeys[q];
+          const key = correctKey[q];
           if (!ans) {
             newScore += uMarks;
           } else if (ans === key) {
@@ -1053,11 +1068,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <ArrowLeft size={22} color="#0f172a" />
               </button>
               <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                Answer Key
+                Answer Key {activeAnswerKeySet !== 'A' ? `(Set ${activeAnswerKeySet})` : ''}
               </h2>
             </div>
 
-            {/* Quick Fill Dropdown Menu */}
+            {/* Quick Fill & Set Switcher Dropdown Menu */}
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => {
@@ -1082,7 +1097,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   border: '1px solid #e2e8f0',
                   padding: '8px 0',
                   zIndex: 100,
-                  minWidth: '140px'
+                  minWidth: '160px'
                 }}
               >
                 <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>QUICK FILL ALL:</div>
@@ -1090,11 +1105,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <button
                     key={`menu-qf-${opt}`}
                     onClick={() => {
-                      const nextKeys: Record<number, string> = {};
-                      for (let q = 1; q <= exam.numQuestions; q++) {
-                        nextKeys[q] = opt;
-                      }
-                      setEditableKeys(nextKeys);
+                      setEditableKeys(prev => {
+                        const next = { ...prev };
+                        const currentSetKeys: Record<number, string> = {};
+                        for (let q = 1; q <= exam.numQuestions; q++) {
+                          currentSetKeys[q] = opt;
+                        }
+                        next[activeAnswerKeySet] = currentSetKeys;
+                        return next;
+                      });
                       const menu = document.getElementById('ak-quick-menu');
                       if (menu) menu.style.display = 'none';
                     }}
@@ -1113,6 +1132,40 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                     Set All {opt}
                   </button>
                 ))}
+
+                <div style={{ borderTop: '1px solid #f1f5f9', margin: '6px 0' }} />
+                <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>EDIT SET KEY:</div>
+                {Array.from({ length: Math.max(exam.examSetsCount || 1, 4) }).map((_, idx) => {
+                  const setName = String.fromCharCode(65 + idx);
+                  const isCurrent = activeAnswerKeySet === setName;
+                  return (
+                    <button
+                      key={`switch-set-${setName}`}
+                      onClick={() => {
+                        setActiveAnswerKeySet(setName);
+                        const menu = document.getElementById('ak-quick-menu');
+                        if (menu) menu.style.display = 'none';
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 16px',
+                        background: isCurrent ? '#f1f5f9' : 'transparent',
+                        border: 'none',
+                        fontSize: '0.88rem',
+                        fontWeight: isCurrent ? 800 : 600,
+                        color: isCurrent ? '#16a34a' : '#1e293b',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span>Set {setName} Key</span>
+                      {isCurrent && <span style={{ fontSize: '0.7rem' }}>✏️ Active</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1126,8 +1179,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           }}>
             <div style={{ maxWidth: '640px', margin: '0 auto' }}>
               {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
-                const currentOpt = editableKeys[q] || 'A';
-                const optionsList = ['A', 'B', 'C', 'D'];
+                const currentOpt = editableKeys[activeAnswerKeySet]?.[q] || 'A';
+                const sec = exam.sections?.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
+                const is5Option = sec && sec.questionType === '5 option';
+                const optionsList = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 
                 return (
                   <div
@@ -1152,16 +1207,25 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         return (
                           <button
                             key={`ak-q-${q}-opt-${opt}`}
-                            onClick={() => setEditableKeys(prev => ({ ...prev, [q]: opt }))}
+                            onClick={() => {
+                              setEditableKeys(prev => {
+                                const next = { ...prev };
+                                next[activeAnswerKeySet] = {
+                                  ...(next[activeAnswerKeySet] || {}),
+                                  [q]: opt
+                                };
+                                return next;
+                              });
+                            }}
                             style={{
-                              width: '42px',
-                              height: '42px',
+                              width: '38px',
+                              height: '38px',
                               borderRadius: '50%',
                               border: 'none',
-                              background: isSelected ? '#008726' : '#e5e7eb',
-                              color: isSelected ? '#ffffff' : '#374151',
-                              fontWeight: 700,
-                              fontSize: '0.95rem',
+                              background: isSelected ? '#008726' : '#f1f5f9',
+                              color: isSelected ? '#ffffff' : '#475569',
+                              fontWeight: 800,
+                              fontSize: '0.85rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1196,11 +1260,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             {/* Reset Button */}
             <button
               onClick={() => {
-                const resetKeys: Record<number, string> = {};
-                for (let q = 1; q <= exam.numQuestions; q++) {
-                  resetKeys[q] = 'A';
-                }
-                setEditableKeys(resetKeys);
+                setEditableKeys(prev => {
+                  const next = { ...prev };
+                  const currentSetKeys: Record<number, string> = {};
+                  for (let q = 1; q <= exam.numQuestions; q++) {
+                    currentSetKeys[q] = 'A';
+                  }
+                  next[activeAnswerKeySet] = currentSetKeys;
+                  return next;
+                });
               }}
               style={{
                 flex: 1,

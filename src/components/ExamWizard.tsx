@@ -1091,7 +1091,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
                           <div className="key-grid-scroll" style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(235px, 1fr))',
                             gap: '8px',
                             maxHeight: '320px',
                             overflowY: 'auto',
@@ -1121,19 +1121,19 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                         className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
                                         onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
                                         style={{
-                                          width: '28px',
-                                          height: '28px',
+                                          width: '32px',
+                                          height: '32px',
                                           borderRadius: '50%',
-                                          border: currentKey === opt ? 'none' : '1px solid #cbd5e1',
-                                          background: currentKey === opt ? '#16a34a' : '#ffffff',
+                                          border: 'none',
+                                          background: currentKey === opt ? '#008726' : '#f1f5f9',
                                           color: currentKey === opt ? '#ffffff' : '#475569',
                                           fontWeight: 800,
-                                          fontSize: '0.78rem',
+                                          fontSize: '0.82rem',
                                           cursor: 'pointer',
                                           display: 'flex',
                                           alignItems: 'center',
                                           justifyContent: 'center',
-                                          boxShadow: currentKey === opt ? '0 2px 4px rgba(22, 163, 74, 0.3)' : 'none'
+                                          boxShadow: currentKey === opt ? '0 2px 4px rgba(0, 135, 38, 0.3)' : 'none'
                                         }}
                                       >
                                         {opt}

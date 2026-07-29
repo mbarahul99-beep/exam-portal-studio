@@ -23,7 +23,16 @@ import {
   Printer,
   Download,
   UserX,
-  Eye
+  Eye,
+  BookOpen,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  PlusCircle,
+  Edit,
+  Search,
+  HelpCircle,
+  ChevronRight
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
@@ -31,6 +40,7 @@ import { ResponseAnalysisView } from './ResponseAnalysisView';
 import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
 import { deleteExamFromCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+import { MathRenderer } from './MathRenderer';
 
 interface ExamDetailsViewProps {
   exam: Exam;
@@ -53,8 +63,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onDownloadJPG,
   onViewAnalysis
 }) => {
-  // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis'
-  const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis'>('hub');
+  // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis' | 'manage-questions'
+  const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis' | 'manage-questions'>('hub');
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -70,6 +80,106 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     return initialKeys;
   });
   const [isSavingKey, setIsSavingKey] = useState(false);
+
+  // Manage Questions States
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [selectedSectionName, setSelectedSectionName] = useState<string>('');
+  const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
+  const [editFormText, setEditFormText] = useState('');
+  const [editFormOptions, setEditFormOptions] = useState<string[]>(['', '', '', '']);
+  const [editFormCorrectIdx, setEditFormCorrectIdx] = useState<number>(0);
+  const [editFormExplanation, setEditFormExplanation] = useState('');
+
+  // Library/Question Bank States
+  const [banksList, setBanksList] = useState<any[]>([]);
+  const [selectedBankId, setSelectedBankId] = useState<string>('All');
+  const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
+
+  // Helper to generate default questions aligned with current exam answer key
+  const generateDefaultQuestions = (targetExam: Exam): any[] => {
+    const result: any[] = [];
+    const optionLetters = ['A', 'B', 'C', 'D', 'E'];
+    const sections = targetExam.sections && targetExam.sections.length > 0 
+      ? targetExam.sections 
+      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: targetExam.numQuestions || 10 }];
+
+    sections.forEach(sec => {
+      for (let i = 0; i < sec.qCount; i++) {
+        const qNum = sec.qStart + i;
+        const correctLetter = targetExam.answerKey[qNum] || 'A';
+        const correctIdx = optionLetters.indexOf(correctLetter);
+        result.push({
+          examId: targetExam.id!,
+          sectionName: sec.sectionName,
+          questionText: `Question ${qNum}: Solve the given question.`,
+          options: ['Option A description', 'Option B description', 'Option C description', 'Option D description'],
+          correctOptionIdx: correctIdx >= 0 ? correctIdx : 0,
+          explanation: `Explanation for Q${qNum}`
+        });
+      }
+    });
+    return result;
+  };
+
+  // Initialize Questions and Sections for management
+  React.useEffect(() => {
+    if (activeView === 'manage-questions') {
+      const initData = async () => {
+        if (!exam.id) return;
+        // 1. Fetch questions
+        const dbQs = await db.questions.where('examId').equals(exam.id).toArray();
+        if (dbQs.length > 0) {
+          setQuestions(dbQs);
+        } else {
+          const defaultQs = generateDefaultQuestions(exam);
+          await db.questions.bulkAdd(defaultQs);
+          const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
+          setQuestions(reloaded);
+        }
+
+        // 2. Fetch list of question banks
+        const banks = await db.questionBanks.toArray();
+        setBanksList(banks);
+
+        // 3. Set default section Name
+        const sections = exam.sections && exam.sections.length > 0 
+          ? exam.sections 
+          : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+        setSelectedSectionName(sections[0].sectionName);
+      };
+      initData();
+    }
+  }, [activeView, exam.id]);
+
+  // Query library/questionBank questions
+  React.useEffect(() => {
+    if (activeView !== 'manage-questions') return;
+    const loadLibrary = async () => {
+      let allLib = await db.questionBank.toArray();
+      
+      // Filter by bankId
+      if (selectedBankId !== 'All') {
+        allLib = allLib.filter(q => q.bankId === parseInt(selectedBankId));
+      }
+      // Filter by difficulty
+      if (difficultyFilter !== 'All') {
+        allLib = allLib.filter(q => q.difficulty === difficultyFilter.toLowerCase());
+      }
+      // Filter by search keywords
+      if (searchQuery.trim().length > 0) {
+        const query = searchQuery.toLowerCase();
+        allLib = allLib.filter(q => 
+          q.questionText.toLowerCase().includes(query) || 
+          q.options.some((opt: string) => opt.toLowerCase().includes(query)) ||
+          (q.explanation && q.explanation.toLowerCase().includes(query))
+        );
+      }
+      setLibraryQuestions(allLib);
+    };
+    loadLibrary();
+  }, [activeView, selectedBankId, difficultyFilter, searchQuery]);
 
   // WhatsApp Broadcast States
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -450,6 +560,184 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     setIsBroadcasting(false);
   };
 
+  const saveQuestionsToDbAndSync = async (updatedQuestions: any[]) => {
+    if (!exam.id) return;
+    
+    // 1. Delete old questions for this exam in IndexedDB
+    await db.questions.where('examId').equals(exam.id).delete();
+    
+    // 2. Add the clean list to IndexedDB
+    const cleanQuestions = updatedQuestions.map(q => ({
+      examId: exam.id!,
+      sectionName: q.sectionName,
+      questionText: q.questionText,
+      options: [...q.options],
+      correctOptionIdx: q.correctOptionIdx,
+      explanation: q.explanation || '',
+      questionImage: q.questionImage
+    }));
+    await db.questions.bulkAdd(cleanQuestions);
+    
+    // 3. Reload from IndexedDB to get the generated IDs
+    const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
+    setQuestions(reloaded);
+    
+    // 4. Recalculate exam sections, numQuestions, and answerKey!
+    let currentQNum = 1;
+    const newAnswerKey: Record<number, string> = {};
+    const sections = exam.sections && exam.sections.length > 0 
+      ? exam.sections 
+      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+    
+    const updatedSections = sections.map(sec => {
+      const secQs = reloaded.filter(q => q.sectionName === sec.sectionName);
+      const qStart = currentQNum;
+      const qCount = secQs.length;
+      
+      secQs.forEach((q, index) => {
+        newAnswerKey[qStart + index] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
+      });
+      
+      currentQNum += qCount;
+      return {
+        ...sec,
+        qStart,
+        qCount
+      };
+    });
+    
+    const totalNumQuestions = reloaded.length;
+    
+    // Update IndexedDB exam
+    await db.exams.update(exam.id, {
+      numQuestions: totalNumQuestions,
+      answerKey: newAnswerKey,
+      sections: updatedSections
+    });
+    
+    // 5. POST to server API to sync questions
+    try {
+      await fetch('/api/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examId: exam.id, questions: cleanQuestions })
+      });
+    } catch (err) {
+      console.warn("MySQL questions sync warning:", err);
+    }
+    
+    try {
+      const freshExam = await db.exams.get(exam.id);
+      if (freshExam) {
+        await fetch('/api/exams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(freshExam)
+        });
+      }
+    } catch (err) {
+      console.warn("MySQL exam sync warning:", err);
+    }
+  };
+
+  const handleAddFromLibrary = async (libQ: any) => {
+    const newQ: any = {
+      examId: exam.id!,
+      sectionName: selectedSectionName,
+      questionText: libQ.questionText,
+      options: [...libQ.options],
+      correctOptionIdx: libQ.correctOptionIdx,
+      explanation: libQ.explanation || '',
+      questionImage: libQ.questionImage || undefined
+    };
+
+    const sectionQs = questions.filter(q => q.sectionName === selectedSectionName);
+    
+    const sections = exam.sections && exam.sections.length > 0 
+      ? exam.sections 
+      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+
+    const otherQsBefore = questions.filter(q => {
+      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
+      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
+      return secIdx < selSecIdx;
+    });
+
+    const otherQsAfter = questions.filter(q => {
+      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
+      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
+      return secIdx > selSecIdx;
+    });
+
+    const updatedSectionQs = [...sectionQs, newQ];
+    const finalQuestionsList = [...otherQsBefore, ...updatedSectionQs, ...otherQsAfter];
+
+    await saveQuestionsToDbAndSync(finalQuestionsList);
+  };
+
+  const handleDeleteQuestion = async (qId: number) => {
+    if (!confirm("Are you sure you want to delete this question? This will update the layout and marks calculation.")) return;
+    const updated = questions.filter(q => q.id !== qId);
+    await saveQuestionsToDbAndSync(updated);
+  };
+
+  const handleMoveQuestion = async (qIndexInSection: number, direction: 'up' | 'down') => {
+    const sectionQs = questions.filter(q => q.sectionName === selectedSectionName);
+    if (direction === 'up' && qIndexInSection === 0) return;
+    if (direction === 'down' && qIndexInSection === sectionQs.length - 1) return;
+
+    const targetIndex = direction === 'up' ? qIndexInSection - 1 : qIndexInSection + 1;
+    
+    // Swap
+    const temp = sectionQs[qIndexInSection];
+    sectionQs[qIndexInSection] = sectionQs[targetIndex];
+    sectionQs[targetIndex] = temp;
+
+    const sections = exam.sections && exam.sections.length > 0 
+      ? exam.sections 
+      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+
+    const otherQsBefore = questions.filter(q => {
+      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
+      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
+      return secIdx < selSecIdx;
+    });
+
+    const otherQsAfter = questions.filter(q => {
+      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
+      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
+      return secIdx > selSecIdx;
+    });
+
+    const finalQuestionsList = [...otherQsBefore, ...sectionQs, ...otherQsAfter];
+    await saveQuestionsToDbAndSync(finalQuestionsList);
+  };
+
+  const startEditingQuestion = (q: any) => {
+    setEditingQuestionId(q.id);
+    setEditFormText(q.questionText);
+    setEditFormOptions([...q.options]);
+    setEditFormCorrectIdx(q.correctOptionIdx);
+    setEditFormExplanation(q.explanation || '');
+  };
+
+  const saveEditedQuestion = async (qId: number) => {
+    const updated = questions.map(q => {
+      if (q.id === qId) {
+        return {
+          ...q,
+          questionText: editFormText,
+          options: [...editFormOptions],
+          correctOptionIdx: editFormCorrectIdx,
+          explanation: editFormExplanation
+        };
+      }
+      return q;
+    });
+    await saveQuestionsToDbAndSync(updated);
+    setEditingQuestionId(null);
+  };
+
   if (isScanningMode) {
     return (
       <ScanImagesView 
@@ -588,11 +876,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <span className="action-label">Download OMR JPG</span>
               </button>
 
-              <button className="circular-action-card" onClick={startWhatsAppBroadcast}>
+              <button className="circular-action-card" onClick={() => setActiveView('manage-questions')}>
                 <div className="circle-icon-box">
-                  <Send size={22} color="#1058ca" />
+                  <HelpCircle size={22} color="#1058ca" />
                 </div>
-                <span className="action-label">WhatsApp Broadcast</span>
+                <span className="action-label">Manage Questions</span>
               </button>
             </div>
           </div>
@@ -628,6 +916,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <TrendingUp size={22} color="#1058ca" />
                 </div>
                 <span className="action-label">Response Analysis</span>
+              </button>
+
+              <button className="circular-action-card" onClick={startWhatsAppBroadcast}>
+                <div className="circle-icon-box">
+                  <Send size={22} color="#1058ca" />
+                </div>
+                <span className="action-label">WhatsApp Broadcast</span>
               </button>
 
               <button className="circular-action-card" onClick={() => setShowPublishModal(true)}>
@@ -1443,6 +1738,381 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* VIEW: MANAGE QUESTIONS WORKSPACE */}
+      {activeView === 'manage-questions' && (
+        <div className="exam-reports-page animate-fade-in" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header & Back Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left' }}>
+              <button 
+                onClick={() => setActiveView('hub')}
+                className="btn-outlined" 
+                style={{ padding: '6px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <span>Exams</span>
+                  <ChevronRight size={12} />
+                  <span style={{ fontWeight: 'bold' }}>{exam.title}</span>
+                </div>
+                <h3 style={{ margin: '2px 0 0 0', fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                  Manage Exam Questions
+                </h3>
+              </div>
+            </div>
+          </div>
+
+          {/* Section Selection Bar */}
+          <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT EXAM SECTION</span>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {(exam.sections && exam.sections.length > 0 
+                ? exam.sections 
+                : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }]
+              ).map((sec, sIdx) => {
+                const isActive = selectedSectionName === sec.sectionName;
+                const count = questions.filter(q => q.sectionName === sec.sectionName).length;
+                return (
+                  <button
+                    key={`sec-tab-${sIdx}`}
+                    onClick={() => {
+                      setSelectedSectionName(sec.sectionName);
+                      setEditingQuestionId(null);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                      background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                      color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                      fontWeight: 'bold',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>{sec.subjectName} - {sec.sectionName}</span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      background: isActive ? 'var(--primary)' : '#e2e8f0',
+                      color: isActive ? '#fff' : 'var(--text-secondary)',
+                      padding: '2px 6px',
+                      borderRadius: '10px',
+                      fontWeight: 'bold'
+                    }}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Option: Review Questions (Current Section Questions) */}
+          <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle size={18} className="text-indigo" /> Review Questions
+              </h4>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Total in Section: <strong>{questions.filter(q => q.sectionName === selectedSectionName).length}</strong>
+              </span>
+            </div>
+
+            {/* List of current questions in the selected section */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {(() => {
+                const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
+                if (sectionQuestions.length === 0) {
+                  return (
+                    <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      No questions added to this section yet. Add some from the library below!
+                    </div>
+                  );
+                }
+                
+                return sectionQuestions.map((q, sIdx) => {
+                  const overallQNum = questions.indexOf(q) + 1;
+                  const isEditing = editingQuestionId === q.id;
+
+                  if (isEditing) {
+                    return (
+                      <div key={q.id || sIdx} className="glass-card" style={{ padding: '16px', border: '2px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--primary)' }}>Editing Q {sIdx + 1} (Exam Q {overallQNum})</div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION TEXT (supports LaTeX $$)</span>
+                          <textarea
+                            value={editFormText}
+                            onChange={e => setEditFormText(e.target.value)}
+                            style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', minHeight: '80px', fontSize: '0.85rem' }}
+                          />
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          {editFormOptions.map((opt, oIdx) => (
+                            <div key={oIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>OPTION {['A', 'B', 'C', 'D', 'E'][oIdx]}</span>
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={e => {
+                                  const updated = [...editFormOptions];
+                                  updated[oIdx] = e.target.value;
+                                  setEditFormOptions(updated);
+                                }}
+                                style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>CORRECT OPTION</span>
+                            <select
+                              value={editFormCorrectIdx}
+                              onChange={e => setEditFormCorrectIdx(parseInt(e.target.value))}
+                              style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', background: '#fff' }}
+                            >
+                              {editFormOptions.map((_, oIdx) => (
+                                <option key={oIdx} value={oIdx}>Option {['A', 'B', 'C', 'D', 'E'][oIdx]}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>EXPLANATION</span>
+                            <input
+                              type="text"
+                              value={editFormExplanation}
+                              onChange={e => setEditFormExplanation(e.target.value)}
+                              style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setEditingQuestionId(null)}
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveEditedQuestion(q.id!)}
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px' }}
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={q.id || sIdx} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#f8fafc', position: 'relative' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary)' }}>Q {sIdx + 1}</span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>(Exam Question {overallQNum})</span>
+                        </div>
+                        <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
+                          <MathRenderer text={q.questionText} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {q.options.map((opt: string, oIdx: number) => (
+                            <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
+                              <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
+                              <MathRenderer text={opt} />
+                            </div>
+                          ))}
+                        </div>
+                        {q.explanation && (
+                          <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px', fontStyle: 'italic' }}>
+                            Explanation: <MathRenderer text={q.explanation} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="qbank-question-actions" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveQuestion(sIdx, 'up')}
+                            disabled={sIdx === 0}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#fff', cursor: sIdx === 0 ? 'not-allowed' : 'pointer', opacity: sIdx === 0 ? 0.4 : 1 }}
+                            title="Move Up"
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveQuestion(sIdx, 'down')}
+                            disabled={sIdx === sectionQuestions.length - 1}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#fff', cursor: sIdx === sectionQuestions.length - 1 ? 'not-allowed' : 'pointer', opacity: sIdx === sectionQuestions.length - 1 ? 0.4 : 1 }}
+                            title="Move Down"
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => startEditingQuestion(q)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            background: '#fff',
+                            color: 'var(--primary)',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQuestion(q.id!)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #fed7d7',
+                            background: 'transparent',
+                            color: '#e53e3e',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          {/* Search Question Banks Section */}
+          <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <BookOpen size={18} className="text-indigo" /> Add from Question Banks
+            </h4>
+            
+            {/* Filter controls row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>CHOOSE BANK</span>
+                <select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff', color: 'var(--text-primary)' }}>
+                  <option value="All">All Banks</option>
+                  {banksList.map(bank => (
+                    <option key={bank.id} value={bank.id}>{bank.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>DIFFICULTY</span>
+                <select value={difficultyFilter} onChange={e => setDifficultyFilter(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}>
+                  <option value="All">All Levels</option>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>KEYWORDS SEARCH</span>
+                <input 
+                  type="text" 
+                  placeholder="Search library questions..." 
+                  value={searchQuery} 
+                  onChange={e => setSearchQuery(e.target.value)} 
+                  style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}
+                />
+              </div>
+            </div>
+
+            {/* Matching Library Questions list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto', paddingRight: '4px' }}>
+              {libraryQuestions.length === 0 ? (
+                <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  No matching questions found in the selected Question Banks.
+                </div>
+              ) : (
+                libraryQuestions.map((qVal, index) => {
+                  const isAddedToSection = questions.some(q => q.sectionName === selectedSectionName && q.questionText === qVal.questionText);
+                  const parentBank = banksList.find(b => b.id === qVal.bankId);
+                  
+                  return (
+                    <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
+                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
+                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
+                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
+                          <MathRenderer text={qVal.questionText} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {qVal.options.map((opt: string, oIdx: number) => (
+                            <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
+                              <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
+                              <MathRenderer text={opt} />
+                            </div>
+                          ))}
+                        </div>
+                        {qVal.explanation && (
+                          <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
+                            Explanation: <MathRenderer text={qVal.explanation} />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="qbank-question-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleAddFromLibrary(qVal)}
+                          disabled={isAddedToSection}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: isAddedToSection ? '#48bb78' : 'var(--primary)',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: isAddedToSection ? 'default' : 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                            width: '110px'
+                          }}
+                        >
+                          {isAddedToSection ? 'Added ✔' : 'Add'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}

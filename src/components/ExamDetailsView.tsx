@@ -27,10 +27,6 @@ import {
   BookOpen,
   ArrowUp,
   ArrowDown,
-  Plus,
-  PlusCircle,
-  Edit,
-  Search,
   HelpCircle,
   ChevronRight
 } from 'lucide-react';
@@ -103,7 +99,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     const optionLetters = ['A', 'B', 'C', 'D', 'E'];
     const sections = targetExam.sections && targetExam.sections.length > 0 
       ? targetExam.sections 
-      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: targetExam.numQuestions || 10 }];
+      : [{ 
+          subjectName: 'General', 
+          sectionName: 'Section A', 
+          qStart: 1, 
+          qCount: targetExam.numQuestions || 10,
+          questionType: '4 option' as const,
+          correctMarks: targetExam.correctMarks ?? 4,
+          incorrectMarks: targetExam.incorrectMarks ?? -1,
+          allowPartialMarks: false,
+          allowOptionalAttempts: false
+        }];
 
     sections.forEach(sec => {
       for (let i = 0; i < sec.qCount; i++) {
@@ -146,7 +152,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         // 3. Set default section Name
         const sections = exam.sections && exam.sections.length > 0 
           ? exam.sections 
-          : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+          : [{ 
+              subjectName: 'General', 
+              sectionName: 'Section A', 
+              qStart: 1, 
+              qCount: exam.numQuestions || 10,
+              questionType: '4 option' as const,
+              correctMarks: exam.correctMarks ?? 4,
+              incorrectMarks: exam.incorrectMarks ?? -1,
+              allowPartialMarks: false,
+              allowOptionalAttempts: false
+            }];
         setSelectedSectionName(sections[0].sectionName);
       };
       initData();
@@ -587,7 +603,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     const newAnswerKey: Record<number, string> = {};
     const sections = exam.sections && exam.sections.length > 0 
       ? exam.sections 
-      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+      : [{ 
+          subjectName: 'General', 
+          sectionName: 'Section A', 
+          qStart: 1, 
+          qCount: exam.numQuestions || 10,
+          questionType: '4 option' as const,
+          correctMarks: exam.correctMarks ?? 4,
+          incorrectMarks: exam.incorrectMarks ?? -1,
+          allowPartialMarks: false,
+          allowOptionalAttempts: false
+        }];
     
     const updatedSections = sections.map(sec => {
       const secQs = reloaded.filter(q => q.sectionName === sec.sectionName);
@@ -655,7 +681,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     
     const sections = exam.sections && exam.sections.length > 0 
       ? exam.sections 
-      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+      : [{ 
+          subjectName: 'General', 
+          sectionName: 'Section A', 
+          qStart: 1, 
+          qCount: exam.numQuestions || 10,
+          questionType: '4 option' as const,
+          correctMarks: exam.correctMarks ?? 4,
+          incorrectMarks: exam.incorrectMarks ?? -1,
+          allowPartialMarks: false,
+          allowOptionalAttempts: false
+        }];
 
     const otherQsBefore = questions.filter(q => {
       const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
@@ -695,7 +731,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
     const sections = exam.sections && exam.sections.length > 0 
       ? exam.sections 
-      : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }];
+      : [{ 
+          subjectName: 'General', 
+          sectionName: 'Section A', 
+          qStart: 1, 
+          qCount: exam.numQuestions || 10,
+          questionType: '4 option' as const,
+          correctMarks: exam.correctMarks ?? 4,
+          incorrectMarks: exam.incorrectMarks ?? -1,
+          allowPartialMarks: false,
+          allowOptionalAttempts: false
+        }];
 
     const otherQsBefore = questions.filter(q => {
       const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
@@ -1774,7 +1820,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {(exam.sections && exam.sections.length > 0 
                 ? exam.sections 
-                : [{ subjectName: 'General', sectionName: 'Section A', qStart: 1, qCount: exam.numQuestions || 10 }]
+                : [{ 
+                    subjectName: 'General', 
+                    sectionName: 'Section A', 
+                    qStart: 1, 
+                    qCount: exam.numQuestions || 10,
+                    questionType: '4 option' as const,
+                    correctMarks: exam.correctMarks ?? 4,
+                    incorrectMarks: exam.incorrectMarks ?? -1,
+                    allowPartialMarks: false,
+                    allowOptionalAttempts: false
+                  }]
               ).map((sec, sIdx) => {
                 const isActive = selectedSectionName === sec.sectionName;
                 const count = questions.filter(q => q.sectionName === sec.sectionName).length;

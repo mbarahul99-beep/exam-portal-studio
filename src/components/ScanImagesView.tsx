@@ -1180,10 +1180,26 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {filteredSubmissions.map((sub) => {
+                 {filteredSubmissions.map((sub) => {
                   const student = students.find(s => s.id === sub.studentId);
                   const cleanName = student ? student.name.split('/')[0].trim() : 'Unknown Candidate';
                   const rollNo = student ? student.studentNum : 'N/A';
+
+                  // Calculate correct and wrong counts dynamically for virtual OMR bubble map fallback
+                  const correctKey = (exam.answerKeys && exam.answerKeys[sub.bookletSet || 'A']) || exam.answerKey || {};
+                  let correctCount = 0;
+                  let wrongCount = 0;
+                  for (let q = 1; q <= exam.numQuestions; q++) {
+                    const sAns = sub.answers[q] || '';
+                    const cAns = correctKey[q] || 'A';
+                    if (sAns !== '') {
+                      if (sAns === cAns) {
+                        correctCount++;
+                      } else {
+                        wrongCount++;
+                      }
+                    }
+                  }
 
                   return (
                     <div 
@@ -1212,8 +1228,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                             url: sub.omrImageUrl || undefined, 
                             score: sub.score,
                             answers: sub.answers,
-                            correctCount: sub.correctCount,
-                            wrongCount: sub.wrongCount
+                            correctCount: correctCount,
+                            wrongCount: wrongCount
                           })}
                           style={{ padding: '8px 14px', borderRadius: '10px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >

@@ -59,7 +59,7 @@ export async function sendWhatsAppTemplateMessage(
   }
 
   const isHelloWorld = templateName.toLowerCase() === 'hello_world';
-  const endpoint = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+  const endpoint = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
 
   // Build the message components list dynamically based on template type
   let components: any[] = [];

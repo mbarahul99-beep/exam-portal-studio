@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Student, type Exam } from './db';
 import { useOpenCv } from './hooks/useOpenCv';
-import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import * as faceapi from '@vladmandic/face-api';
 import { scanOMRSheet, OMR_CONFIG } from './utils/omrScanner';
 import { OmrPrintSheet } from './components/OmrPrintSheet';
 import confetti from 'canvas-confetti';
@@ -266,9 +266,10 @@ export default function App() {
   const [enrollDevices, setEnrollDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedEnrollDeviceId, setSelectedEnrollDeviceId] = useState<string>('');
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
-  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  const isFaceApiLoadedRef = useRef<boolean>(false);
   const [enrollLandmarks, setEnrollLandmarks] = useState<{ left: number, top: number }[] | null>(null);
   const lastEnrollLandmarksRef = useRef<any>(null);
+  const lastEnrollDescriptorRef = useRef<number[] | null>(null);
   
   // Add Class Form State
   const [newClassName, setNewClassName] = useState('');
@@ -568,144 +569,41 @@ export default function App() {
     }
   };
 
-  // Extract aligned HOG descriptor (consistent with AttendancePortal)
-  const extractAlignedHogDescriptor = (video: HTMLVideoElement, landmarks: any[]): number[] => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 120;
-    canvas.height = 120;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(512).fill(0);
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-
-    const p33 = landmarks[33];
-    const p263 = landmarks[263];
-    const eyeLX = p33.x * vw;
-    const eyeLY = p33.y * vh;
-    const eyeRX = p263.x * vw;
-    const eyeRY = p263.y * vh;
-
-    const dx = eyeRX - eyeLX;
-    const dy = eyeRY - eyeLY;
-    const angle = Math.atan2(dy, dx);
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    const desiredDist = 50;
-    const scale = desiredDist / dist;
-    const eyeCX = (eyeLX + eyeRX) / 2;
-    const eyeCY = (eyeLY + eyeRY) / 2;
-
-    ctx.save();
-    ctx.translate(60, 45);
-    ctx.rotate(-angle);
-    ctx.scale(scale, scale);
-    ctx.translate(-eyeCX, -eyeCY);
-    ctx.drawImage(video, 0, 0, vw, vh);
-    ctx.restore();
-
-    const imgData = ctx.getImageData(0, 0, 120, 120);
-    const pixels = imgData.data;
-    const gray = new Float32Array(120 * 120);
-    for (let i = 0; i < 120 * 120; i++) {
-      const idx = i * 4;
-      gray[i] = 0.299 * pixels[idx] + 0.587 * pixels[idx+1] + 0.114 * pixels[idx+2];
-    }
-
-    const mag = new Float32Array(120 * 120);
-    const ori = new Float32Array(120 * 120);
-    for (let y = 1; y < 119; y++) {
-      for (let x = 1; x < 119; x++) {
-        const idx = y * 120 + x;
-        const gradX = gray[idx + 1] - gray[idx - 1];
-        const gradY = gray[idx + 120] - gray[idx - 120];
-        mag[idx] = Math.sqrt(gradX * gradX + gradY * gradY);
-        let angleVal = Math.atan2(gradY, gradX) * (180 / Math.PI);
-        if (angleVal < 0) angleVal += 180;
-        ori[idx] = angleVal;
-      }
-    }
-
-    const numBins = 8;
-    const binSize = 180 / numBins;
-    const descriptor = new Float32Array(8 * 8 * numBins);
-
-    for (let by = 0; by < 8; by++) {
-      for (let bx = 0; bx < 8; bx++) {
-        const startX = bx * 15;
-        const startY = by * 15;
-        const blockIdx = (by * 8 + bx) * numBins;
-
-        for (let y = 0; y < 15; y++) {
-          for (let x = 0; x < 15; x++) {
-            const px = startX + x;
-            const py = startY + y;
-            const idx = py * 120 + px;
-            const m = mag[idx];
-            const o = ori[idx];
-
-            const bin = Math.min(numBins - 1, Math.floor(o / binSize));
-            descriptor[blockIdx + bin] += m;
-          }
-        }
-      }
-    }
-
-    let normSum = 0;
-    for (let i = 0; i < descriptor.length; i++) {
-      normSum += descriptor[i] * descriptor[i];
-    }
-    const norm = Math.sqrt(normSum) || 1;
-    const finalVec = [];
-    for (let i = 0; i < descriptor.length; i++) {
-      finalVec.push(Number((descriptor[i] / norm).toFixed(6)));
-    }
-
-    return finalVec;
-  };
-
-  const loadFaceLandmarker = async () => {
-    if (faceLandmarkerRef.current) return faceLandmarkerRef.current;
+  const loadFaceApiModels = async () => {
+    if (isFaceApiLoadedRef.current) return true;
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-      );
-      if (typeof window !== 'undefined') {
-        (window as any).Module = undefined;
-      }
-      const landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "GPU"
-        },
-        runningMode: "VIDEO",
-        numFaces: 1
-      });
-      faceLandmarkerRef.current = landmarker;
-      return landmarker;
+      const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      isFaceApiLoadedRef.current = true;
+      return true;
     } catch (err) {
-      console.error("Failed to load FaceLandmarker in App:", err);
-      return null;
+      console.error("Failed to load face-api.js models in App:", err);
+      return false;
     }
   };
 
-  const enrollFrameLoop = () => {
-    if (!enrollVideoRef.current) return;
+  const enrollFrameLoop = async () => {
+    if (!enrollVideoRef.current || !enrollVideoRef.current.srcObject) return;
     const video = enrollVideoRef.current;
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      const landmarkerInstance = faceLandmarkerRef.current;
-      if (landmarkerInstance) {
+      if (isFaceApiLoadedRef.current) {
         try {
-          const result = landmarkerInstance.detectForVideo(video, performance.now());
-          if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
-            const landmarks = result.faceLandmarks[0];
+          const detection = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection) {
+            const landmarks = detection.landmarks.positions;
             lastEnrollLandmarksRef.current = landmarks;
+            lastEnrollDescriptorRef.current = Array.from(detection.descriptor);
 
             // Render live landmarks projection for visual validation
-            const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
+            const keyIndices = [17, 21, 22, 26, 36, 39, 42, 45, 30, 33, 48, 54, 57, 62, 8];
             const nodes = keyIndices.map(idx => ({
-              left: landmarks[idx].x * 100,
-              top: landmarks[idx].y * 100
+              left: (landmarks[idx].x / video.videoWidth) * 100,
+              top: (landmarks[idx].y / video.videoHeight) * 100
             }));
             setEnrollLandmarks(nodes);
           } else {
@@ -728,8 +626,9 @@ export default function App() {
     setEnrollMessage('Loading face engine...');
     setEnrollLandmarks(null);
     lastEnrollLandmarksRef.current = null;
+    lastEnrollDescriptorRef.current = null;
     try {
-      await loadFaceLandmarker();
+      await loadFaceApiModels();
       setEnrollMessage('Center face inside the oval');
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -789,6 +688,7 @@ export default function App() {
     setSelectedEnrollDeviceId('');
     setEnrollLandmarks(null);
     lastEnrollLandmarksRef.current = null;
+    lastEnrollDescriptorRef.current = null;
   };
 
   const captureFace = () => {
@@ -811,15 +711,15 @@ export default function App() {
 
   const executeCapture = async () => {
     if (!enrollVideoRef.current || !enrollingFaceStudent) return;
-    if (!lastEnrollLandmarksRef.current) {
-      setEnrollMessage('⚠️ Face landmarks not detected yet. Please look straight at the camera.');
+    if (!lastEnrollDescriptorRef.current) {
+      setEnrollMessage('⚠️ Face biometrics descriptor not generated yet. Please look straight.');
       setEnrollCountdown(null);
       return;
     }
     
     // Play shutter sound
     playShutterSound();
-    const descriptor = extractAlignedHogDescriptor(enrollVideoRef.current, lastEnrollLandmarksRef.current);
+    const descriptor = lastEnrollDescriptorRef.current;
     
     try {
       await db.students.update(enrollingFaceStudent.id!, { 

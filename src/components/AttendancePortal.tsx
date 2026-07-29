@@ -19,7 +19,7 @@ import {
   Trash2
 } from 'lucide-react';
 import jsQR from 'jsqr';
-import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import * as faceapi from '@vladmandic/face-api';
 
 interface AttendancePortalProps {
   classes: ClassEntity[];
@@ -56,8 +56,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const facePresenceStartRef = useRef<number | null>(null);
   const isScanningRef = useRef<boolean>(false);
 
-  // MediaPipe FaceLandmarker states & refs
-  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  // face-api.js states & refs
+  const isFaceApiLoadedRef = useRef<boolean>(false);
   const [isModelLoading, setIsModelLoading] = useState(false);
   const isModelLoadingRef = useRef<boolean>(false);
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
@@ -83,6 +83,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const capturedLeftRef = useRef<number[] | null>(null);
   const capturedRightRef = useRef<number[] | null>(null);
   const lastEnrollLandmarksRef = useRef<any>(null);
+  const lastEnrollDescriptorRef = useRef<number[] | null>(null);
 
   // Show temporary toast notification
   const showToast = (msg: string) => {
@@ -216,148 +217,20 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
 
 
-  const extractAlignedHogDescriptor = (video: HTMLVideoElement, landmarks: any[]): number[] => {
-    // 1. Get aligned 120x120 canvas using facial alignment
-    const canvas = document.createElement('canvas');
-    canvas.width = 120;
-    canvas.height = 120;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return Array(512).fill(0);
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-
-    const p33 = landmarks[33];
-    const p263 = landmarks[263];
-    const eyeLX = p33.x * vw;
-    const eyeLY = p33.y * vh;
-    const eyeRX = p263.x * vw;
-    const eyeRY = p263.y * vh;
-
-    const dx = eyeRX - eyeLX;
-    const dy = eyeRY - eyeLY;
-    const angle = Math.atan2(dy, dx);
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    const desiredDist = 50;
-    const scale = desiredDist / dist;
-    const eyeCX = (eyeLX + eyeRX) / 2;
-    const eyeCY = (eyeLY + eyeRY) / 2;
-
-    ctx.save();
-    ctx.translate(60, 45);
-    ctx.rotate(-angle);
-    ctx.scale(scale, scale);
-    ctx.translate(-eyeCX, -eyeCY);
-    ctx.drawImage(video, 0, 0, vw, vh);
-    ctx.restore();
-
-    // 2. Convert to Grayscale
-    const imgData = ctx.getImageData(0, 0, 120, 120);
-    const pixels = imgData.data;
-    const gray = new Float32Array(120 * 120);
-    for (let i = 0; i < 120 * 120; i++) {
-      const idx = i * 4;
-      gray[i] = 0.299 * pixels[idx] + 0.587 * pixels[idx+1] + 0.114 * pixels[idx+2];
-    }
-
-    // 3. Compute Gradients (Sobel difference)
-    const mag = new Float32Array(120 * 120);
-    const ori = new Float32Array(120 * 120);
-    for (let y = 1; y < 119; y++) {
-      for (let x = 1; x < 119; x++) {
-        const idx = y * 120 + x;
-        const gradX = gray[idx + 1] - gray[idx - 1];
-        const gradY = gray[idx + 120] - gray[idx - 120];
-        mag[idx] = Math.sqrt(gradX * gradX + gradY * gradY);
-        let angleVal = Math.atan2(gradY, gradX) * (180 / Math.PI); // -180 to 180
-        if (angleVal < 0) angleVal += 180; // Map to 0-180
-        ori[idx] = angleVal;
-      }
-    }
-
-    // 4. Divide into 8x8 blocks (each block is 15x15 pixels)
-    const numBins = 8;
-    const binSize = 180 / numBins; // 22.5 degrees per bin
-    const descriptor = new Float32Array(8 * 8 * numBins);
-
-    for (let by = 0; by < 8; by++) {
-      for (let bx = 0; bx < 8; bx++) {
-        const startX = bx * 15;
-        const startY = by * 15;
-        const blockIdx = (by * 8 + bx) * numBins;
-
-        for (let y = 0; y < 15; y++) {
-          for (let x = 0; x < 15; x++) {
-            const px = startX + x;
-            const py = startY + y;
-            const idx = py * 120 + px;
-            const m = mag[idx];
-            const o = ori[idx];
-
-            // Bin allocation
-            const bin = Math.min(numBins - 1, Math.floor(o / binSize));
-            descriptor[blockIdx + bin] += m;
-          }
-        }
-      }
-    }
-
-    // 5. L2-Normalize the final vector to make it invariant to global illumination
-    let normSum = 0;
-    for (let i = 0; i < descriptor.length; i++) {
-      normSum += descriptor[i] * descriptor[i];
-    }
-    const norm = Math.sqrt(normSum) || 1;
-    const finalVec = [];
-    for (let i = 0; i < descriptor.length; i++) {
-      finalVec.push(Number((descriptor[i] / norm).toFixed(6)));
-    }
-
-    return finalVec;
-  };
-
-  const computeFaceSimilarity = (vecA: number[], vecB: number[]): number => {
-    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-    
-    // Aligned local HOG descriptor
-    if (vecA.length === 512) {
-      let dot = 0;
-      for (let i = 0; i < vecA.length; i++) {
-        dot += vecA[i] * vecB[i];
-      }
-      // Balanced Cosine Similarity scaling: map [0.50, 1.0] to [0.0, 1.0]
-      // Same person (cosine >= 0.84) will result in >= 68% match.
-      // Different person (cosine <= 0.65) will result in <= 30% match, guaranteeing 0 false positives.
-      const sim = (dot - 0.50) / 0.50;
-      return Math.max(0, Math.min(1, sim));
-    }
-
-    // Fallback to legacy HOG-like image cosine similarity
-    let dot = 0, normA = 0, normB = 0;
-    for (let i = 0; i < vecA.length; i++) {
-      dot += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
-    }
-    const denom = Math.sqrt(normA) * Math.sqrt(normB);
-    return denom > 0 ? Math.max(0, Math.min(1, dot / denom)) : 0;
-  };
 
 
 
-  const loadFaceLandmarker = async () => {
-    if (faceLandmarkerRef.current) return faceLandmarkerRef.current;
-    if (isModelLoadingRef.current) return null;
+
+  const loadFaceApiModels = async () => {
+    if (isFaceApiLoadedRef.current) return true;
+    if (isModelLoadingRef.current) return false;
     
     isModelLoadingRef.current = true;
     setIsModelLoading(true);
     setModelLoadError(null);
     isModelFailedRef.current = false;
 
-    // Permanently overwrite window.Module to prevent Emscripten namespace conflicts between OpenCV and MediaPipe.
-    // Since OpenCV is already loaded inside window.cv, window.Module is no longer needed by OpenCV.
-    // Overwriting is used instead of delete because global var declarations in third-party scripts are non-configurable.
+    // Overwrite window.Module if present to prevent any issues
     if (typeof window !== 'undefined') {
       try {
         (window as any).Module = undefined;
@@ -365,48 +238,24 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
 
     try {
-      const baseUrl = window.location.pathname.endsWith('/') 
-        ? window.location.pathname 
-        : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-
-      // Construct clean absolute same-origin URL paths to ensure they resolve reliably
-      const origin = window.location.origin.replace(/\/+$/, '');
-      const cleanBase = baseUrl.replace(/^\/+|\/+$/g, '');
+      const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+      console.log("Loading face-api.js models from CDN:", MODEL_URL);
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
       
-      const wasmPath = cleanBase 
-        ? `${origin}/${cleanBase}/wasm/` 
-        : `${origin}/wasm/`;
-
-      const modelPath = cleanBase 
-        ? `${origin}/${cleanBase}/face_landmarker.task` 
-        : `${origin}/face_landmarker.task`;
-
-      console.log("Loading FilesetResolver from wasmPath:", wasmPath);
-      const vision = await FilesetResolver.forVisionTasks(wasmPath);
-
-      console.log("Loading FaceLandmarker with modelPath:", modelPath);
-      const landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: modelPath,
-          delegate: "CPU" // CPU is stable and avoids WebGL shader shader compilation locks / tab freezes
-        },
-        outputFaceBlendshapes: false,
-        runningMode: "VIDEO",
-        numFaces: 1
-      });
-      
-      faceLandmarkerRef.current = landmarker;
+      isFaceApiLoadedRef.current = true;
       isModelLoadingRef.current = false;
       setIsModelLoading(false);
-      return landmarker;
+      return true;
     } catch (err: any) {
-      console.error("Failed to load MediaPipe FaceLandmarker:", err);
+      console.error("Failed to load face-api.js models:", err);
       const errMsg = err?.message || String(err);
       setModelLoadError(errMsg);
       isModelFailedRef.current = true;
       isModelLoadingRef.current = false;
       setIsModelLoading(false);
-      return null;
+      return false;
     }
   };
 
@@ -451,7 +300,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       setSelectedDeviceId(activeDeviceId);
 
       if (scanMode === 'Face') {
-        await loadFaceLandmarker();
+        await loadFaceApiModels();
       }
 
       setTimeout(() => {
@@ -516,7 +365,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
       setScanStream(stream);
       if (scanMode === 'Face') {
-        await loadFaceLandmarker();
+        await loadFaceApiModels();
       }
       setTimeout(() => {
         if (videoRef.current) {
@@ -540,13 +389,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     capturedLeftRef.current = null;
     capturedRightRef.current = null;
     setEnrollLandmarks(null);
+    lastEnrollLandmarksRef.current = null;
+    lastEnrollDescriptorRef.current = null;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setEnrollStream(stream);
 
-      const landmarkerInstance = await loadFaceLandmarker();
-      if (landmarkerInstance) {
+      const isLoaded = await loadFaceApiModels();
+      if (isLoaded) {
         setEnrollMsg("Step 1: Look straight at the camera.");
       } else {
         setEnrollMsg("Position face inside guidelines.");
@@ -566,40 +417,42 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     }
   };
 
-  const enrollFrameLoop = () => {
+  const enrollFrameLoop = async () => {
     if (!enrollVideoRef.current || !enrollVideoRef.current.srcObject) return;
     const video = enrollVideoRef.current;
     
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-
-      const landmarkerInstance = faceLandmarkerRef.current;
-      if (landmarkerInstance) {
+      if (isFaceApiLoadedRef.current) {
         try {
-          const result = landmarkerInstance.detectForVideo(video, performance.now());
-          if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
-            const landmarks = result.faceLandmarks[0];
+          const detection = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection) {
+            const landmarks = detection.landmarks.positions;
             lastEnrollLandmarksRef.current = landmarks;
+            lastEnrollDescriptorRef.current = Array.from(detection.descriptor);
 
             // Estimate horizontal head turn (Yaw ratio)
-            const xNose = landmarks[1].x;
-            const xLeft = landmarks[234].x;
-            const xRight = landmarks[454].x;
+            const xNose = landmarks[30].x;
+            const xLeft = landmarks[0].x;
+            const xRight = landmarks[16].x;
             const span = Math.abs(xRight - xLeft);
             const ratio = span > 0 ? (xNose - Math.min(xLeft, xRight)) / span : 0.5;
 
             // Render live landmarks projection for visual validation
-            const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
+            const keyIndices = [17, 21, 22, 26, 36, 39, 42, 45, 30, 33, 48, 54, 57, 62, 8];
             const nodes = keyIndices.map(idx => ({
-              left: landmarks[idx].x * 100,
-              top: landmarks[idx].y * 100
+              left: (landmarks[idx].x / video.videoWidth) * 100,
+              top: (landmarks[idx].y / video.videoHeight) * 100
             }));
             setEnrollLandmarks(nodes);
 
             const currentStep = enrollStepRef.current;
+            const desc = Array.from(detection.descriptor);
 
             if (currentStep === 'center') {
-              if (ratio >= 0.44 && ratio <= 0.56) {
-                const desc = extractAlignedHogDescriptor(video, landmarks);
+              if (ratio >= 0.43 && ratio <= 0.57) {
                 capturedCenterRef.current = desc;
                 playBeep();
                 enrollStepRef.current = 'left';
@@ -608,7 +461,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             } else if (currentStep === 'left') {
               if (ratio < 0.38 || ratio > 0.62) {
-                const desc = extractAlignedHogDescriptor(video, landmarks);
                 capturedLeftRef.current = desc;
                 playBeep();
                 enrollStepRef.current = 'right';
@@ -618,7 +470,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             } else if (currentStep === 'right') {
               const isOppositeSide = (ratio < 0.38 || ratio > 0.62);
               if (isOppositeSide) {
-                const desc = extractAlignedHogDescriptor(video, landmarks);
                 capturedRightRef.current = desc;
                 playBeep();
                 enrollStepRef.current = 'done';
@@ -630,17 +481,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 }, 1200);
               }
             }
-          } else {
-            setEnrollLandmarks(null);
           }
         } catch (e) {
           console.error("Landmarks tracking loop error:", e);
         }
       }
     }
-
-    const isStillEnrolling = enrollVideoRef.current && enrollVideoRef.current.srcObject;
-    if (isStillEnrolling && enrollStepRef.current !== 'done') {
+    
+    if (enrollVideoRef.current && enrollVideoRef.current.srcObject && enrollStepRef.current !== 'done') {
       requestAnimationFrame(enrollFrameLoop);
     }
   };
@@ -668,37 +516,23 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   const captureFaceBiometrics = async () => {
     if (!enrollingStudent || !enrollVideoRef.current) return;
-    if (!lastEnrollLandmarksRef.current) {
-      showToast("⚠️ Face landmarks not detected yet. Please look straight at the camera.");
+    if (!lastEnrollDescriptorRef.current) {
+      showToast("⚠️ Face recognition descriptor not generated yet. Please look straight at the camera.");
       return;
     }
-    const video = enrollVideoRef.current;
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const size = Math.min(width, height) * 0.65;
-      const x = (width - size) / 2;
-      const y = (height - size) / 2;
-      ctx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
-
-      const descriptor = extractAlignedHogDescriptor(video, lastEnrollLandmarksRef.current);
-      try {
-        await db.students.update(enrollingStudent.id!, {
-          faceDescriptor: descriptor,
-          faceDescriptors: [descriptor, descriptor, descriptor]
-        });
-        playBeep();
-        showToast(`✔ Enrolled single-face template for ${enrollingStudent.name}!`);
-      } catch (err) {
-        console.error("Save biometrics error:", err);
-      }
-      stopFaceEnrollment();
+    const descriptor = lastEnrollDescriptorRef.current;
+    try {
+      await db.students.update(enrollingStudent.id!, {
+        faceDescriptor: descriptor,
+        faceDescriptors: [descriptor, descriptor, descriptor]
+      });
+      playBeep();
+      showToast(`✔ Enrolled single-face template for ${enrollingStudent.name}!`);
+    } catch (err) {
+      console.error("Save biometrics error:", err);
     }
+    stopFaceEnrollment();
   };
 
   const stopFaceEnrollment = () => {
@@ -710,6 +544,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setEnrollingStudent(null);
     setEnrollMsg(null);
     setEnrollLandmarks(null);
+    lastEnrollLandmarksRef.current = null;
+    lastEnrollDescriptorRef.current = null;
   };
 
   const scanFrame = async () => {
@@ -769,12 +605,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           const targetThreshold = bioSettings.faceMatchThreshold;
           const requiresLiveness = bioSettings.enableLivenessCheck;
 
-          let landmarkerInstance = faceLandmarkerRef.current;
-          if (!landmarkerInstance && !isModelLoadingRef.current && !isModelFailedRef.current) {
-            landmarkerInstance = await loadFaceLandmarker();
+          let isLoaded = isFaceApiLoadedRef.current;
+          if (!isLoaded && !isModelLoadingRef.current && !isModelFailedRef.current) {
+            isLoaded = await loadFaceApiModels();
           }
 
-          if (!landmarkerInstance) {
+          if (!isLoaded) {
             setTrackedFace({
               x: Math.round(width * 0.32),
               y: Math.round(height * 0.18),
@@ -788,38 +624,32 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           }
 
           try {
-            const result = landmarkerInstance.detectForVideo(video, performance.now());
-            if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
-              const landmarks = result.faceLandmarks[0];
+            const detection = await faceapi.detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
 
-              // Calculate Bounding Box around face
-              let minX = 1, maxX = 0, minY = 1, maxY = 0;
-              for (const pt of landmarks) {
-                if (pt.x < minX) minX = pt.x;
-                if (pt.x > maxX) maxX = pt.x;
-                if (pt.y < minY) minY = pt.y;
-                if (pt.y > maxY) maxY = pt.y;
-              }
+            if (detection) {
+              const landmarks = detection.landmarks.positions;
+              const liveDescriptor = Array.from(detection.descriptor);
+              const box = detection.detection.box;
               const faceBox = {
-                x: Math.round(minX * width),
-                y: Math.round(minY * height),
-                w: Math.round((maxX - minX) * width),
-                h: Math.round((maxY - minY) * height)
+                x: Math.round(box.x),
+                y: Math.round(box.y),
+                w: Math.round(box.width),
+                h: Math.round(box.height)
               };
 
-              // EAR calculations for Left Eye (points 33, 160, 158, 133, 153, 144) and Right Eye (points 362, 385, 387, 263, 380, 373)
-              const dist3D = (a: any, b: any) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
-              const leftEAR = (dist3D(landmarks[160], landmarks[153]) + dist3D(landmarks[158], landmarks[144])) / (2.0 * dist3D(landmarks[33], landmarks[133]));
-              const rightEAR = (dist3D(landmarks[385], landmarks[373]) + dist3D(landmarks[387], landmarks[380])) / (2.0 * dist3D(landmarks[362], landmarks[263]));
+              // EAR calculations for 68 landmarks
+              const dist2D = (a: any, b: any) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+              const leftEAR = (dist2D(landmarks[37], landmarks[41]) + dist2D(landmarks[38], landmarks[40])) / (2.0 * dist2D(landmarks[36], landmarks[39]));
+              const rightEAR = (dist2D(landmarks[43], landmarks[47]) + dist2D(landmarks[44], landmarks[46])) / (2.0 * dist2D(landmarks[42], landmarks[45]));
               const ear = (leftEAR + rightEAR) / 2.0;
 
-              // Self-calibration of eye aspect ratio (EAR) baseline
               if (ear > baselineEARRef.current) {
                 baselineEARRef.current = ear;
               } else {
                 baselineEARRef.current = baselineEARRef.current * 0.999 + ear * 0.001;
               }
-              // Constrain baseline to sensible real-world eye openness bounds (0.15 - 0.40)
               baselineEARRef.current = Math.max(0.15, Math.min(0.40, baselineEARRef.current));
 
               earHistoryRef.current.push(ear);
@@ -828,15 +658,13 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
               const avgEAR = earHistoryRef.current.reduce((a, b) => a + b, 0) / earHistoryRef.current.length;
 
-              // Blink trigger liveness verification
               if (requiresLiveness) {
                 if (!facePresenceStartRef.current) {
                   facePresenceStartRef.current = Date.now();
                 }
-
                 const timeStablyPresent = Date.now() - facePresenceStartRef.current;
-                const closeThreshold = baselineEARRef.current * 0.72; // 28% drop indicates close
-                const openThreshold = baselineEARRef.current * 0.85;  // reopening to 85% openness
+                const closeThreshold = baselineEARRef.current * 0.72;
+                const openThreshold = baselineEARRef.current * 0.85;
 
                 if (avgEAR < closeThreshold && !isCooldownRef.current) {
                   lastBlinkTimeRef.current = Date.now();
@@ -849,7 +677,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   }
                   lastBlinkTimeRef.current = 0;
                 } else if (timeStablyPresent > 4000 && !hasBlinkedRef.current) {
-                  // Fallback: stable face for over 4 seconds is auto-verified for better UX
                   hasBlinkedRef.current = true;
                   setLivenessStatus('blinked');
                   playBeep();
@@ -859,15 +686,11 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 hasBlinkedRef.current = true;
               }
 
-              // Selected facial feature mesh nodes to project in UI
-              const keyIndices = [1, 33, 133, 159, 145, 362, 263, 386, 374, 61, 291, 152, 10, 234, 454];
-              const nodes = keyIndices.map(idx => {
-                const pt = landmarks[idx];
-                return {
-                  left: pt.x * 100,
-                  top: pt.y * 100
-                };
-              });
+              const keyIndices = [17, 21, 22, 26, 36, 39, 42, 45, 30, 33, 48, 54, 57, 62, 8];
+              const nodes = keyIndices.map(idx => ({
+                left: (landmarks[idx].x / video.videoWidth) * 100,
+                top: (landmarks[idx].y / video.videoHeight) * 100
+              }));
 
               if (hasBlinkedRef.current) {
                 if (isCooldownRef.current) {
@@ -875,87 +698,82 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   return;
                 }
 
-                const faceCanvas = document.createElement('canvas');
-                faceCanvas.width = 160;
-                faceCanvas.height = 160;
-                const faceCtx = faceCanvas.getContext('2d');
-                if (faceCtx) {
-                  const size = Math.min(width, height) * 0.65;
-                  const x = (width - size) / 2;
-                  const y = (height - size) / 2;
-                  faceCtx.drawImage(video, x, y, size, size, 0, 0, 160, 160);
+                const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
 
-                   const liveDescriptor = extractAlignedHogDescriptor(video, landmarks);
-                   const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
+                if (enrolledStudents.length === 0) {
+                  setTrackedFace({
+                    ...faceBox,
+                    name: "⚠️ No Enrolled Faces (Click 'Enroll' next to student)",
+                    pct: undefined,
+                    landmarks: nodes
+                  });
+                  requestRef.current = requestAnimationFrame(scanFrame);
+                  return;
+                }
 
-                  if (enrolledStudents.length === 0) {
-                    setTrackedFace({
-                      ...faceBox,
-                      name: "⚠️ No Enrolled Faces (Click 'Enroll' next to student)",
-                      pct: undefined,
-                      landmarks: nodes
-                    });
-                    requestRef.current = requestAnimationFrame(scanFrame);
-                    return;
-                  }
-
-                  const matchScores: { student: Student, similarity: number }[] = [];
-                  for (const student of enrolledStudents) {
-                    let maxSim = 0;
-                    if (student.faceDescriptors && student.faceDescriptors.length > 0) {
-                      for (const desc of student.faceDescriptors) {
-                        const sim = computeFaceSimilarity(liveDescriptor, desc);
-                        if (sim > maxSim) maxSim = sim;
-                      }
-                    } else if (student.faceDescriptor) {
-                      maxSim = computeFaceSimilarity(liveDescriptor, student.faceDescriptor);
+                const matchScores: { student: Student, distance: number }[] = [];
+                for (const student of enrolledStudents) {
+                  let minDistance = 999;
+                  if (student.faceDescriptors && student.faceDescriptors.length > 0) {
+                    for (const desc of student.faceDescriptors) {
+                      const dist = faceapi.euclideanDistance(liveDescriptor, desc);
+                      if (dist < minDistance) minDistance = dist;
                     }
-                    console.log(`[FaceScanner] Comparing vs ${student.name}: sim = ${maxSim.toFixed(4)} (live len = ${liveDescriptor.length}, enrolled len = ${student.faceDescriptor ? student.faceDescriptor.length : 0})`);
-                    matchScores.push({ student, similarity: maxSim });
+                  } else if (student.faceDescriptor) {
+                    minDistance = faceapi.euclideanDistance(liveDescriptor, student.faceDescriptor);
                   }
+                  matchScores.push({ student, distance: minDistance });
+                }
 
-                  matchScores.sort((a, b) => b.similarity - a.similarity);
-                  const topMatch = matchScores[0];
-                  const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
-                  const topScore = topMatch.similarity;
-                  const secondScore = secondMatch ? secondMatch.similarity : 0;
-                  const margin = topScore - secondScore;
+                matchScores.sort((a, b) => a.distance - b.distance);
+                const topMatch = matchScores[0];
+                const secondMatch = matchScores.length > 1 ? matchScores[1] : null;
+                
+                const topDistance = topMatch.distance;
+                const secondDistance = secondMatch ? secondMatch.distance : 999;
 
-                  if (topMatch && topScore >= targetThreshold && (matchScores.length === 1 || margin >= 0.04)) {
-                    const matchPct = Math.round(topScore * 100);
-                    const primaryName = topMatch.student.name.split('/')[0].trim();
+                const topScore = Math.max(0, Math.min(1, 1.3 - topDistance));
+                const secondScore = secondMatch ? Math.max(0, Math.min(1, 1.3 - secondDistance)) : 0;
+                const margin = topScore - secondScore;
 
-                    isCooldownRef.current = true;
-                    playBeep();
-                    speakAttendance(primaryName);
-                    handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
-                    setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
-                    setTrackedFace({
-                      ...faceBox,
-                      name: `👤 ${primaryName} (${matchPct}% Match)`,
-                      pct: matchPct,
-                      landmarks: nodes
-                    });
+                const targetDistanceThreshold = 1.3 - targetThreshold;
 
-                    setTimeout(() => {
-                      isCooldownRef.current = false;
-                      hasBlinkedRef.current = false;
-                      setLivenessStatus('pending');
-                      setScannedFeedback(null);
-                      setTrackedFace(null);
-                    }, 3000);
-                  } else {
-                    const topSimPct = topMatch ? Math.round(topScore * 100) : 0;
-                    const partialMatchName = topMatch ? topMatch.student.name.split('/')[0].trim() : '';
-                    setTrackedFace({
-                      ...faceBox,
-                      name: topMatch && topScore >= 0.55 
-                        ? `👤 Low Confidence Match: ${partialMatchName} (${topSimPct}%)` 
-                        : "👤 Unregistered biometric face",
-                      pct: undefined,
-                      landmarks: nodes
-                    });
-                  }
+                console.log(`[FaceScanner] Comparing vs ${topMatch.student.name}: dist = ${topDistance.toFixed(4)}, sim = ${(topScore * 100).toFixed(1)}% (target distance threshold = ${targetDistanceThreshold.toFixed(4)})`);
+
+                if (topMatch && topDistance <= targetDistanceThreshold && (matchScores.length === 1 || margin >= 0.04)) {
+                  const matchPct = Math.round(topScore * 100);
+                  const primaryName = topMatch.student.name.split('/')[0].trim();
+
+                  isCooldownRef.current = true;
+                  playBeep();
+                  speakAttendance(primaryName);
+                  handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
+                  setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
+                  setTrackedFace({
+                    ...faceBox,
+                    name: `👤 ${primaryName} (${matchPct}% Match)`,
+                    pct: matchPct,
+                    landmarks: nodes
+                  });
+
+                  setTimeout(() => {
+                    isCooldownRef.current = false;
+                    hasBlinkedRef.current = false;
+                    setLivenessStatus('pending');
+                    setScannedFeedback(null);
+                    setTrackedFace(null);
+                  }, 3000);
+                } else {
+                  const topSimPct = Math.round(topScore * 100);
+                  const partialMatchName = topMatch.student.name.split('/')[0].trim();
+                  setTrackedFace({
+                    ...faceBox,
+                    name: topMatch && topScore >= 0.55 
+                      ? `👤 Low Confidence Match: ${partialMatchName} (${topSimPct}%)` 
+                      : "👤 Unregistered biometric face",
+                    pct: undefined,
+                    landmarks: nodes
+                  });
                 }
               } else {
                 setTrackedFace({
@@ -974,7 +792,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               }
             }
           } catch (e) {
-            console.error("MediaPipe detection error:", e);
+            console.error("face-api.js detection error:", e);
           }
         }
       }
@@ -1605,7 +1423,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   setScannedFeedback(null); 
                   hasBlinkedRef.current = false;
                   setLivenessStatus('pending');
-                  await loadFaceLandmarker();
+                  await loadFaceApiModels();
                 }}
                 style={{
                   flex: 1, padding: '12px', border: 'none', background: 'transparent', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
@@ -1634,7 +1452,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                         onClick={async () => {
                           setModelLoadError(null);
                           isModelFailedRef.current = false;
-                          await loadFaceLandmarker();
+                          await loadFaceApiModels();
                         }}
                         style={{ padding: '8px 16px', borderRadius: '8px', background: '#8b5cf6', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', marginTop: '10px' }}
                       >

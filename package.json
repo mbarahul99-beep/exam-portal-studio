@@ -12,8 +12,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^0.10.35",
     "@types/canvas-confetti": "^1.9.0",
+    "@vladmandic/face-api": "^1.7.15",
     "canvas-confetti": "^1.9.4",
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",

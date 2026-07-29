@@ -221,6 +221,20 @@ const initDatabase = async () => {
       console.warn('Demo data cleanup notice:', e.message);
     }
 
+    try {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          \`key\` VARCHAR(100) NOT NULL UNIQUE,
+          value TEXT,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log('✅ app_settings table initialized successfully!');
+    } catch (e) {
+      console.warn('app_settings table init warning:', e.message);
+    }
+
     conn.release();
     console.log('✅ Hostinger MySQL Database Schema verified & auto-created successfully!');
   } catch (err) {
@@ -275,6 +289,7 @@ app.get('/api/sync/all', async (req, res) => {
     const [submissions] = await pool.query('SELECT * FROM submissions');
     const [questions] = await pool.query('SELECT * FROM questions');
     const [teachers] = await pool.query('SELECT id, userId, password, name, phone, email, createdAt FROM teachers');
+    const [settingsRows] = await pool.query('SELECT `key`, `value` FROM app_settings');
 
     res.json({
       students: students.map(s => ({
@@ -300,10 +315,46 @@ app.get('/api/sync/all', async (req, res) => {
         ...q,
         options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
       })),
-      teachers
+      teachers,
+      settings: settingsRows.reduce((acc, r) => {
+        acc[r.key] = r.value;
+        return acc;
+      }, {})
     });
   } catch (err) {
     console.error('Failed to sync all data:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// App Settings API Routes
+app.get('/api/settings', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [rows] = await pool.query('SELECT `key`, `value` FROM app_settings');
+    const settings = {};
+    rows.forEach(r => {
+      settings[r.key] = r.value;
+    });
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const settings = req.body;
+    for (const key of Object.keys(settings)) {
+      const val = settings[key];
+      await pool.query(
+        'INSERT INTO app_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
+        [key, val, val]
+      );
+    }
+    res.json({ success: true, message: 'Settings saved successfully in Cloud MySQL database!' });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

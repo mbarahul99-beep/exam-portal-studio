@@ -313,6 +313,23 @@ export async function pullCloudUpdatesToIndexedDB() {
       // Ignore secondary pull failure
     }
 
+    // 8. Sync App Settings
+    if (data.settings && typeof data.settings === 'object') {
+      for (const key of Object.keys(data.settings)) {
+        try {
+          const val = data.settings[key];
+          const existing = await db.settings.where('key').equals(key).first();
+          if (!existing) {
+            await db.settings.add({ key, value: val });
+          } else {
+            await db.settings.update(existing.id!, { value: val });
+          }
+        } catch (err) {
+          console.warn("Error syncing app settings item:", err);
+        }
+      }
+    }
+
     console.log("✅ Cloud sync from Hostinger MySQL completed successfully.");
   } catch (err) {
     console.warn("Cloud sync pull failed:", err);

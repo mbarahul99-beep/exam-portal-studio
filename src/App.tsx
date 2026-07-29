@@ -289,6 +289,7 @@ export default function App() {
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [templateName, setTemplateName] = useState('exam_report_notification');
   const [templateType, setTemplateType] = useState<'body_link' | 'button_link'>('body_link');
+  const [templateLanguage, setTemplateLanguage] = useState('en_US');
 
   // Load WhatsApp settings from IndexedDB
   useEffect(() => {
@@ -298,11 +299,13 @@ export default function App() {
         const phoneSetting = await db.settings.where('key').equals('phoneNumberId').first();
         const templateSetting = await db.settings.where('key').equals('templateName').first();
         const typeSetting = await db.settings.where('key').equals('templateType').first();
+        const langSetting = await db.settings.where('key').equals('templateLanguage').first();
 
         if (tokenSetting) setMetaAccessToken(tokenSetting.value);
         if (phoneSetting) setPhoneNumberId(phoneSetting.value);
         if (templateSetting) setTemplateName(templateSetting.value);
         if (typeSetting) setTemplateType(typeSetting.value as any);
+        if (langSetting) setTemplateLanguage(langSetting.value);
       } catch (err) {
         console.error("Failed to load settings:", err);
       }
@@ -313,8 +316,8 @@ export default function App() {
   const handleSaveWhatsAppSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const keys = ['metaAccessToken', 'phoneNumberId', 'templateName', 'templateType'];
-      const values = [metaAccessToken.trim(), phoneNumberId.trim(), templateName.trim(), templateType];
+      const keys = ['metaAccessToken', 'phoneNumberId', 'templateName', 'templateType', 'templateLanguage'];
+      const values = [metaAccessToken.trim(), phoneNumberId.trim(), templateName.trim(), templateType, templateLanguage.trim()];
       
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i];
@@ -3398,6 +3401,19 @@ export default function App() {
                       style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', boxSizing: 'border-box' }}
                     />
                     <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Must match the approved template name in your WhatsApp template settings.</small>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Template Language Code *</label>
+                    <input 
+                      type="text" 
+                      value={templateLanguage}
+                      onChange={(e) => setTemplateLanguage(e.target.value)}
+                      placeholder="e.g. en_US"
+                      required
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>The language code of your WhatsApp template (e.g. en_US, en, hi).</small>
                   </div>
 
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

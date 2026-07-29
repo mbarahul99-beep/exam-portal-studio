@@ -13,6 +13,7 @@ export interface WhatsAppConfig {
   phoneNumberId: string;
   templateName: string;
   templateType: 'body_link' | 'button_link';
+  templateLanguage: string;
 }
 
 /**
@@ -23,12 +24,14 @@ export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
   const phoneId = await db.settings.where('key').equals('phoneNumberId').first();
   const template = await db.settings.where('key').equals('templateName').first();
   const type = await db.settings.where('key').equals('templateType').first();
+  const lang = await db.settings.where('key').equals('templateLanguage').first();
 
   return {
     metaAccessToken: token?.value || '',
     phoneNumberId: phoneId?.value || '',
     templateName: template?.value || 'exam_report_notification',
-    templateType: (type?.value as any) || 'body_link'
+    templateType: (type?.value as any) || 'body_link',
+    templateLanguage: lang?.value || 'en_US'
   };
 }
 
@@ -40,13 +43,17 @@ export async function sendWhatsAppTemplateMessage(
   config: WhatsAppConfig
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { recipientPhone, studentName, examTitle, reportUrl, accessToken } = params;
-  const { metaAccessToken, phoneNumberId, templateName, templateType } = config;
+  const { metaAccessToken, phoneNumberId, templateName, templateType, templateLanguage } = config;
 
   if (!metaAccessToken || !phoneNumberId) {
     return { success: false, error: 'WhatsApp API Credentials are not configured. Please fill them in the settings tab.' };
   }
 
-  const cleanPhone = recipientPhone.replace(/[\s\-\(\)\+]/g, '');
+  let cleanPhone = recipientPhone.replace(/[\s\-\(\)\+]/g, '');
+  if (cleanPhone.length === 10 && !isNaN(Number(cleanPhone))) {
+    cleanPhone = '91' + cleanPhone; // Auto-prepend Indian country code if exactly 10 digits
+  }
+
   if (!cleanPhone || isNaN(Number(cleanPhone))) {
     return { success: false, error: 'Invalid recipient phone number format.' };
   }
@@ -69,7 +76,7 @@ export async function sendWhatsAppTemplateMessage(
         {
           type: 'button',
           sub_type: 'url',
-          index: '0',
+          index: 0, // Fixed: Meta API requires integer index, not string
           parameters: [
             { type: 'text', text: accessToken }
           ]
@@ -98,7 +105,7 @@ export async function sendWhatsAppTemplateMessage(
     template: {
       name: templateName,
       language: {
-        code: isHelloWorld ? 'en_US' : 'en'
+        code: isHelloWorld ? 'en_US' : templateLanguage
       },
       components
     }

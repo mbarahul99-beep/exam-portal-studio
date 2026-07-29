@@ -251,18 +251,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     db.questionBanks.toArray().then(setBanksList);
   }, [questionSetupTab]);
 
-  const renderStepCircle = (stepNum: number) => {
-    if (step > stepNum) {
-      return (
-        <span className="step-num completed">
-          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </span>
-      );
-    }
-    return <span className={`step-num ${step === stepNum ? 'active' : ''}`}>{stepNum}</span>;
-  };
+
 
   // Calculate dynamic ranges and total questions
   let qCursor = 1;
@@ -1621,9 +1610,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
               <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#166534' }}>ℹ️ Section Configurations</span>
-                {sectionsList.map((sec, idx) => (
+                {sectionsWithRanges.map((sec, idx) => (
                   <div key={`review-sec-${idx}`} style={{ fontSize: '0.78rem', color: '#1e293b', paddingLeft: '8px', borderLeft: '3px solid #22c55e' }}>
-                    <strong>{sec.subjectName} - {sec.sectionName}</strong>: {sec.qCount} Questions (Q{sec.qStart} - Q{sec.qStart + sec.qCount - 1}) | +{sec.correctMarks} / {sec.incorrectMarks} Marks
+                    <strong>{sec.subjectName} - {sec.sectionName}</strong>: {sec.qCount} Questions (Q{sec.qStart} - Q{sec.qEnd}) | +{sec.correctMarks} / {sec.incorrectMarks} Marks
                   </div>
                 ))}
               </div>

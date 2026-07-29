@@ -314,7 +314,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const targetExamSections = targetExamObj?.sections || [];
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', minHeight: '100%' }}>
+    <div className="qbank-container">
       
       {/* 1. ROOT VIEW: LIST OF ALL CREATED QUESTION BANKS */}
       {!selectedBank ? (
@@ -477,7 +477,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                   </div>
                 ) : (
                   filteredQuestions.map((q, idx) => (
-                    <div key={q.id} className="glass-card animate-fade-in" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', gap: '20px', alignItems: 'flex-start' }}>
+                    <div key={q.id} className="qbank-question-card glass-card animate-fade-in">
                       <div style={{ flex: 1, textAlign: 'left' }}>
                         <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                           <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>Q{idx + 1}.</span>
@@ -503,7 +503,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                      <div className="qbank-question-actions">
                         <button 
                           onClick={() => setSelectedBankQ(q)}
                           className="btn-primary" 

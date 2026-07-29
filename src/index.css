@@ -3135,3 +3135,149 @@ button {
   }
 }
 
+/* Question Bank & Exam Creation Responsive Rules */
+.qbank-container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.manual-entry-split-layout {
+  display: flex;
+  gap: 16px;
+  height: calc(100% - 50px);
+  overflow: hidden;
+}
+
+.manual-entry-left-panel {
+  width: 130px;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.manual-entry-right-panel {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 6px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.manual-entry-q-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+  width: 100%;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.qbank-library-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100% - 50px);
+  overflow: hidden;
+}
+
+.qbank-question-card {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
+.qbank-question-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .qbank-container {
+    padding: 10px 4px !important;
+    gap: 12px !important;
+  }
+
+  .manual-entry-split-layout {
+    flex-direction: column !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .manual-entry-left-panel {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding-right: 0 !important;
+    padding-bottom: 8px;
+    flex-direction: row !important;
+    gap: 8px;
+    height: auto !important;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .manual-entry-q-btn {
+    width: auto !important;
+    min-width: 68px;
+    justify-content: center !important;
+    padding: 6px 12px !important;
+    display: inline-flex !important;
+  }
+
+  .manual-entry-right-panel {
+    overflow-y: visible !important;
+    padding-right: 0 !important;
+  }
+
+  .qbank-library-wrapper {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .qbank-question-card {
+    flex-direction: column !important;
+    gap: 14px !important;
+    align-items: stretch !important;
+  }
+
+  .qbank-question-actions {
+    flex-direction: row !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+  }
+
+  .qbank-question-actions button {
+    flex: 1 !important;
+    width: auto !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+}
+

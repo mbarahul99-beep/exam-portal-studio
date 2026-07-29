@@ -1153,7 +1153,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 </div>
               ) : (
                 /* ONLINE MODE QUESTIONS WORKSPACE */
-                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '420px' }}>
+                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   
                   {/* Setup Options Header tabs */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
@@ -1188,10 +1188,10 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
                   {questionSetupTab === 'manual' ? (
                     /* Manual entry split layout */
-                    <div style={{ display: 'flex', gap: '16px', height: 'calc(100% - 50px)', overflow: 'hidden' }}>
+                    <div className="manual-entry-split-layout">
                       
                       {/* Left list panel */}
-                      <div style={{ width: '130px', borderRight: '1px solid var(--border-color)', overflowY: 'auto', paddingRight: '8px', display: 'flex', flexDirection: 'column', gap: '6px', boxSizing: 'border-box' }}>
+                      <div className="manual-entry-left-panel">
                         {questionsState.map((q, idx) => {
                           const isFilled = q.questionText.trim().length > 0;
                           const isActive = idx === activeQuestionIndex;
@@ -1199,12 +1199,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                             <button
                               key={`q-list-btn-${idx}`}
                               onClick={() => setActiveQuestionIndex(idx)}
+                              className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
                               style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
                                 border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
                                 background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
                                 color: isActive ? 'var(--primary)' : '#4a5568',
@@ -1226,7 +1222,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       {questionsState[activeQuestionIndex] && (() => {
                         const q = questionsState[activeQuestionIndex];
                         return (
-                          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '6px', boxSizing: 'border-box', textAlign: 'left' }}>
+                          <div className="manual-entry-right-panel">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #edf2f7' }}>
                               <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
                                 {q.subjectName.toUpperCase()} - {q.sectionName.toUpperCase()}
@@ -1458,7 +1454,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                     </div>
                   ) : (
                     /* QUESTION BANK LIBRARY DISPLAY */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: 'calc(100% - 50px)', overflow: 'hidden' }}>
+                    <div className="qbank-library-wrapper">
                       {/* Filter Controls Row */}
                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: 'span 2' }}>
@@ -1507,7 +1503,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                             const isAddedToActive = questionsState[activeQuestionIndex]?.questionText === qVal.questionText;
                             const parentBank = banksList.find(b => b.id === qVal.bankId);
                             return (
-                              <div key={index} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                              <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
@@ -1532,37 +1528,39 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                     </div>
                                   )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setQuestionsState(prev => {
-                                      const updated = [...prev];
-                                      updated[activeQuestionIndex] = {
-                                        ...updated[activeQuestionIndex],
-                                        questionText: qVal.questionText,
-                                        options: [...qVal.options],
-                                        correctOptionIdx: qVal.correctOptionIdx,
-                                        explanation: qVal.explanation || ''
-                                      };
-                                      return updated;
-                                    });
-                                  }}
-                                  disabled={isAddedToActive}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: isAddedToActive ? '#48bb78' : 'var(--primary)',
-                                    color: '#fff',
-                                    fontWeight: 'bold',
-                                    fontSize: '0.75rem',
-                                    cursor: isAddedToActive ? 'default' : 'pointer',
-                                    flexShrink: 0,
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                                  }}
-                                >
-                                  {isAddedToActive ? 'Added ✔' : `Add to Q${questionsState[activeQuestionIndex]?.qNum || 1}`}
-                                </button>
+                                <div className="qbank-question-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuestionsState(prev => {
+                                        const updated = [...prev];
+                                        updated[activeQuestionIndex] = {
+                                          ...updated[activeQuestionIndex],
+                                          questionText: qVal.questionText,
+                                          options: [...qVal.options],
+                                          correctOptionIdx: qVal.correctOptionIdx,
+                                          explanation: qVal.explanation || ''
+                                        };
+                                        return updated;
+                                      });
+                                    }}
+                                    disabled={isAddedToActive}
+                                    style={{
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: isAddedToActive ? '#48bb78' : 'var(--primary)',
+                                      color: '#fff',
+                                      fontWeight: 'bold',
+                                      fontSize: '0.75rem',
+                                      cursor: isAddedToActive ? 'default' : 'pointer',
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                      width: '110px'
+                                    }}
+                                  >
+                                    {isAddedToActive ? 'Added ✔' : `Add to Q${questionsState[activeQuestionIndex]?.qNum || 1}`}
+                                  </button>
+                                </div>
                               </div>
                             );
                           })

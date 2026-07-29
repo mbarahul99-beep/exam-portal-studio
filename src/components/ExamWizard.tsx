@@ -25,7 +25,34 @@ interface SectionState {
 }
 
 export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose, onSuccess }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+
+  const getStepName = (s: number) => {
+    if (examMode === 'online') {
+      switch (s) {
+        case 1: return "Basic Details";
+        case 2: return "Subject Details";
+        case 3: return "Section Details";
+        case 4: return "Questions Setup";
+        case 5: return "Review & Publish";
+        case 6: return "Share Link";
+        default: return "";
+      }
+    } else {
+      switch (s) {
+        case 1: return "Basic Details";
+        case 2: return "Subject Details";
+        case 3: return "Section Details";
+        case 4: return "Answer Keys";
+        case 5: return "Review & Publish";
+        default: return "";
+      }
+    }
+  };
+
+  const getTotalSteps = () => {
+    return examMode === 'online' ? 6 : 5;
+  };
 
   // Step 1: Basic Details States
   const [examName, setExamName] = useState('');
@@ -563,9 +590,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           console.warn("MySQL questions sync warning:", err);
         }
 
-        // Advance to step 5 for online links sharing!
+        // Advance to step 6 for online links sharing!
         setCreatedExamId(finalExamId);
-        setStep(5);
+        setStep(6);
       } else if (finalExamId) {
         onSuccess(finalExamId);
       }
@@ -584,32 +611,40 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     } else if (step === 2) {
       handleGoToStep3();
     } else if (step === 3) {
-      // Initialize custom questions state or answer keys before moving to step 4
-      const list: any[] = [];
-      sectionsWithRanges.forEach(sec => {
-        for (let q = sec.qStart; q <= sec.qEnd; q++) {
-          list.push({
-            qNum: q,
-            sectionName: sec.sectionName,
-            subjectName: sec.subjectName,
-            questionText: '',
-            options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
-            correctOptionIdx: 0, // A is default
-            explanation: '',
-            questionImage: ''
-          });
+      // Validate question counts
+      for (const sec of sectionsList) {
+        if (sec.qCount <= 0) {
+          alert('Each section must have at least 1 question.');
+          return;
         }
-      });
-      setQuestionsState(list);
-      setActiveQuestionIndex(0);
-      setCsvUploadSuccess(null);
+      }
 
       if (examMode === 'online') {
+        const list: any[] = [];
+        sectionsWithRanges.forEach(sec => {
+          for (let q = sec.qStart; q <= sec.qEnd; q++) {
+            list.push({
+              qNum: q,
+              sectionName: sec.sectionName,
+              subjectName: sec.subjectName,
+              questionText: '',
+              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+              correctOptionIdx: 0, // A is default
+              explanation: '',
+              questionImage: ''
+            });
+          }
+        });
+        setQuestionsState(list);
+        setActiveQuestionIndex(0);
+        setCsvUploadSuccess(null);
         setStep(4);
       } else {
         handleGoToStep4();
       }
     } else if (step === 4) {
+      setStep(5);
+    } else if (step === 5) {
       handleSubmit();
     }
   };
@@ -632,36 +667,32 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           </button>
         </header>
 
-        {/* Stepper Progress Bar */}
-        <div className="wizard-stepper">
-          <div className={`step-item ${step >= 1 ? 'active' : ''}`}>
-            {renderStepCircle(1)}
-            <span className="step-label">Basic Details</span>
+        {/* Stepper Progress Bar (Displays only active step at the top for clean mobile layout) */}
+        <div className="wizard-stepper" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #edf2f7' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'var(--primary)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: '0.9rem'
+            }}>
+              {step}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Step {step} of {getTotalSteps()}
+              </span>
+              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                {getStepName(step)}
+              </span>
+            </div>
           </div>
-          <div className={`step-line ${step >= 2 ? 'active' : ''}`} />
-          <div className={`step-item ${step >= 2 ? 'active' : ''}`}>
-            {renderStepCircle(2)}
-            <span className="step-label">Subject Details</span>
-          </div>
-          <div className={`step-line ${step >= 3 ? 'active' : ''}`} />
-          <div className={`step-item ${step >= 3 ? 'active' : ''}`}>
-            {renderStepCircle(3)}
-            <span className="step-label">Section Details</span>
-          </div>
-          <div className={`step-line ${step >= 4 ? 'active' : ''}`} />
-          <div className={`step-item ${step >= 4 ? 'active' : ''}`}>
-            {renderStepCircle(4)}
-            <span className="step-label">{examMode === 'online' ? 'Questions' : 'Preview & Keys'}</span>
-          </div>
-          {examMode === 'online' && (
-            <>
-              <div className={`step-line ${step >= 5 ? 'active' : ''}`} />
-              <div className={`step-item ${step >= 5 ? 'active' : ''}`}>
-                {renderStepCircle(5)}
-                <span className="step-label">Share Link</span>
-              </div>
-            </>
-          )}
         </div>
 
         {/* Wizard Form Content */}
@@ -669,7 +700,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           
           {/* STEP 1: BASIC DETAILS */}
           {step === 1 && (
-            <div className="wizard-step-content animate-fade-in" style={{ overflowY: 'auto', maxHeight: '425px', paddingRight: '4px' }}>
+            <div className="wizard-step-content animate-fade-in" style={{ paddingRight: '4px' }}>
               <div className="form-row-three">
                 
                 {/* Class Name */}
@@ -899,7 +930,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
           {/* STEP 3: SECTION DETAILS */}
           {step === 3 && (
-            <div className="wizard-step-content animate-fade-in" style={{ overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
+            <div className="wizard-step-content animate-fade-in" style={{ paddingRight: '4px' }}>
               {subjectsList.map((sub, subIdx) => {
                 const subSections = sectionsList.filter(sec => sec.subjectName === sub.name);
                 
@@ -1029,29 +1060,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
             </div>
           )}
 
-          {/* STEP 4: PREVIEW & KEYS OR QUESTIONS SETUP */}
+          {/* STEP 4: ANSWER KEYS OR QUESTIONS SETUP */}
           {step === 4 && (
             <>
               {examMode === 'offline' ? (
-                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
-                  <div className="preview-summary-card">
-                    <div className="summary-field">
-                      <span className="lbl">Exam Name:</span>
-                      <span className="val"><strong>{examName.toUpperCase()}</strong></span>
-                    </div>
-                    <div className="summary-field">
-                      <span className="lbl">Target Class:</span>
-                      <span className="val">{className}</span>
-                    </div>
-                    <div className="summary-field">
-                      <span className="lbl">Roll No Digits:</span>
-                      <span className="val">{rollNoDigits} digits</span>
-                    </div>
-                    <div className="summary-field">
-                      <span className="lbl">Total Questions:</span>
-                      <span className="val"><strong>{totalQuestions} Questions</strong></span>
-                    </div>
-                  </div>
+                <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '4px' }}>
 
                   {/* Set Selection Tabs */}
                   {examSetsCount > 1 && (
@@ -1574,9 +1587,72 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
             </>
           )}
 
-          {/* STEP 5: ONLINE SUCCESS & SHARE LINK */}
-          {step === 5 && createdExamId && (
-            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', justifyContent: 'center', alignItems: 'center', height: '420px', textAlign: 'center' }}>
+          {/* STEP 5: REVIEW & PUBLISH */}
+          {step === 5 && (
+            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '4px' }}>
+              <h4 style={{ margin: '0 0 4px 0', color: 'var(--text-primary)', fontWeight: 800, fontSize: '1.05rem' }}>Confirm Exam Settings</h4>
+              
+              <div className="preview-summary-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Exam Name:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>{examName.toUpperCase()}</span>
+                </div>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Target Class:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{className}</span>
+                </div>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Roll No Digits:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{rollNoDigits} digits</span>
+                </div>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Questions:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>{totalQuestions} Questions</span>
+                </div>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Mode:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{examMode === 'online' ? '🌐 Online' : '📄 OMR Bubble Sheet'}</span>
+                </div>
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Exam Sets:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{examMode === 'online' ? '1 Set' : `${examSetsCount} Booklet Sets`}</span>
+                </div>
+              </div>
+
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#166534' }}>ℹ️ Section Configurations</span>
+                {sectionsList.map((sec, idx) => (
+                  <div key={`review-sec-${idx}`} style={{ fontSize: '0.78rem', color: '#1e293b', paddingLeft: '8px', borderLeft: '3px solid #22c55e' }}>
+                    <strong>{sec.subjectName} - {sec.sectionName}</strong>: {sec.qCount} Questions (Q{sec.qStart} - Q{sec.qStart + sec.qCount - 1}) | +{sec.correctMarks} / {sec.incorrectMarks} Marks
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: '10px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Status *</label>
+                <select 
+                  value={onlinePublishStatus} 
+                  onChange={(e) => setOnlinePublishStatus(e.target.value as any)} 
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.9rem',
+                    color: '#1e293b',
+                    background: '#ffffff'
+                  }}
+                >
+                  <option value="draft">Draft (Private)</option>
+                  <option value="published">Published (Ready for candidates)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 6: ONLINE SUCCESS & SHARE LINK */}
+          {step === 6 && createdExamId && (
+            <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
               <div style={{ background: '#e6fffa', border: '2px solid #319795', padding: '16px', borderRadius: '50%', color: '#319795', animation: 'scaleUp 0.4s ease' }}>
                 <Check size={40} strokeWidth={3} />
               </div>
@@ -1654,17 +1730,20 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           <button 
             className="btn-outline-cancel"
             onClick={step === 1 ? onClose : handlePrevStep}
-            disabled={step === 5}
-            style={{ opacity: step === 5 ? 0.4 : 1, cursor: step === 5 ? 'not-allowed' : 'pointer' }}
+            disabled={step === getTotalSteps() && examMode === 'online'}
+            style={{ 
+              opacity: (step === getTotalSteps() && examMode === 'online') ? 0.4 : 1, 
+              cursor: (step === getTotalSteps() && examMode === 'online') ? 'not-allowed' : 'pointer' 
+            }}
           >
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
           
           <button 
             className="btn-primary-wizard"
-            onClick={step === 5 ? () => onSuccess(createdExamId!) : (step === 4 ? handleSubmit : handleNextStep)}
+            onClick={step === getTotalSteps() && examMode === 'online' ? () => onSuccess(createdExamId!) : (step === 5 ? handleSubmit : handleNextStep)}
           >
-            {step === 5 ? 'Finish & Close' : (step === 4 ? (examId ? 'Save Changes' : 'Create Exam') : 'Next')}
+            {step === getTotalSteps() && examMode === 'online' ? 'Finish & Close' : (step === 5 ? (examId ? 'Save Changes' : 'Create Exam') : 'Next')}
           </button>
         </footer>
 

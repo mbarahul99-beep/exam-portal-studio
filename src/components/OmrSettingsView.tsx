@@ -28,7 +28,7 @@ export interface OmrCustomSettings {
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
-  instituteName: 'APEX INSTITUTE, JIND',
+  instituteName: 'Institute APEX',
   subtitleText: 'OMR ANSWER SHEET',
   rollNoBoxTitle: 'ROLL NO.',
   bookletNoBoxTitle: 'TEST BOOKLET NO.',
@@ -470,8 +470,8 @@ export const OmrSettingsView: React.FC = () => {
 
                 {/* Institute Title */}
                 <div style={{ textAlign: 'center', margin: '4px 0 6px 0' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: '#dc0045' }}>
-                    {settings.instituteName.toUpperCase() || 'INSTITUTE NAME'}
+                  <h4 style={{ margin: '0 0 2px 0', fontSize: '1.25rem', fontFamily: "'Titan One', cursive, sans-serif", color: '#dc0045', textTransform: 'none' }}>
+                    {settings.instituteName || 'Institute Name'}
                   </h4>
                   <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0f172a' }}>NEET 11TH JULY 1</div>
                   <span style={{ background: '#dc0045', color: '#fff', fontSize: '0.65rem', fontWeight: 800, padding: '1px 8px', borderRadius: '10px' }}>

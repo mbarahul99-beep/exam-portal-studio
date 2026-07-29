@@ -215,8 +215,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         />
 
         {/* Institute Name */}
-        <div style={{ position: 'absolute', top: toY(30), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
-          <h1 className="omr-institute-title">{omrConfig.instituteName.toUpperCase()}</h1>
+        <div style={{ position: 'absolute', top: toY(24), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
+          <h1 className="omr-institute-title">{omrConfig.instituteName}</h1>
         </div>
 
         {/* Header section inside the margin frame */}
@@ -471,6 +471,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         </div>
 
         <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Titan+One&display=swap');
+
           .omr-print-page {
             width: 210mm;
             height: 297mm;
@@ -511,12 +513,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           .omr-institute-title {
-            font-size: 20px;
-            font-weight: 900;
+            font-family: 'Titan One', cursive, sans-serif !important;
+            font-size: 26px !important;
+            font-weight: normal !important;
             color: #dc0045 !important;
             margin: 0 0 2px 0 !important;
-            line-height: 1 !important;
-            letter-spacing: 0.8px;
+            line-height: 1.1 !important;
+            letter-spacing: 0.5px;
           }
 
           .omr-exam-title {

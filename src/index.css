@@ -3110,3 +3110,28 @@ button {
   }
 }
 
+.whatsapp-settings-container {
+  padding: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.whatsapp-settings-card {
+  padding: 32px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  border: 1px solid var(--border-color);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .whatsapp-settings-container {
+    padding: 10px 4px;
+  }
+  .whatsapp-settings-card {
+    padding: 16px 12px;
+    border-radius: 8px;
+  }
+}
+

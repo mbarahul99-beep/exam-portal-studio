@@ -3422,8 +3422,8 @@ export default function App() {
           )}
 
           {activeTab === 'whatsapp-settings' && (
-            <div style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box' }}>
-              <div className="glass-card animate-scale-up" style={{ padding: '24px', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', boxSizing: 'border-box' }}>
+            <div className="whatsapp-settings-container">
+              <div className="whatsapp-settings-card glass-card animate-scale-up">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
                   <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Settings size={24} />

@@ -25,6 +25,25 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
 
+  // PWA Install Promo States
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPromo, setShowInstallPromo] = useState(true);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    // Check if launched as PWA
+    const standaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    setIsStandalone(!!standaloneMode);
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
   const numStudentId = Number(studentId);
 
   // Live queries
@@ -210,6 +229,110 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', background: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      
+      {/* Dynamic Student PWA App Download Overlay */}
+      {showInstallPromo && !isStandalone && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '24px',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '24px',
+            padding: '40px 32px',
+            maxWidth: '480px',
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+            color: '#fff'
+          }}>
+            <div style={{ fontSize: '4rem', marginBottom: '16px' }}>📱</div>
+            <h2 style={{ margin: '0 0 12px 0', fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', color: '#10b981' }}>
+              APEX Student App
+            </h2>
+            <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.6 }}>
+              Download our dedicated mobile application for instant notifications, faster loading of report cards, and secure offline results access.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {deferredPrompt ? (
+                <button
+                  onClick={() => {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choiceResult: any) => {
+                      if (choiceResult.outcome === 'accepted') {
+                        setShowInstallPromo(false);
+                      }
+                    });
+                  }}
+                  style={{
+                    padding: '14px 24px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Install Dedicated App
+                </button>
+              ) : (
+                <div style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px dashed rgba(255,255,255,0.15)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  fontSize: '0.85rem',
+                  color: '#cbd5e1',
+                  lineHeight: '1.5',
+                  textAlign: 'left'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>How to Install:</p>
+                  <p style={{ margin: 0 }}>
+                    <strong>iOS Safari:</strong> Tap the <strong>Share</strong> button at the bottom of your screen, then select <strong>'Add to Home Screen'</strong>.
+                  </p>
+                  <p style={{ margin: '8px 0 0 0' }}>
+                    <strong>Android / Chrome:</strong> Tap the three dots menu at the top right, then select <strong>'Install App'</strong>.
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowInstallPromo(false)}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Skip & Continue to Website
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Print-only scorecard document (rendered outside the no-print modal overlay via React Portal) */}
       {activeAnalysisSub && createPortal(

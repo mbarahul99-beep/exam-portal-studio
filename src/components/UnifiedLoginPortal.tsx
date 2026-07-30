@@ -9,6 +9,7 @@ interface UnifiedLoginPortalProps {
 }
 
 export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess, onRegisterClick }) => {
+  const isStudentApp = window.location.search.includes('app=student');
   const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>('student');
 
   // Student form states
@@ -159,14 +160,19 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             <span style={{ fontSize: '1.8rem', animation: 'pulse 2s infinite' }}>⚡</span>
             <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.05em' }}>Appex</span>
           </div>
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: 800, color: '#2d3748' }}>Single Sign-On Gateway</h2>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#718096' }}>Access test score reports or management portals.</p>
+          <h2 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: 800, color: '#2d3748' }}>
+            {isStudentApp ? 'Student Results Portal' : 'Single Sign-On Gateway'}
+          </h2>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: '#718096' }}>
+            {isStudentApp ? 'Enter your Roll Number and Mobile to view score reports.' : 'Access test score reports or management portals.'}
+          </p>
         </div>
 
         {/* 3 Tab selection buttons */}
-        <div style={{ display: 'flex', background: '#edf2f7', padding: '4px', borderRadius: '8px', marginBottom: '24px', gap: '4px' }}>
-          <button
-            onClick={() => setActiveTab('student')}
+        {!isStudentApp && (
+          <div style={{ display: 'flex', background: '#edf2f7', padding: '4px', borderRadius: '8px', marginBottom: '24px', gap: '4px' }}>
+            <button
+              onClick={() => setActiveTab('student')}
             style={{
               flex: 1,
               padding: '8px 4px',
@@ -232,6 +238,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             <Shield size={14} /> Master Admin
           </button>
         </div>
+        )}
 
         {/* Tab content panel */}
         {activeTab === 'student' ? (

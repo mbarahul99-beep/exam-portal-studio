@@ -1,0 +1,28 @@
+{
+  "short_name": "APEX Student",
+  "name": "APEX Student Portal",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/?app=student",
+  "background_color": "#ffffff",
+  "theme_color": "#065f46",
+  "display": "standalone",
+  "orientation": "portrait"
+}

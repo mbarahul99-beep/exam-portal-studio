@@ -10,7 +10,13 @@
     <meta name="apple-mobile-web-app-title" content="APEX" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#065f46" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" id="app-manifest-link" href="/manifest.json" />
+    <script>
+      const manifestLink = document.getElementById('app-manifest-link');
+      if (manifestLink && window.location.search.includes('app=student')) {
+        manifestLink.setAttribute('href', '/student-manifest.json');
+      }
+    </script>
     <title>APEX - OMR & Online Exam Portal</title>
     <!-- Preconnect & Preload proven working OpenCV.js engine -->
     <link rel="preconnect" href="https://docs.opencv.org" crossorigin />

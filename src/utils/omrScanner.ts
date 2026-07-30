@@ -194,6 +194,7 @@ export async function scanOMRSheet(
   let contours: any = null;
   let hierarchy: any = null;
   let warpedGray: any = null;
+  let bestWarpedMat: any = null;
 
   try {
     // 2. Preprocessing
@@ -242,6 +243,7 @@ export async function scanOMRSheet(
         };
         candidates.push({ center, area, rect });
       }
+      cnt.delete();
     }
 
     const findBestQuadInCandidates = (cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>) => {
@@ -351,6 +353,7 @@ export async function scanOMRSheet(
           };
           candidates.push({ center, area, rect });
         }
+        cnt.delete();
       }
 
       quad = findBestQuadInCandidates(candidates);
@@ -382,7 +385,7 @@ export async function scanOMRSheet(
       [basePts[1], basePts[2], basePts[3], basePts[0]]  // 270° CW
     ];
 
-    let bestWarpedMat: any = null;
+    bestWarpedMat = null;
     let maxOrientationContrast = -1;
 
     let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -665,6 +668,7 @@ export async function scanOMRSheet(
     if (contours && !contours.isDeleted()) contours.delete();
     if (hierarchy && !hierarchy.isDeleted()) hierarchy.delete();
     if (warpedGray && !warpedGray.isDeleted()) warpedGray.delete();
+    if (bestWarpedMat && !bestWarpedMat.isDeleted()) bestWarpedMat.delete();
     throw err;
   }
 }
@@ -774,6 +778,7 @@ export function findOMRSheetCornersLive(
         };
         candidates.push({ center, area, rect });
       }
+      cnt.delete();
     }
 
     // Sort by area desc and take top 10 candidates

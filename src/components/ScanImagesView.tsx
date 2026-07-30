@@ -13,9 +13,6 @@ import {
   Eye,
   Search,
   CheckCircle,
-  CheckCircle2,
-  XCircle,
-  MinusCircle,
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
@@ -493,7 +490,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ...f,
               name: `Camera Snap - ${studentNum}`,
               previewUrl: croppedUrl,
-              status: 'Scanned',
+              status: 'Scanned' as const,
               result: scanResultData
             };
           }
@@ -508,7 +505,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           id: newItemId,
           name: `Camera Snap - ${studentNum || 'OMR'}`,
           previewUrl: croppedUrl,
-          status: 'Scanned',
+          status: 'Scanned' as const,
           result: scanResultData
         };
         setFileList(prev => [...prev, newItem]);
@@ -780,7 +777,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ...f,
               name: `Scanned Sheet - ${studentNum || 'OMR'}`,
               previewUrl: croppedSheetUrl || f.previewUrl,
-              status: 'Scanned',
+              status: 'Scanned' as const,
               result: scanResultData
             };
           }

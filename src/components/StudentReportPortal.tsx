@@ -27,12 +27,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
   // PWA Install Promo States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallPromo, setShowInstallPromo] = useState(true);
+  const [showInstallPromo, setShowInstallPromo] = useState(() => {
+    const dismissed = localStorage.getItem('apex_student_app_promo_dismissed');
+    return dismissed !== 'true';
+  });
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Check if launched as PWA
-    const standaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    // Check if launched as PWA or in dedicated student app mode
+    const standaloneMode = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      window.matchMedia('(display-mode: minimal-ui)').matches ||
+      (window.navigator as any).standalone ||
+      window.location.search.includes('app=student');
+      
     setIsStandalone(!!standaloneMode);
 
     // Read the globally captured prompt if already fired on page load
@@ -291,6 +300,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     deferredPrompt.userChoice.then((choiceResult: any) => {
                       if (choiceResult.outcome === 'accepted') {
                         setShowInstallPromo(false);
+                        localStorage.setItem('apex_student_app_promo_dismissed', 'true');
                       }
                     });
                   }}
@@ -331,7 +341,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               )}
 
               <button
-                onClick={() => setShowInstallPromo(false)}
+                onClick={() => {
+                  setShowInstallPromo(false);
+                  localStorage.setItem('apex_student_app_promo_dismissed', 'true');
+                }}
                 style={{
                   padding: '12px 24px',
                   borderRadius: '12px',

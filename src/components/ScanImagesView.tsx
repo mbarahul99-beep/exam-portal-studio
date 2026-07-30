@@ -59,6 +59,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [detectorStatus, setDetectorStatus] = useState<'searching' | 'aligning' | 'ready'>('searching');
   const isScanningRef = useRef<boolean>(false);
   const stableFramesRef = useRef<number>(0);
+  const prevCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
 
   // Registered students in this exam's class limit validation
   const [lastScanOverlay, setLastScanOverlay] = useState<{ studentName: string; studentNum: string; score: number; correctCount: number; wrongCount: number; unansweredCount: number } | null>(null);
@@ -192,8 +193,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               ctx.stroke();
             });
 
-            // Increment stable frames counter if not currently scanning
-            if (!isScanningRef.current) {
+            // Motion detection: Check if corners are shifting to prevent captures during movement
+            let isMoving = false;
+            if (prevCornersRef.current && prevCornersRef.current.length === 4 && corners.length === 4) {
+              let totalDistance = 0;
+              for (let i = 0; i < 4; i++) {
+                const dx = corners[i].x - prevCornersRef.current[i].x;
+                const dy = corners[i].y - prevCornersRef.current[i].y;
+                totalDistance += Math.sqrt(dx * dx + dy * dy);
+              }
+              const avgDistance = totalDistance / 4;
+              if (avgDistance > 6) {
+                isMoving = true;
+              }
+            }
+            prevCornersRef.current = corners;
+
+            if (isMoving) {
+              stableFramesRef.current = 0;
+            } else if (!isScanningRef.current) {
               stableFramesRef.current += 1;
 
               // Auto-capture after 3 consecutive stable frames (~50ms) for instant snappy scanning
@@ -479,6 +497,21 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       const studentNum = cvResult.studentNum;
 
       if (studentId) {
+        // Prevent silent accidental overwrites of already scanned students
+        const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id!, studentId]).first();
+        if (existingSub) {
+          const studentName = matchedStudent ? matchedStudent.name : `Roll ${studentNum}`;
+          const confirmOverwrite = window.confirm(
+            `Roll number ${studentNum || ''} (${studentName}) has already been scanned.\n\nDo you want to overwrite their submission?`
+          );
+          if (!confirmOverwrite) {
+            // Discard this snap, resume camera scan instantly
+            isScanningRef.current = false;
+            setIsScanning(false);
+            return;
+          }
+        }
+
         // Auto-save to IndexedDB (preventing duplicates)
         if (exam.id && studentId) {
           await db.submissions.where('[examId+studentId]').equals([exam.id, studentId]).delete();

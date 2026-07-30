@@ -231,9 +231,9 @@ export async function scanOMRSheet(
       const aspectRatio = rect.width / rect.height;
 
       const pageArea = srcWidth * srcHeight;
-      // Allow smaller and larger contours to handle skewed, distant, or closer photos
-      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.08;
-      const isSquare = aspectRatio >= 0.5 && aspectRatio <= 2.0;
+      // Lower min size boundary to support far cameras, while keeping max size tight (0.02) to avoid false matches
+      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.02;
+      const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
 
       if (isCorrectSize && isSquare) {
         const center = {
@@ -271,10 +271,10 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                // Validate that the areas of the 4 markers are similar (relaxed range for perspective skew)
+                // Validate that the areas of the 4 markers are similar (within 80% range to prevent random background matches)
                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                if (minArea === 0 || maxArea / minArea > 3.2) continue;
+                if (minArea === 0 || maxArea / minArea > 1.8) continue;
 
                 // Side lengths
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
@@ -289,9 +289,9 @@ export async function scanOMRSheet(
                 const ratio = avgH / avgW;
 
                 // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
-                const isRatioValid = (ratio >= 0.45 && ratio <= 0.98) || (ratio >= 0.95 && ratio <= 1.85);
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.45;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.45;
+                const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
+                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
+                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
                 const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
                 if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
@@ -539,8 +539,8 @@ export async function scanOMRSheet(
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
-    const fillDiffThreshold = 45; // Raised from 30 to 45 to prevent false bubble detections from shadows/gradients
-    const maxAbsoluteFillVal = Math.min(whitePaperLevel - 45, 170); // Must be at least 45 levels darker than paper and under 170 absolute gray
+    const fillDiffThreshold = 30; // Bubble must be at least 30 gray levels darker than the local maximum
+    const maxAbsoluteFillVal = whitePaperLevel - 35; // Bubble must be at least 35 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
@@ -763,9 +763,9 @@ export function findOMRSheetCornersLive(
       const area = rect.width * rect.height;
       const aspectRatio = rect.width / rect.height;
 
-      // Anchors are square-like black marks (relaxed sizes and aspect ratios for away or tilted camera)
-      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.08;
-      const isSquare = aspectRatio >= 0.5 && aspectRatio <= 2.0;
+      // Anchors are square-like black marks (lower min area bounds to support far cameras)
+      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.02;
+      const isSquare = aspectRatio >= 0.6 && aspectRatio <= 1.6;
 
       if (isCorrectSize && isSquare) {
         const center = {
@@ -800,10 +800,10 @@ export function findOMRSheetCornersLive(
             const bl = sortedByDiff[0];
             const tr = sortedByDiff[1];
 
-            // Validate that the areas of the 4 markers are similar (relaxed range for perspective skew)
+            // Validate that the areas of the 4 markers are similar (within 80% range to prevent random background matches)
             const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
             const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-            if (minArea === 0 || maxArea / minArea > 3.2) continue;
+            if (minArea === 0 || maxArea / minArea > 1.8) continue;
 
             const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
             const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
@@ -815,9 +815,9 @@ export function findOMRSheetCornersLive(
             if (avgW === 0) continue;
             
             const ratio = avgH / avgW;
-            const isRatioValid = (ratio >= 0.95 && ratio <= 1.85); // Portrait A4 ratio is ~1.41
-            const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.45;
-            const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.45;
+            const isRatioValid = (ratio >= 1.15 && ratio <= 1.7); // Portrait A4 ratio is ~1.41
+            const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
+            const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
             const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
             if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
@@ -878,9 +878,9 @@ function validateQuadAngles(
   const a3 = getAngle(br, bl, tl); // Angle at BL
 
   return (
-    a0 >= 55 && a0 <= 125 &&
-    a1 >= 55 && a1 <= 125 &&
-    a2 >= 55 && a2 <= 125 &&
-    a3 >= 55 && a3 <= 125
+    a0 >= 70 && a0 <= 110 &&
+    a1 >= 70 && a1 <= 110 &&
+    a2 >= 70 && a2 <= 110 &&
+    a3 >= 70 && a3 <= 110
   );
 }

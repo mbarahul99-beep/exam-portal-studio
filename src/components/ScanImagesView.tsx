@@ -196,8 +196,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             if (!isScanningRef.current) {
               stableFramesRef.current += 1;
 
-              // Auto-capture after 12 consecutive stable frames (~200ms) to ensure it is a valid, static sheet outline and avoid motion blur
-              if (stableFramesRef.current >= 12) {
+              // Auto-capture after 8 consecutive stable frames (~130ms) to ensure autofocus completes and avoid motion blur
+              if (stableFramesRef.current >= 8) {
                 stableFramesRef.current = 0;
                 isScanningRef.current = true;
                 setIsScanning(true);

@@ -23,6 +23,10 @@
   "start_url": "/",
   "scope": "/",
   "capture_links": "existing-client-navigate",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "handle_links": "auto",
   "background_color": "#ffffff",
   "theme_color": "#065f46",
   "display": "standalone",

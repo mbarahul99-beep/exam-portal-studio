@@ -12,6 +12,33 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   const isStudentApp = window.location.search.includes('app=student');
   const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>('student');
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showBanner, setShowBanner] = useState(true);
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  const isStandalone = 
+    window.matchMedia('(display-mode: standalone)').matches || 
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.matchMedia('(display-mode: minimal-ui)').matches ||
+    (window.navigator as any).standalone;
+
+  React.useEffect(() => {
+    // Read the globally captured prompt if already fired on page load
+    if ((window as any).deferredAppInstallPrompt) {
+      setDeferredPrompt((window as any).deferredAppInstallPrompt);
+    }
+
+    // Listen to custom event in case it fires during active session
+    const handlePromptAvailable = (e: any) => {
+      setDeferredPrompt(e.detail);
+    };
+
+    window.addEventListener('pwa-prompt-available', handlePromptAvailable);
+    return () => {
+      window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
+    };
+  }, []);
+
   // Student form states
   const [rollNo, setRollNo] = useState('');
   const [phone, setPhone] = useState('');
@@ -153,6 +180,107 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   return (
     <div style={{ minHeight: '100vh', width: '100vw', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f0f4f8', padding: '20px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '32px', maxWidth: '440px', width: '100%', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', boxSizing: 'border-box' }}>
+        
+        {/* Dynamic PWA Student App Install Banner before login */}
+        {!isStandalone && showBanner && isStudentApp && (
+          <div style={{
+            background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
+            borderRadius: '12px',
+            padding: '16px',
+            marginBottom: '24px',
+            color: '#fff',
+            position: 'relative',
+            boxShadow: '0 4px 12px rgba(4, 120, 87, 0.15)'
+          }}>
+            <button 
+              onClick={() => setShowBanner(false)}
+              style={{
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '1rem',
+                cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '1.8rem' }}>📱</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '0.88rem', fontWeight: 800 }}>APEX Student App</h3>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255, 255, 255, 0.9)', lineHeight: '1.4' }}>
+                  Download our app for direct notifications and faster offline score card access.
+                </p>
+              </div>
+            </div>
+            
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {deferredPrompt ? (
+                <button
+                  onClick={() => {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choice: any) => {
+                      if (choice.outcome === 'accepted') {
+                        setShowBanner(false);
+                      }
+                    });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#fff',
+                    color: '#065f46',
+                    fontWeight: 'bold',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  Download & Install App
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowInstructions(!showInstructions)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    background: 'transparent',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showInstructions ? 'Hide Instructions' : 'How to Download'}
+                </button>
+              )}
+
+              {showInstructions && (
+                <div style={{
+                  background: 'rgba(0,0,0,0.15)',
+                  borderRadius: '6px',
+                  padding: '10px',
+                  fontSize: '0.7rem',
+                  color: 'rgba(255,255,255,0.9)',
+                  lineHeight: '1.4',
+                  textAlign: 'left'
+                }}>
+                  <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>iOS Safari:</p>
+                  <p style={{ margin: '0 0 8px 0' }}>Tap Share button at bottom, select 'Add to Home Screen'.</p>
+                  <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>Android / Chrome:</p>
+                  <p style={{ margin: 0 }}>Tap three dots in top-right, select 'Install App'.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
         {/* Logo/Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>

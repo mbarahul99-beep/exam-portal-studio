@@ -27,6 +27,12 @@
     "client_mode": "focus-existing"
   },
   "handle_links": "auto",
+  "protocol_handlers": [
+    {
+      "protocol": "web+apex",
+      "url": "/?app=student"
+    }
+  ],
   "background_color": "#ffffff",
   "theme_color": "#065f46",
   "display": "standalone",

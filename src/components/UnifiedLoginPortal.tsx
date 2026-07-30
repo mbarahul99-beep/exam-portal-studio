@@ -13,7 +13,10 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>('student');
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showBanner, setShowBanner] = useState(true);
+  const [showBanner, setShowBanner] = useState(() => {
+    const dismissed = localStorage.getItem('apex_student_app_promo_dismissed');
+    return dismissed !== 'true';
+  });
   const [showInstructions, setShowInstructions] = useState(false);
 
   const isStandalone = 
@@ -21,6 +24,9 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
     window.matchMedia('(display-mode: fullscreen)').matches ||
     window.matchMedia('(display-mode: minimal-ui)').matches ||
     (window.navigator as any).standalone;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isInstallable = !!deferredPrompt || isIOS;
 
   React.useEffect(() => {
     // Read the globally captured prompt if already fired on page load
@@ -182,7 +188,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '32px', maxWidth: '440px', width: '100%', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', boxSizing: 'border-box' }}>
         
         {/* Dynamic PWA Student App Install Banner before login */}
-        {!isStandalone && showBanner && isStudentApp && (
+        {!isStandalone && showBanner && isStudentApp && isInstallable && (
           <div style={{
             background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
             borderRadius: '12px',
@@ -193,7 +199,10 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             boxShadow: '0 4px 12px rgba(4, 120, 87, 0.15)'
           }}>
             <button 
-              onClick={() => setShowBanner(false)}
+              onClick={() => {
+                setShowBanner(false);
+                localStorage.setItem('apex_student_app_promo_dismissed', 'true');
+              }}
               style={{
                 position: 'absolute',
                 top: '8px',
@@ -452,6 +461,29 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
                 >
                   Register Here
                 </button>
+              </div>
+            )}
+
+            {/* If the PWA is installed, show a helper to open it */}
+            {!isStandalone && isStudentApp && (
+              <div style={{ marginTop: '12px', textAlign: 'center', background: '#f7fafc', padding: '10px', borderRadius: '8px', border: '1px dashed #e2e8f0' }}>
+                <span style={{ fontSize: '0.72rem', color: '#4a5568', display: 'block', marginBottom: '4px' }}>
+                  Already downloaded the APEX app?
+                </span>
+                <a 
+                  href="web+apex://launch"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    color: '#059669',
+                    fontWeight: 'bold',
+                    fontSize: '0.75rem',
+                    textDecoration: 'none'
+                  }}
+                >
+                  🚀 Open in APEX Student App
+                </a>
               </div>
             )}
           </form>

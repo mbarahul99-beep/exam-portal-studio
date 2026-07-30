@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Users, Lock, Sparkles, BookOpen } from 'lucide-react';
+import { Shield, Lock, Sparkles, BookOpen } from 'lucide-react';
 import { db } from '../db';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
@@ -10,7 +10,7 @@ interface UnifiedLoginPortalProps {
 
 export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess, onRegisterClick }) => {
   const isStudentApp = window.location.search.includes('app=student') || localStorage.getItem('apex_pwa_mode') === 'student';
-  const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>('student');
+  const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>(isStudentApp ? 'student' : 'teacher');
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showBanner, setShowBanner] = useState(() => {
@@ -187,8 +187,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
     <div style={{ minHeight: '100vh', width: '100vw', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f0f4f8', padding: '20px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '32px', maxWidth: '440px', width: '100%', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', boxSizing: 'border-box' }}>
         
-        {/* Dynamic PWA Student App Install Banner before login */}
-        {!isStandalone && showBanner && isStudentApp && isInstallable && (
+        {/* Dynamic PWA Student/Staff App Install Banner before login */}
+        {!isStandalone && showBanner && isInstallable && (
           <div style={{
             background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
             borderRadius: '12px',
@@ -219,9 +219,13 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontSize: '1.8rem' }}>📱</span>
               <div style={{ flex: 1 }}>
-                <h3 style={{ margin: '0 0 4px 0', fontSize: '0.88rem', fontWeight: 800 }}>APEX Student App</h3>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '0.88rem', fontWeight: 800 }}>
+                  {isStudentApp ? 'APEX Student App' : 'APEX Staff App'}
+                </h3>
                 <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255, 255, 255, 0.9)', lineHeight: '1.4' }}>
-                  Download our app for direct notifications and faster offline score card access.
+                  {isStudentApp 
+                    ? 'Download our app for direct notifications and faster offline score card access.' 
+                    : 'Download our app for direct notifications and secure dashboard access.'}
                 </p>
               </div>
             </div>
@@ -309,72 +313,50 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         {!isStudentApp && (
           <div style={{ display: 'flex', background: '#edf2f7', padding: '4px', borderRadius: '8px', marginBottom: '24px', gap: '4px' }}>
             <button
-              onClick={() => setActiveTab('student')}
-            style={{
-              flex: 1,
-              padding: '8px 4px',
-              borderRadius: '6px',
-              border: 'none',
-              fontSize: '0.75rem',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              background: activeTab === 'student' ? '#fff' : 'transparent',
-              color: activeTab === 'student' ? '#2b6cb0' : '#4a5568',
-              boxShadow: activeTab === 'student' ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Users size={14} /> Student
-          </button>
-          <button
-            onClick={() => setActiveTab('teacher')}
-            style={{
-              flex: 1,
-              padding: '8px 4px',
-              borderRadius: '6px',
-              border: 'none',
-              fontSize: '0.75rem',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              background: activeTab === 'teacher' ? '#fff' : 'transparent',
-              color: activeTab === 'teacher' ? '#2b6cb0' : '#4a5568',
-              boxShadow: activeTab === 'teacher' ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Lock size={14} /> Teacher
-          </button>
-          <button
-            onClick={() => setActiveTab('admin')}
-            style={{
-              flex: 1,
-              padding: '8px 4px',
-              borderRadius: '6px',
-              border: 'none',
-              fontSize: '0.75rem',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              background: activeTab === 'admin' ? '#fff' : 'transparent',
-              color: activeTab === 'admin' ? '#2b6cb0' : '#4a5568',
-              boxShadow: activeTab === 'admin' ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Shield size={14} /> Master Admin
-          </button>
-        </div>
+              onClick={() => setActiveTab('teacher')}
+              style={{
+                flex: 1,
+                padding: '8px 4px',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                background: activeTab === 'teacher' ? '#fff' : 'transparent',
+                color: activeTab === 'teacher' ? '#2b6cb0' : '#4a5568',
+                boxShadow: activeTab === 'teacher' ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Lock size={14} /> Teacher
+            </button>
+            <button
+              onClick={() => setActiveTab('admin')}
+              style={{
+                flex: 1,
+                padding: '8px 4px',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                background: activeTab === 'admin' ? '#fff' : 'transparent',
+                color: activeTab === 'admin' ? '#2b6cb0' : '#4a5568',
+                boxShadow: activeTab === 'admin' ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Shield size={14} /> Master Admin
+            </button>
+          </div>
         )}
 
         {/* Tab content panel */}

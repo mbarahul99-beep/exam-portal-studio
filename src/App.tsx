@@ -19,7 +19,7 @@ import { PendingApprovalsModal } from './components/PendingApprovalsModal';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
-import { InstallPWAPrompt, isAppInstalled } from './components/InstallPWAPrompt';
+import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView } from './components/OmrSettingsView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
@@ -61,8 +61,7 @@ import {
   ArrowLeft,
   MoreVertical,
   User,
-  Shield,
-  Download
+  Shield
 } from 'lucide-react';
 
 class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, tabName: string }, { hasError: boolean, error: any }> {
@@ -2006,18 +2005,7 @@ export default function App() {
               <Sliders size={18} /> OMR Settings
             </button>
 
-            {!isAppInstalled() && (
-              <button 
-                className="nav-item"
-                onClick={() => {
-                  setShowInstallPrompt(true);
-                  setMobileMenuOpen(false);
-                }}
-                style={{ color: '#dc0045', fontWeight: 'bold' }}
-              >
-                <Download size={18} /> Install App
-              </button>
-            )}
+
 
             <button 
               className="nav-item"

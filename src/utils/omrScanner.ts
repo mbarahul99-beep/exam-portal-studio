@@ -231,9 +231,9 @@ export async function scanOMRSheet(
       const aspectRatio = rect.width / rect.height;
 
       const pageArea = srcWidth * srcHeight;
-      // Lower min size boundary to support far cameras, while keeping max size tight (0.02) to avoid false matches
-      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
+      // Anchor size check: must be a big corner mark (at least 0.012% of page area) and square-shaped
+      const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
+      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
 
       if (isCorrectSize && isSquare) {
         const center = {
@@ -341,8 +341,8 @@ export async function scanOMRSheet(
         const aspectRatio = rect.width / rect.height;
         const pageArea = srcWidth * srcHeight;
 
-        const isCorrectSize = area > pageArea * 0.00003 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.5 && aspectRatio <= 1.8;
+        const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
+        const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
 
         if (isCorrectSize && isSquare) {
           const center = {
@@ -763,9 +763,9 @@ export function findOMRSheetCornersLive(
       const area = rect.width * rect.height;
       const aspectRatio = rect.width / rect.height;
 
-      // Anchors are square-like black marks (lower min area bounds to support far cameras)
-      const isCorrectSize = area > pageArea * 0.000005 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.6 && aspectRatio <= 1.6;
+      // Anchors must be big black square marks (at least 0.012% of image area)
+      const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
+      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
 
       if (isCorrectSize && isSquare) {
         const center = {

@@ -463,32 +463,6 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
                 </button>
               </div>
             )}
-
-            {/* If the PWA is installed, show a helper to open it */}
-            {!isStandalone && isStudentApp && (
-              <div style={{ marginTop: '12px', textAlign: 'center', background: '#f7fafc', padding: '10px', borderRadius: '8px', border: '1px dashed #e2e8f0' }}>
-                <span style={{ fontSize: '0.74rem', color: '#4a5568', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                  Already downloaded the APEX app?
-                </span>
-                <p style={{ margin: '0 0 8px 0', fontSize: '0.7rem', color: '#718096', lineHeight: 1.4 }}>
-                  Tap the <strong>'Open in App'</strong> icon in your browser's address bar (or three dots menu) to launch it directly.
-                </p>
-                <a 
-                  href="web+apex://launch"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    color: '#059669',
-                    fontWeight: 'bold',
-                    fontSize: '0.75rem',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  🚀 Launch App via Link
-                </a>
-              </div>
-            )}
           </form>
         ) : activeTab === 'teacher' ? (
           <form onSubmit={handleTeacherSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

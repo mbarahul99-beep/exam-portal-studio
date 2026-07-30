@@ -553,9 +553,13 @@ export default function App() {
     }
 
     try {
-      const exists = await db.students.where('studentNum').equals(drawerRollNo).first();
+      const targetClass = editingStudentId ? (await db.students.get(editingStudentId))?.className : selectedClassName;
+      const exists = await db.students
+        .where('[studentNum+className]')
+        .equals([drawerRollNo, targetClass || ''])
+        .first();
       if (exists && exists.id !== editingStudentId) {
-        alert(`A student with Roll ID ${drawerRollNo} is already registered (${exists.name}).`);
+        alert(`A student with Roll ID ${drawerRollNo} is already registered in class ${targetClass || ''} (${exists.name}).`);
         return;
       }
 
@@ -1431,8 +1435,11 @@ export default function App() {
       // Run CV scanning pipeline
       const result = await scanOMRSheet(imageElement, exam.numQuestions);
 
-      // Match Student ID in db
-      const student = await db.students.where('studentNum').equals(result.studentNum).first();
+      // Match Student ID in db by roll number and exam class name
+      const student = await db.students
+        .where('[studentNum+className]')
+        .equals([result.studentNum, exam.className])
+        .first();
       
       // Calculate initial score based on correct options and custom marking scheme
       let score = 0;
@@ -2585,7 +2592,6 @@ export default function App() {
                                               setStudentMenuOpenId(null);
                                               if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
                                                 if (s.id) await deleteStudentFromCloud(s.id);
-                                                await deleteStudentFromCloud(s.studentNum);
                                                 await db.students.delete(s.id!);
                                                 await db.submissions.where('studentId').equals(s.id!).delete();
                                                 pullCloudUpdatesToIndexedDB();

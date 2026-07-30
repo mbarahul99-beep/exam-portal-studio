@@ -14,6 +14,18 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   // Student form states
   const [rollNo, setRollNo] = useState('');
   const [phone, setPhone] = useState('');
+  const [classesList, setClassesList] = useState<string[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+
+  React.useEffect(() => {
+    db.classes.toArray().then((list) => {
+      const names = list.map(c => c.name);
+      setClassesList(names);
+      if (names.length > 0) {
+        setSelectedClass(names[0]);
+      }
+    });
+  }, []);
 
   // Admin / Teacher form states
   const [username, setUsername] = useState('');
@@ -30,10 +42,13 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
 
     setLoading(true);
     try {
-      let matched = await db.students.where('studentNum').equals(rollNo.trim()).first();
+      let matched = await db.students
+        .where('[studentNum+className]')
+        .equals([rollNo.trim(), selectedClass || 'NEET'])
+        .first();
 
       // Dynamic demo fallback seeder
-      if (!matched && rollNo.trim() === '1000000001' && phone.trim() === '9876543210') {
+      if (!matched && rollNo.trim() === '1000000001' && phone.trim() === '9876543210' && (selectedClass === 'NEET' || !selectedClass)) {
         await db.students.add({
           studentNum: '1000000001',
           name: 'Aarav Sharma',
@@ -41,8 +56,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
           phone: '9876543210',
           email: 'aarav@appexjind.in'
         });
-        matched = await db.students.where('studentNum').equals('1000000001').first();
-      } else if (!matched && rollNo.trim() === '1000000002' && phone.trim() === '9876543211') {
+        matched = await db.students.where('[studentNum+className]').equals(['1000000001', 'NEET']).first();
+      } else if (!matched && rollNo.trim() === '1000000002' && phone.trim() === '9876543211' && (selectedClass === 'NEET' || !selectedClass)) {
         await db.students.add({
           studentNum: '1000000002',
           name: 'Diya Patel',
@@ -50,7 +65,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
           phone: '9876543211',
           email: 'diya@appexjind.in'
         });
-        matched = await db.students.where('studentNum').equals('1000000002').first();
+        matched = await db.students.where('[studentNum+className]').equals(['1000000002', 'NEET']).first();
       }
 
       if (matched && !matched.phone && phone.trim()) {
@@ -221,6 +236,22 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         {/* Tab content panel */}
         {activeTab === 'student' ? (
           <form onSubmit={handleStudentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {classesList.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Select Class / Course</label>
+                <select
+                  value={selectedClass}
+                  onChange={e => setSelectedClass(e.target.value)}
+                  style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
+                  required
+                >
+                  {classesList.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Candidate Roll Number</label>
               <input

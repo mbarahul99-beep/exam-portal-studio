@@ -43,10 +43,13 @@ export const StudentRegisterPortal: React.FC<StudentRegisterPortalProps> = ({
       const rawWa = isSameWhatsApp ? phone : whatsappNumber;
       const cleanWa = rawWa.trim() ? (rawWa.startsWith('91') ? rawWa.trim() : `91${rawWa.trim()}`) : '';
 
-      // Check if student is already in roster
-      const existing = await db.students.where('studentNum').equals(rollNo).first();
+      // Check if student is already in roster under the same class
+      const existing = await db.students
+        .where('[studentNum+className]')
+        .equals([rollNo, className])
+        .first();
       if (existing) {
-        alert(`You are already registered! Name: ${existing.name}, Roll No: ${existing.studentNum}. You can directly log in using your Roll Number.`);
+        alert(`You are already registered! Name: ${existing.name}, Roll No: ${existing.studentNum} in class ${className}. You can directly log in using your Roll Number.`);
         setIsSubmitting(false);
         if (onDone) onDone();
         return;

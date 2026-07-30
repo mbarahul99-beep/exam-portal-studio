@@ -199,6 +199,10 @@ class AppDatabase extends Dexie {
     this.version(12).stores({
       teachers: '++id, &userId, name'
     });
+    // Version 13 updates students table to support class-wise unique studentNum
+    this.version(13).stores({
+      students: '++id, studentNum, className, &[studentNum+className]'
+    });
   }
 }
 

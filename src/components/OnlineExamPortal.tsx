@@ -163,7 +163,10 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
     try {
       // Search matching student
-      let matched = await db.students.where('studentNum').equals(rollNo.trim()).first();
+      let matched = await db.students
+        .where('[studentNum+className]')
+        .equals([rollNo.trim(), exam.className])
+        .first();
       
       // Fallback: If database doesn't have the student seeded yet, but they type the standard credentials
       if (!matched && rollNo.trim() === '1000000001') {
@@ -175,7 +178,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           email: 'aarav@appexjind.in'
         };
         await db.students.add(defaultStudent);
-        matched = await db.students.where('studentNum').equals('1000000001').first();
+        matched = await db.students.where('[studentNum+className]').equals(['1000000001', exam.className]).first();
       } else if (!matched && rollNo.trim() === '1000000002') {
         const defaultStudent = {
           studentNum: '1000000002',
@@ -185,7 +188,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           email: 'diya@appexjind.in'
         };
         await db.students.add(defaultStudent);
-        matched = await db.students.where('studentNum').equals('1000000002').first();
+        matched = await db.students.where('[studentNum+className]').equals(['1000000002', exam.className]).first();
       }
 
       if (!matched) {

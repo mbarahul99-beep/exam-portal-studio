@@ -120,12 +120,12 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 1. Sync Students (Add/Update & Purge Deleted)
     if (data.students && Array.isArray(data.students)) {
-      const serverStudentNums = new Set(data.students.map((s: any) => s.studentNum));
+      const serverStudentIds = new Set(data.students.map((s: any) => s.id));
       
       // Delete local students no longer on MySQL server
       const localStudents = await db.students.toArray();
       for (const ls of localStudents) {
-        if (!serverStudentNums.has(ls.studentNum) && !ls.email?.includes('@appexjind.in')) {
+        if (ls.id && !serverStudentIds.has(ls.id) && !ls.email?.includes('@appexjind.in')) {
           await db.students.delete(ls.id!);
         }
       }
@@ -133,7 +133,10 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const st of data.students) {
         try {
           const { id: mysqlId, ...studentFields } = st;
-          const existing = await db.students.where('studentNum').equals(st.studentNum).first();
+          const existing = await db.students
+            .where('[studentNum+className]')
+            .equals([st.studentNum, st.className])
+            .first();
           if (!existing) {
             await db.students.add(studentFields);
           } else {

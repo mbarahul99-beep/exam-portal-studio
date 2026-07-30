@@ -48,7 +48,7 @@ const initDatabase = async () => {
     await conn.query(`
       CREATE TABLE IF NOT EXISTS students (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        studentNum VARCHAR(50) NOT NULL UNIQUE,
+        studentNum VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         fatherName VARCHAR(255),
         className VARCHAR(100) NOT NULL,
@@ -57,9 +57,18 @@ const initDatabase = async () => {
         whatsappNumber VARCHAR(50),
         faceDescriptor LONGTEXT,
         facePhoto LONGTEXT,
-        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_student_class (studentNum, className)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Migrate studentNum index to composite unique key (studentNum, className)
+    try {
+      await conn.query('ALTER TABLE students DROP INDEX studentNum');
+    } catch {}
+    try {
+      await conn.query('ALTER TABLE students ADD UNIQUE KEY unique_student_class (studentNum, className)');
+    } catch {}
 
     // Ensure columns exist if table was previously created
     try { await conn.query('ALTER TABLE students ADD COLUMN fatherName VARCHAR(255)'); } catch {}
@@ -477,7 +486,7 @@ app.delete('/api/students/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM attendance WHERE studentId = ?', [id]);
     await pool.query('DELETE FROM submissions WHERE studentId = ?', [id]);
-    await pool.query('DELETE FROM students WHERE id = ? OR studentNum = ?', [id, id]);
+    await pool.query('DELETE FROM students WHERE id = ?', [id]);
     res.json({ success: true, message: 'Student deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

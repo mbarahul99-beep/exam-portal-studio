@@ -162,7 +162,7 @@ const initDatabase = async () => {
         studentId INT NOT NULL,
         score FLOAT NOT NULL,
         answers JSON,
-        scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         omrImageUrl LONGTEXT,
         accessToken VARCHAR(255),
         UNIQUE KEY unique_exam_student (examId, studentId)
@@ -179,6 +179,7 @@ const initDatabase = async () => {
 
     try { await conn.query('ALTER TABLE submissions ADD UNIQUE KEY unique_exam_student (examId, studentId)'); } catch {}
     try { await conn.query('ALTER TABLE submissions MODIFY COLUMN omrImageUrl LONGTEXT'); } catch {}
+    try { await conn.query('ALTER TABLE submissions MODIFY COLUMN scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'); } catch {}
 
     // 7. Pending Registrations Table for Student Invite Links
     await conn.query(`
@@ -650,7 +651,8 @@ app.post('/api/submissions', async (req, res) => {
         score = VALUES(score),
         answers = VALUES(answers),
         omrImageUrl = COALESCE(VALUES(omrImageUrl), omrImageUrl),
-        accessToken = COALESCE(VALUES(accessToken), accessToken);
+        accessToken = COALESCE(VALUES(accessToken), accessToken),
+        scannedAt = CURRENT_TIMESTAMP;
     `;
     const [result] = await pool.query(query, [examId, studentId, score, ansJson, omrImageUrl || null, token]);
     res.json({ success: true, id: result.insertId || result.id });

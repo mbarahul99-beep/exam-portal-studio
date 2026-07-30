@@ -399,7 +399,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         return cleaned === '' ? '0' : cleaned;
       };
       const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
-      const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
+      const classStudents = students.filter(s => s.className === exam.className);
+      const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
       const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
 
       let score = 0;
@@ -708,7 +709,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         return cleaned === '' ? '0' : cleaned;
       };
       const cvRollStripped = stripLeadingZeros(cvResult.studentNum);
-      const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
+      const classStudents = students.filter(s => s.className === exam.className);
+      const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
       const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
 
       let score = 0;

@@ -196,8 +196,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             if (!isScanningRef.current) {
               stableFramesRef.current += 1;
 
-              // Auto-capture after 5 consecutive stable frames (~150ms) to ensure it is a valid sheet outline
-              if (stableFramesRef.current >= 5) {
+              // Auto-capture after 12 consecutive stable frames (~200ms) to ensure it is a valid, static sheet outline and avoid motion blur
+              if (stableFramesRef.current >= 12) {
                 stableFramesRef.current = 0;
                 isScanningRef.current = true;
                 setIsScanning(true);
@@ -480,7 +480,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       if (studentId) {
         // Auto-save to IndexedDB (preventing duplicates)
-        await db.submissions.where({ examId: exam.id, studentId: studentId }).delete();
+        if (exam.id && studentId) {
+          await db.submissions.where('[examId+studentId]').equals([exam.id, studentId]).delete();
+        }
         const subId = await db.submissions.add({
           examId: exam.id!,
           studentId: studentId,
@@ -580,8 +582,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
-      if (target.result && target.result.studentId) {
-        await db.submissions.where({ examId: exam.id, studentId: target.result.studentId }).delete();
+      if (target.result && target.result.studentId && exam.id) {
+        await db.submissions.where('[examId+studentId]').equals([exam.id, target.result.studentId]).delete();
         try {
           await fetch('/api/admin/delete-submission', {
             method: 'POST',
@@ -861,7 +863,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      await db.submissions.where({ examId: exam.id, studentId: detectedStudentId }).delete();
+      if (exam.id && detectedStudentId) {
+        await db.submissions.where('[examId+studentId]').equals([exam.id, detectedStudentId]).delete();
+      }
 
       const subId = await db.submissions.add({
         examId: exam.id!,
@@ -883,7 +887,21 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       refreshSubmissions();
 
       setFileList(prev => {
-        const updated = prev.filter(f => f.id !== selectedFileId);
+        const updated = prev.filter(f => {
+          if (f.id === selectedFileId) return false;
+          if (f.result) {
+            if (detectedStudentId && f.result.studentId === detectedStudentId) return false;
+            if (activeResult.detectedStudentNum && f.result.detectedStudentNum === activeResult.detectedStudentNum) return false;
+          }
+          const rollNum = activeResult.detectedStudentNum;
+          if (rollNum) {
+            const rollStr = String(rollNum);
+            if (f.name.includes(`-${rollStr}`) || f.name.includes(` ${rollStr}`) || f.name.includes(`Roll ${rollStr}`)) {
+              return false;
+            }
+          }
+          return true;
+        });
         
         const nextPending = updated.find(f => f.status === 'Pending');
         if (nextPending) {

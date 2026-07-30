@@ -477,33 +477,33 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       };
 
       const studentNum = cvResult.studentNum;
-      const existingItem = studentNum ? fileList.find(f => 
-        (f.result && f.result.detectedStudentNum === studentNum) || 
-        f.name === `Camera Snap - ${studentNum}` ||
-        f.name === `Scanned Sheet - ${studentNum}`
-      ) : null;
 
-      if (existingItem) {
-        setFileList(prev => prev.map(f => {
-          if (f.id === existingItem.id) {
-            return {
-              ...f,
-              name: `Camera Snap - ${studentNum}`,
-              previewUrl: croppedUrl,
-              status: 'Scanned' as const,
-              result: scanResultData
-            };
-          }
-          return f;
-        }));
-        setSelectedFileId(existingItem.id);
-        setActiveResult(scanResultData);
-        setDetectedStudentId(studentId || null);
+      if (studentId) {
+        // Auto-save to IndexedDB (preventing duplicates)
+        await db.submissions.where({ examId: exam.id, studentId: studentId }).delete();
+        const subId = await db.submissions.add({
+          examId: exam.id!,
+          studentId: studentId,
+          score: score,
+          answers: cvResult.answers,
+          bookletSet: detectedSet,
+          omrImageUrl: croppedUrl,
+          scannedAt: new Date()
+        });
+
+        // Sync submission to Hostinger database in background
+        const savedSub = await db.submissions.get(subId);
+        if (savedSub) {
+          syncSubmissionToCloud(savedSub).catch(console.warn);
+        }
+        pullCloudUpdatesToIndexedDB();
+        refreshSubmissions();
       } else {
+        // If not registered, add to fileList queue so admin can associate manually
         const newItemId = `cam-${Date.now()}`;
         const newItem: ScanFileItem = {
           id: newItemId,
-          name: `Camera Snap - ${studentNum || 'OMR'}`,
+          name: `Unregistered - Roll ${studentNum || 'OMR'}`,
           previewUrl: croppedUrl,
           status: 'Scanned' as const,
           result: scanResultData
@@ -511,7 +511,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         setFileList(prev => [...prev, newItem]);
         setSelectedFileId(newItemId);
         setActiveResult(scanResultData);
-        setDetectedStudentId(studentId || null);
+        setDetectedStudentId(null);
       }
 
       setLastScanOverlay({
@@ -883,12 +883,33 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       refreshSubmissions();
 
       setFileList(prev => {
-        const nextPending = prev.find(f => f.id !== selectedFileId && f.status === 'Pending');
+        const updated = prev.filter(f => f.id !== selectedFileId);
+        
+        const nextPending = updated.find(f => f.status === 'Pending');
         if (nextPending) {
           setSelectedFileId(nextPending.id);
+          if (nextPending.result) {
+            setActiveResult(nextPending.result);
+            setDetectedStudentId(nextPending.result.studentId || null);
+          } else {
+            setActiveResult(null);
+            setDetectedStudentId(null);
+          }
+        } else if (updated.length > 0) {
+          setSelectedFileId(updated[0].id);
+          if (updated[0].result) {
+            setActiveResult(updated[0].result);
+            setDetectedStudentId(updated[0].result.studentId || null);
+          } else {
+            setActiveResult(null);
+            setDetectedStudentId(null);
+          }
+        } else {
+          setSelectedFileId('');
           setActiveResult(null);
+          setDetectedStudentId(null);
         }
-        return prev;
+        return updated;
       });
     } catch (err: any) {
       alert(`Could not save submission: ${err.message}`);
@@ -956,11 +977,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       </div>
 
       {/* SINGLE SCANNING WORKSPACE */}
-      <div className="split-scan-view">
-        {/* Left Controls & Queue */}
-        <div className="left-panel glass-card">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            
+      {/* Restructured Workspace: Mobile and layout friendly vertical stack */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        
+        {/* Top Section: Buttons Card */}
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }} className="mobile-grid-1col">
             {/* Live Camera Button */}
             <button
               type="button"
@@ -973,31 +995,29 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }}
               disabled={isClassLimitReached}
               style={{
-                width: '100%',
-                padding: '14px',
+                padding: '12px',
                 borderRadius: '12px',
                 background: isClassLimitReached ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                 color: '#ffffff',
                 border: 'none',
                 fontWeight: 'bold',
-                fontSize: '0.95rem',
+                fontSize: '0.9rem',
                 cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
-                boxShadow: isClassLimitReached ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                boxShadow: isClassLimitReached ? 'none' : '0 4px 12px rgba(37,99,235,0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px'
               }}
             >
-              <Camera size={18} /> Live Camera Scanner
+              <Camera size={16} /> Live Camera Scanner
             </button>
 
-            {/* Upload Files Button (Prominent & Clearly Visible Button Card) */}
+            {/* Upload Files Button */}
             <label
               style={{
-                width: '100%',
                 margin: 0,
-                padding: '12px 16px',
+                padding: '10px 14px',
                 borderRadius: '12px',
                 background: isClassLimitReached ? '#f1f5f9' : '#f0fdf4',
                 border: isClassLimitReached ? '1.5px dashed #cbd5e1' : '1.5px dashed #16a34a',
@@ -1013,8 +1033,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 boxShadow: '0 2px 6px rgba(22,163,74,0.08)'
               }}
             >
-              <Upload size={18} />
-              <span>{isClassLimitReached ? 'Class Limit Reached' : 'Choose OMR Image Files'}</span>
+              <Upload size={16} />
+              <span>{isClassLimitReached ? 'Limit Reached' : 'Choose OMR Files'}</span>
               <input 
                 type="file" 
                 multiple 
@@ -1025,140 +1045,139 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               />
             </label>
           </div>
-
-          {/* Pending Queue List */}
-          <div style={{ flex: 1, overflowY: 'auto', marginTop: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Scan Queue ({fileList.length})</h4>
-            </div>
-
-            {fileList.length === 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                No pending images in queue. Click "Live Camera Scanner" or choose files to begin.
-              </div>
-            ) : (
-              <table className="clean-table">
-                <thead>
-                  <tr>
-                    <th>File</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fileList.map((item) => (
-                    <tr 
-                      key={item.id} 
-                      className={selectedFileId === item.id ? 'active-row' : ''}
-                      onClick={() => {
-                        setSelectedFileId(item.id);
-                        if (item.result) {
-                          setActiveResult(item.result);
-                          setDetectedStudentId(item.result.studentId || null);
-                        } else {
-                          setActiveResult(null);
-                          setDetectedStudentId(null);
-                        }
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <td style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.name}</td>
-                      <td>
-                        <span className={`status-badge ${item.status.toLowerCase()}`}>
-                          {item.status}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteFile(item.id);
-                          }}
-                          style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', padding: '4px' }}
-                          title="Delete record"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
         </div>
 
-        {/* Right Panel Workspace */}
-        <div className="right-panel">
-          {selectedFileId && getSelectedFile() ? (
-            <>
-              <div className="glass-card" style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '320px' }}>
-                {/* View Controls */}
-                <div style={{ position: 'absolute', left: '16px', top: '16px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.9)', padding: '6px 12px', borderRadius: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                  <button type="button" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate Left"><RotateCcw size={16} /></button>
-                  <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} title="Rotate Right"><RotateCw size={16} /></button>
-                  <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.2, 2.5))} title="Zoom In"><ZoomIn size={16} /></button>
-                  <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.2, 0.5))} title="Zoom Out"><ZoomOut size={16} /></button>
-                </div>
-
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: '#0f172a', padding: '20px' }}>
-                  <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', transformOrigin: 'center' }}>
-                    <img 
-                      src={getSelectedFile()?.previewUrl} 
-                      alt="OMR Preview" 
-                      style={{ maxHeight: '400px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
-                    />
-                  </div>
-                </div>
+        {/* Middle Section: Selected Image Workspace */}
+        {selectedFileId && getSelectedFile() ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="glass-card" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+              {/* View Controls */}
+              <div style={{ position: 'absolute', left: '16px', top: '16px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.9)', padding: '6px 12px', borderRadius: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                <button type="button" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate Left" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RotateCcw size={15} /></button>
+                <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} title="Rotate Right" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RotateCw size={15} /></button>
+                <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.2, 2.5))} title="Zoom In" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><ZoomIn size={15} /></button>
+                <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.2, 0.5))} title="Zoom Out" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><ZoomOut size={15} /></button>
               </div>
 
-              {/* Scan Diagnostics Card */}
-              <div className="glass-card scan-diag-card mt-3 animate-fade-in" style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>OMR Diagnostic</h4>
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    {activeResult && (
-                      <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                        Score: {activeResult.score} pts
-                      </span>
-                    )}
-                  </div>
+              <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: '#0f172a', padding: '16px' }}>
+                <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', transformOrigin: 'center' }}>
+                  <img 
+                    src={getSelectedFile()?.previewUrl} 
+                    alt="OMR Preview" 
+                    style={{ maxHeight: '320px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }} 
+                  />
                 </div>
+              </div>
+            </div>
 
-                <div className="scan-diag-actions" style={{ display: 'flex', gap: '10px' }}>
-                  <button 
-                    className="btn-primary" 
-                    onClick={runOMRScan} 
-                    disabled={isScanning}
-                    style={{ flex: 1, padding: '12px', borderRadius: '10px', fontWeight: 'bold' }}
-                  >
-                    {isScanning ? <><RefreshCw className="spin" size={16} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
-                  </button>
-
+            {/* Scan Diagnostics Card */}
+            <div className="glass-card scan-diag-card animate-fade-in" style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ textAlign: 'left' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>OMR Diagnostic</h4>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
                   {activeResult && (
-                    <button 
-                      className="btn-success" 
-                      onClick={handleSaveResult}
-                      style={{ flex: 1, padding: '12px', borderRadius: '10px', fontWeight: 'bold', background: '#16a34a', color: '#fff', border: 'none' }}
-                    >
-                      💾 Save Result
-                    </button>
+                    <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                      Score: {activeResult.score} pts
+                    </span>
                   )}
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="glass-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <ImageIcon size={40} className="mb-2" style={{ opacity: 0.3 }} />
-              <h4 style={{ margin: 0, fontSize: '0.95rem' }}>No OMR Sheet Selected</h4>
-              <p style={{ fontSize: '0.82rem', marginTop: '4px' }}>Select a file from the queue or click "Live Camera Scanner".</p>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  className="btn-primary" 
+                  onClick={runOMRScan} 
+                  disabled={isScanning}
+                  style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
+                </button>
+
+                {activeResult && (
+                  <button 
+                    className="btn-success" 
+                    onClick={handleSaveResult}
+                    style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
+                  >
+                    💾 Save Result
+                  </button>
+                )}
+              </div>
             </div>
+          </div>
+        ) : (
+          <div className="glass-card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <ImageIcon size={32} className="mb-2" style={{ opacity: 0.3 }} />
+            <h4 style={{ margin: 0, fontSize: '0.88rem' }}>No OMR Sheet Selected</h4>
+            <p style={{ fontSize: '0.78rem', marginTop: '2px' }}>Select a file from the queue below or click "Live Camera Scanner".</p>
+          </div>
+        )}
+
+        {/* Bottom Section: Scan Queue (rendered below the image workspace!) */}
+        <div className="glass-card" style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>Scan Queue ({fileList.length})</h4>
+          </div>
+
+          {fileList.length === 0 ? (
+            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              Queue is empty. Scanned sheets are automatically saved and removed from queue.
+            </div>
+          ) : (
+            <table className="clean-table" style={{ fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fileList.map((item) => (
+                  <tr 
+                    key={item.id} 
+                    className={selectedFileId === item.id ? 'active-row' : ''}
+                    onClick={() => {
+                      setSelectedFileId(item.id);
+                      if (item.result) {
+                        setActiveResult(item.result);
+                        setDetectedStudentId(item.result.studentId || null);
+                      } else {
+                        setActiveResult(null);
+                        setDetectedStudentId(null);
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td style={{ fontWeight: 600 }}>{item.name}</td>
+                    <td>
+                      <span className={`status-badge ${item.status.toLowerCase()}`} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFile(item.id);
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', padding: '4px' }}
+                        title="Delete record"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
+
       </div>
 
       {/* FULL SCREEN VIEW SCANNED SHEETS MODE */}
@@ -1451,72 +1470,39 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             {/* Transparent overlay canvas for drawing the detected corners and guide outline */}
             <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', zIndex: 10 }}></canvas>
 
-            {/* Dynamic Status Indicator Overlay */}
+            {/* Dynamic Status Indicator Overlay (Extremely small, clean and mobile friendly) */}
             <div style={{ 
               position: 'absolute', 
-              top: '16px', 
+              top: '8px', 
               left: '50%', 
               transform: 'translateX(-50%)', 
               zIndex: 20, 
-              padding: '8px 20px', 
-              borderRadius: '24px', 
-              background: detectorStatus === 'ready' ? 'rgba(16, 185, 129, 0.9)' : 'rgba(15, 23, 42, 0.75)', 
-              backdropFilter: 'blur(8px)',
+              padding: '4px 10px', 
+              borderRadius: '8px', 
+              background: detectorStatus === 'ready' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.85)', 
+              backdropFilter: 'blur(6px)',
               color: '#ffffff', 
-              fontWeight: 'bold', 
-              fontSize: '0.9rem', 
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              fontWeight: 700, 
+              fontSize: '0.68rem', 
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               border: detectorStatus === 'ready' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
-              transition: 'all 0.3s ease'
+              transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap'
             }}>
               {detectorStatus === 'ready' ? (
                 <>
-                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#34d399', animation: 'ping 1s infinite' }}></span>
-                  🟢 OMR SHEET DETECTED - HOLD STILL
+                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#34d399', animation: 'ping 1s infinite' }}></span>
+                  🟢 READY (HOLD STILL)
                 </>
               ) : (
                 <>
-                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#f59e0b' }}></span>
-                  🔍 ALIGN OMR CORNERS INSIDE BRACKETS
+                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b' }}></span>
+                  🔍 ALIGN OMR SHEET
                 </>
               )}
-            </div>
-
-            <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
-              <button 
-                type="button"
-                onClick={captureCameraPhoto}
-                style={{ 
-                  padding: '14px 36px', 
-                  fontSize: '1.1rem', 
-                  borderRadius: '32px', 
-                  background: detectorStatus === 'ready' 
-                    ? 'linear-gradient(135deg, #10b981, #059669)' // Glowing emerald green when ready
-                    : 'linear-gradient(135deg, #2563eb, #1d4ed8)', // Standard blue when searching
-                  color: '#ffffff', 
-                  border: 'none', 
-                  fontWeight: 'bold', 
-                  cursor: 'pointer', 
-                  boxShadow: detectorStatus === 'ready'
-                    ? '0 6px 24px rgba(16,185,129,0.6), 0 0 0 4px rgba(255,255,255,0.3)'
-                    : '0 6px 24px rgba(37,99,235,0.6), 0 0 0 4px rgba(255,255,255,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  transition: 'all 0.3s ease'
-                }}
-                disabled={isScanning}
-              >
-                {isScanning ? <RefreshCw className="spin" size={20} /> : (
-                  <>
-                    <Camera size={20} />
-                    {detectorStatus === 'ready' ? 'Scan OMR Sheet Now' : '📷 Capture & Scan Photo'}
-                  </>
-                )}
-              </button>
             </div>
 
             {lastScanOverlay && (() => {
@@ -1573,7 +1559,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button 
                         type="button"
-                        onClick={() => setLastScanOverlay(null)}
+                        onClick={() => {
+                          setLastScanOverlay(null);
+                          isScanningRef.current = false;
+                          setIsScanning(false);
+                        }}
                         style={{
                           padding: '5px 10px',
                           borderRadius: '8px',
@@ -1594,6 +1584,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           stopCameraStream();
                           setShowCameraModal(false);
                           setLastScanOverlay(null);
+                          isScanningRef.current = false;
+                          setIsScanning(false);
                         }}
                         style={{
                           padding: '5px 10px',

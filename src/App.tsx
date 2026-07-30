@@ -158,6 +158,13 @@ export default function App() {
     const inviteClass = params.get('inviteClass');
     const isRegister = params.get('register');
 
+    const appMode = params.get('app');
+    if (appMode === 'student') {
+      localStorage.setItem('apex_pwa_mode', 'student');
+    } else if (appMode === 'staff') {
+      localStorage.setItem('apex_pwa_mode', 'staff');
+    }
+
     if (inviteClass) {
       setInviteClassParam(inviteClass);
     } else if (isRegister === 'true') {

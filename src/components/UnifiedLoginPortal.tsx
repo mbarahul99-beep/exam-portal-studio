@@ -9,7 +9,7 @@ interface UnifiedLoginPortalProps {
 }
 
 export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess, onRegisterClick }) => {
-  const isStudentApp = window.location.search.includes('app=student');
+  const isStudentApp = window.location.search.includes('app=student') || localStorage.getItem('apex_pwa_mode') === 'student';
   const [activeTab, setActiveTab] = useState<'student' | 'admin' | 'teacher'>('student');
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -467,9 +467,12 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             {/* If the PWA is installed, show a helper to open it */}
             {!isStandalone && isStudentApp && (
               <div style={{ marginTop: '12px', textAlign: 'center', background: '#f7fafc', padding: '10px', borderRadius: '8px', border: '1px dashed #e2e8f0' }}>
-                <span style={{ fontSize: '0.72rem', color: '#4a5568', display: 'block', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.74rem', color: '#4a5568', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
                   Already downloaded the APEX app?
                 </span>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.7rem', color: '#718096', lineHeight: 1.4 }}>
+                  Tap the <strong>'Open in App'</strong> icon in your browser's address bar (or three dots menu) to launch it directly.
+                </p>
                 <a 
                   href="web+apex://launch"
                   style={{
@@ -479,10 +482,10 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
                     color: '#059669',
                     fontWeight: 'bold',
                     fontSize: '0.75rem',
-                    textDecoration: 'none'
+                    textDecoration: 'underline'
                   }}
                 >
-                  🚀 Open in APEX Student App
+                  🚀 Launch App via Link
                 </a>
               </div>
             )}

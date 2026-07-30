@@ -479,19 +479,43 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      const newItemId = `cam-${Date.now()}`;
-      const newItem: ScanFileItem = {
-        id: newItemId,
-        name: `Camera Snap - ${cvResult.studentNum || 'OMR'}`,
-        previewUrl: croppedUrl,
-        status: 'Scanned',
-        result: scanResultData
-      };
+      const studentNum = cvResult.studentNum;
+      const existingItem = studentNum ? fileList.find(f => 
+        (f.result && f.result.detectedStudentNum === studentNum) || 
+        f.name === `Camera Snap - ${studentNum}` ||
+        f.name === `Scanned Sheet - ${studentNum}`
+      ) : null;
 
-      setFileList(prev => [...prev, newItem]);
-      setSelectedFileId(newItemId);
-      setActiveResult(scanResultData);
-      setDetectedStudentId(studentId || null);
+      if (existingItem) {
+        setFileList(prev => prev.map(f => {
+          if (f.id === existingItem.id) {
+            return {
+              ...f,
+              name: `Camera Snap - ${studentNum}`,
+              previewUrl: croppedUrl,
+              status: 'Scanned',
+              result: scanResultData
+            };
+          }
+          return f;
+        }));
+        setSelectedFileId(existingItem.id);
+        setActiveResult(scanResultData);
+        setDetectedStudentId(studentId || null);
+      } else {
+        const newItemId = `cam-${Date.now()}`;
+        const newItem: ScanFileItem = {
+          id: newItemId,
+          name: `Camera Snap - ${studentNum || 'OMR'}`,
+          previewUrl: croppedUrl,
+          status: 'Scanned',
+          result: scanResultData
+        };
+        setFileList(prev => [...prev, newItem]);
+        setSelectedFileId(newItemId);
+        setActiveResult(scanResultData);
+        setDetectedStudentId(studentId || null);
+      }
 
       setLastScanOverlay({
         studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
@@ -747,17 +771,37 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         warpedCanvas: cvResult.debugWarpedCanvas
       };
 
-      setFileList(prev => prev.map(f => {
-        if (f.id === selectedFileId) {
-          return {
-            ...f,
-            previewUrl: croppedSheetUrl || f.previewUrl,
-            status: 'Scanned',
-            result: scanResultData
-          };
+      const studentNum = cvResult.studentNum;
+      
+      setFileList(prev => {
+        let updated = prev.map(f => {
+          if (f.id === selectedFileId) {
+            return {
+              ...f,
+              name: `Scanned Sheet - ${studentNum || 'OMR'}`,
+              previewUrl: croppedSheetUrl || f.previewUrl,
+              status: 'Scanned',
+              result: scanResultData
+            };
+          }
+          return f;
+        });
+
+        if (studentNum) {
+          const dupId = updated.find(f => 
+            f.id !== selectedFileId && 
+            ((f.result && f.result.detectedStudentNum === studentNum) || 
+             f.name === `Camera Snap - ${studentNum}` ||
+             f.name === `Scanned Sheet - ${studentNum}`)
+          )?.id;
+          
+          if (dupId) {
+            updated = updated.filter(f => f.id !== dupId);
+          }
         }
-        return f;
-      }));
+        return updated;
+      });
+
       setActiveResult(scanResultData);
       setDetectedStudentId(studentId || null);
 
@@ -1478,128 +1522,100 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </button>
             </div>
 
-            {lastScanOverlay && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(15, 23, 42, 0.85)',
-                backdropFilter: 'blur(12px)',
-                zIndex: 40,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '24px',
-                animation: 'fadeIn 0.3s ease-out'
-              }}>
+            {lastScanOverlay && (() => {
+              const totalMaxMarks = exam.sections && exam.sections.length > 0
+                ? exam.sections.reduce((acc, sec) => acc + ((sec.correctMarks || 4) * sec.qCount), 0)
+                : (exam.correctMarks ?? 4) * exam.numQuestions;
+              return (
                 <div style={{
-                  background: '#ffffff',
-                  borderRadius: '24px',
-                  width: '100%',
-                  maxWidth: '440px',
-                  padding: '28px',
-                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
-                  color: '#0f172a',
+                  position: 'absolute',
+                  bottom: '12px',
+                  left: '12px',
+                  right: '12px',
+                  background: 'rgba(255, 255, 255, 0.98)',
+                  backdropFilter: 'blur(16px)',
+                  borderRadius: '16px',
+                  padding: '12px 14px',
+                  boxShadow: '0 8px 32px rgba(15, 23, 42, 0.25)',
+                  zIndex: 40,
+                  border: '1px solid rgba(226, 232, 240, 0.9)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '20px',
-                  border: '1px solid #e2e8f0'
+                  gap: '8px',
+                  color: '#0f172a'
                 }}>
-                  <div style={{ textAlign: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
-                    <div style={{ 
-                      width: '56px', 
-                      height: '56px', 
-                      borderRadius: '50%', 
-                      background: '#d1fae5', 
-                      color: '#059669', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      margin: '0 auto 12px auto' 
-                    }}>
-                      <CheckCircle2 size={32} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+                    <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+                      <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {lastScanOverlay.studentName.split('/')[0].trim()}
+                      </h4>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                        Roll: {lastScanOverlay.studentNum}
+                      </p>
                     </div>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>OMR Sheet Processed</h2>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Candidate matches registered roster records</p>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px' }}>
-                      <span style={{ color: '#475569', fontSize: '0.88rem', fontWeight: 600 }}>Student Name</span>
-                      <span style={{ color: '#0f172a', fontSize: '0.88rem', fontWeight: 700 }}>{lastScanOverlay.studentName}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px' }}>
-                      <span style={{ color: '#475569', fontSize: '0.88rem', fontWeight: 600 }}>Roll Number</span>
-                      <span style={{ color: '#0f172a', fontSize: '0.88rem', fontWeight: 700 }}>{lastScanOverlay.studentNum}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #34d399' }}>
-                      <span style={{ color: '#059669', fontSize: '0.88rem', fontWeight: 700 }}>Total Score</span>
-                      <span style={{ color: '#059669', fontSize: '0.88rem', fontWeight: 800 }}>{lastScanOverlay.score} Marks</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'inline-block' }}>
+                        {lastScanOverlay.score} / {totalMaxMarks} M
+                      </span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
-                    <div style={{ padding: '12px 6px', background: '#ecfdf5', borderRadius: '16px', border: '1px solid #a7f3d0' }}>
-                      <div style={{ color: '#059669', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><CheckCircle size={18} /></div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857' }}>{lastScanOverlay.correctCount}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Correct</div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        ✔ {lastScanOverlay.correctCount} Right
+                      </span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b91c1c', background: '#fef2f2', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        ✖ {lastScanOverlay.wrongCount} Wrong
+                      </span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', background: '#f8fafc', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        ➖ {lastScanOverlay.unansweredCount} Left
+                      </span>
                     </div>
-                    <div style={{ padding: '12px 6px', background: '#fef2f2', borderRadius: '16px', border: '1px solid #fecaca' }}>
-                      <div style={{ color: '#dc2626', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><XCircle size={18} /></div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#b91c1c' }}>{lastScanOverlay.wrongCount}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: 600 }}>Incorrect</div>
-                    </div>
-                    <div style={{ padding: '12px 6px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ color: '#64748b', display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><MinusCircle size={18} /></div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#475569' }}>{lastScanOverlay.unansweredCount}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>Left</div>
-                    </div>
-                  </div>
 
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                    <button 
-                      type="button"
-                      onClick={() => setLastScanOverlay(null)}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '16px',
-                        background: '#10b981',
-                        color: '#ffffff',
-                        border: 'none',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-                        transition: 'all 0.2s ease',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      🟢 Scan Next Sheet
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        stopCameraStream();
-                        setShowCameraModal(false);
-                        setLastScanOverlay(null);
-                      }}
-                      style={{
-                        padding: '12px 20px',
-                        borderRadius: '16px',
-                        background: '#f1f5f9',
-                        color: '#475569',
-                        border: '1px solid #cbd5e1',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      Finish
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        type="button"
+                        onClick={() => setLastScanOverlay(null)}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          background: '#10b981',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: '0.72rem',
+                          boxShadow: '0 2px 6px rgba(16,185,129,0.2)'
+                        }}
+                      >
+                        Scan Next
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          stopCameraStream();
+                          setShowCameraModal(false);
+                          setLastScanOverlay(null);
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          background: '#f1f5f9',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: '0.72rem'
+                        }}
+                      >
+                        Finish
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>

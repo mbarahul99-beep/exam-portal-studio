@@ -21,6 +21,8 @@
     }
   ],
   "start_url": "/?app=student",
+  "scope": "/",
+  "capture_links": "existing-client-navigate",
   "background_color": "#ffffff",
   "theme_color": "#065f46",
   "display": "standalone",

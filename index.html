@@ -16,6 +16,15 @@
       if (manifestLink && window.location.search.includes('app=student')) {
         manifestLink.setAttribute('href', '/student-manifest.json');
       }
+
+      // Capture native PWA install prompt globally on startup
+      window.deferredAppInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredAppInstallPrompt = e;
+        // Dispatch custom event to notify mounted components
+        window.dispatchEvent(new CustomEvent('pwa-prompt-available', { detail: e }));
+      });
     </script>
     <title>APEX - OMR & Online Exam Portal</title>
     <!-- Preconnect & Preload proven working OpenCV.js engine -->

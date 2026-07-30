@@ -35,13 +35,30 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     const standaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
     setIsStandalone(!!standaloneMode);
 
+    // Read the globally captured prompt if already fired on page load
+    if ((window as any).deferredAppInstallPrompt) {
+      setDeferredPrompt((window as any).deferredAppInstallPrompt);
+    }
+
+    // Listen to custom event in case it fires during active session
+    const handlePromptAvailable = (e: any) => {
+      setDeferredPrompt(e.detail);
+    };
+
+    // Fallback listener in case browser fires it late
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      (window as any).deferredAppInstallPrompt = e;
       setDeferredPrompt(e);
     };
 
+    window.addEventListener('pwa-prompt-available', handlePromptAvailable);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    return () => {
+      window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
   const numStudentId = Number(studentId);

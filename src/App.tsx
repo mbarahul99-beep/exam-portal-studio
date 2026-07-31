@@ -101,7 +101,9 @@ export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings'>(
+    () => (localStorage.getItem('appex_active_tab') as any) || 'dashboard'
+  );
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -134,9 +136,11 @@ export default function App() {
     localStorage.removeItem('appex_session_role');
     localStorage.removeItem('appex_session_student_id');
     localStorage.removeItem('appex_session_teacher_id');
+    localStorage.removeItem('appex_active_tab');
     setSessionRole(null);
     setSessionStudentId(null);
     setSessionTeacherId(null);
+    setActiveTab('dashboard');
   };
 
   // Student Invite & Pending Approvals State
@@ -181,6 +185,10 @@ export default function App() {
     const interval = setInterval(pullCloudUpdatesToIndexedDB, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('appex_active_tab', activeTab);
+  }, [activeTab]);
 
   // Auto-seed question bank on mount
   useEffect(() => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Lock, BookOpen } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com';
 import { db } from '../db';
@@ -69,18 +70,24 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   // Student form states
   const [rollNo, setRollNo] = useState('');
   const [phone, setPhone] = useState('');
-  const [classesList, setClassesList] = useState<string[]>([]);
+  
+  // Live reactive query for classes list to update instantly as soon as synced
+  const classesList = useLiveQuery(async () => {
+    const list = await db.classes.toArray();
+    return list.map(c => c.name);
+  }) || [];
+
   const [selectedClass, setSelectedClass] = useState<string>('');
 
-  React.useEffect(() => {
-    db.classes.toArray().then((list) => {
-      const names = list.map(c => c.name);
-      setClassesList(names);
-      if (names.length > 0) {
-        setSelectedClass(names[0]);
-      }
-    });
-  }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteClass = params.get('inviteClass');
+    if (inviteClass && classesList.includes(inviteClass)) {
+      setSelectedClass(inviteClass);
+    } else if (classesList.length > 0 && !selectedClass) {
+      setSelectedClass(classesList[0]);
+    }
+  }, [classesList, selectedClass]);
 
   const [loading, setLoading] = useState(false);
 
@@ -394,21 +401,23 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         {/* Tab content panel */}
         {activeTab === 'student' ? (
           <form onSubmit={handleStudentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {classesList.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Select Class / Course</label>
-                <select
-                  value={selectedClass}
-                  onChange={e => setSelectedClass(e.target.value)}
-                  style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
-                  required
-                >
-                  {classesList.map((c) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Select Class / Course</label>
+              <select
+                value={selectedClass}
+                onChange={e => setSelectedClass(e.target.value)}
+                style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
+                required
+              >
+                {classesList.length === 0 ? (
+                  <option value="">Loading courses...</option>
+                ) : (
+                  classesList.map((c) => (
                     <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+                  ))
+                )}
+              </select>
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Candidate Roll Number</label>

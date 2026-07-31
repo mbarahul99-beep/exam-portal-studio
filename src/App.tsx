@@ -132,6 +132,26 @@ export default function App() {
   const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
 
+  // Dynamic Header Logo Scaling States
+  const [logoHeight, setLogoHeight] = useState<number>(42);
+  const [logoNameHeight, setLogoNameHeight] = useState<number>(38);
+
+  useEffect(() => {
+    const loadBranding = () => {
+      const storedJson = localStorage.getItem('omr_custom_settings');
+      if (storedJson) {
+        try {
+          const parsed = JSON.parse(storedJson);
+          if (parsed.logoHeight) setLogoHeight(parsed.logoHeight);
+          if (parsed.logoNameHeight) setLogoNameHeight(parsed.logoNameHeight);
+        } catch (e) {}
+      }
+    };
+    loadBranding();
+    window.addEventListener('omr_settings_updated', loadBranding);
+    return () => window.removeEventListener('omr_settings_updated', loadBranding);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('appex_session_role');
     localStorage.removeItem('appex_session_student_id');
@@ -1956,8 +1976,8 @@ export default function App() {
           <Menu size={24} />
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo.png" alt="APEX Logo" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
-          <img src="/logo_name.png" alt="Institute APEX" style={{ height: '26px', width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
         </div>
       </header>
 
@@ -1966,8 +1986,8 @@ export default function App() {
         {/* Sidebar Panel */}
         <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px', background: '#fff', borderBottom: '1px solid var(--border-color)' }}>
-            <img src="/logo.png" alt="APEX Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
-            <img src="/logo_name.png" alt="Institute APEX" style={{ height: '22px', width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
           </div>
 
           <nav className="sidebar-nav">

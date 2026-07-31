@@ -25,6 +25,26 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
 
+  // Dynamic Header Logo Scaling States
+  const [logoHeight, setLogoHeight] = useState<number>(42);
+  const [logoNameHeight, setLogoNameHeight] = useState<number>(38);
+
+  useEffect(() => {
+    const loadBranding = () => {
+      const storedJson = localStorage.getItem('omr_custom_settings');
+      if (storedJson) {
+        try {
+          const parsed = JSON.parse(storedJson);
+          if (parsed.logoHeight) setLogoHeight(parsed.logoHeight);
+          if (parsed.logoNameHeight) setLogoNameHeight(parsed.logoNameHeight);
+        } catch (e) {}
+      }
+    };
+    loadBranding();
+    window.addEventListener('omr_settings_updated', loadBranding);
+    return () => window.removeEventListener('omr_settings_updated', loadBranding);
+  }, []);
+
   // PWA Install Promo States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallPromo, setShowInstallPromo] = useState(false);
@@ -384,8 +404,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             {publicMode && (
               <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img src="/logo.png" alt="APEX Logo" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
-                  <img src="/logo_name.png" alt="Institute APEX" style={{ height: '26px', width: 'auto', objectFit: 'contain' }} />
+                  <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+                  <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
                   <span style={{ fontSize: '0.75rem', background: '#f0fdf4', color: '#16a34a', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Official Scorecard</span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>
@@ -666,8 +686,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img src="/logo.png" alt="APEX Logo" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
-                  <img src="/logo_name.png" alt="Institute APEX" style={{ height: '26px', width: 'auto', objectFit: 'contain' }} />
+                  <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+                  <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
                   <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Candidate Hub</span>
                 </div>
                 <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>

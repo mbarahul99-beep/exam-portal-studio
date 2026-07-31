@@ -25,6 +25,8 @@ export interface OmrCustomSettings {
   disclaimerText: string;
   faceMatchThreshold: number;
   enableLivenessCheck: boolean;
+  logoHeight: number;
+  logoNameHeight: number;
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
@@ -40,7 +42,9 @@ export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
   invigilatorSignatureLabel: "INVIGILATOR'S SIGNATURE",
   disclaimerText: '★ DO NOT FOLD OR MUTILATE THIS DOCUMENT. ORIGINAL ANSWER SHEET ★',
   faceMatchThreshold: 0.70,
-  enableLivenessCheck: true
+  enableLivenessCheck: true,
+  logoHeight: 42,
+  logoNameHeight: 38
 };
 
 export const OmrSettingsView: React.FC = () => {
@@ -91,6 +95,7 @@ export const OmrSettingsView: React.FC = () => {
       }
 
       setSavedSuccess(true);
+      window.dispatchEvent(new Event('omr_settings_updated'));
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err: any) {
       alert(`Error saving OMR settings: ${err.message}`);
@@ -442,7 +447,59 @@ export const OmrSettingsView: React.FC = () => {
                   Higher values prevent false-positives but require more precise alignment. Standard recommended value: 0.70.
                 </p>
               </div>
+            </div>
+          </div>
 
+          {/* SECTION 5: App Logo & Branding Sizing */}
+          <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#dc0045' }}>
+              <Sliders size={18} />
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>5. App Header Branding Sizing</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Graphic Logo Height
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.logoHeight || 42}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="30"
+                  max="90"
+                  step="1"
+                  value={settings.logoHeight || 42}
+                  onChange={(e) => handleChange('logoHeight', parseInt(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Institute Name Logo Height
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.logoNameHeight || 38}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="16"
+                  max="70"
+                  step="1"
+                  value={settings.logoNameHeight || 38}
+                  onChange={(e) => handleChange('logoNameHeight', parseInt(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                  Adjust these sliders to dynamically scale the logo and institute brand text inside all header layouts and reports.
+                </p>
+              </div>
             </div>
           </div>
 

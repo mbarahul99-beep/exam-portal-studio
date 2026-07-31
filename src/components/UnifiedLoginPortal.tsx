@@ -21,6 +21,20 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   });
   const [showInstructions, setShowInstructions] = useState(false);
 
+  // Dynamic branding heights loader
+  const storedJson = localStorage.getItem('omr_custom_settings');
+  let userLogoHeight = 42;
+  let userLogoNameHeight = 38; // Default is now 38
+  if (storedJson) {
+    try {
+      const parsed = JSON.parse(storedJson);
+      if (parsed.logoHeight) userLogoHeight = parsed.logoHeight;
+      if (parsed.logoNameHeight) userLogoNameHeight = parsed.logoNameHeight;
+    } catch (e) {}
+  }
+  const loginLogoHeight = Math.round(70 * (userLogoHeight / 42));
+  const loginLogoNameHeight = Math.round(40 * (userLogoNameHeight / 26));
+
   const isStandalone = 
     window.matchMedia('(display-mode: standalone)').matches || 
     window.matchMedia('(display-mode: fullscreen)').matches ||
@@ -375,8 +389,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         {/* Logo/Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <img src="/logo.png" alt="APEX" style={{ height: '70px', width: 'auto', objectFit: 'contain' }} />
-            <img src="/logo_name.png" alt="Institute APEX" style={{ height: '40px', width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo.png" alt="APEX" style={{ height: `${loginLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${loginLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
           </div>
           <h2 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: 800, color: '#2d3748' }}>
             {isStudentApp ? 'Student Results Portal' : 'Single Sign-On Gateway'}

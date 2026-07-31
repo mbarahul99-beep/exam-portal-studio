@@ -50,12 +50,24 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
     }
   }
 
+  // Load custom logo settings
+  const storedJson = localStorage.getItem('omr_custom_settings');
+  let printLogoHeight = 42;
+  let printLogoNameHeight = 26;
+  if (storedJson) {
+    try {
+      const parsed = JSON.parse(storedJson);
+      if (parsed.logoHeight) printLogoHeight = parsed.logoHeight;
+      if (parsed.logoNameHeight) printLogoNameHeight = parsed.logoNameHeight;
+    } catch (e) {}
+  }
+
   return (
     <div className="report-print-page">
       <header className="report-header">
         <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo.png" alt="Logo" className="print-logo-img" />
-          <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" />
+          <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
         </div>
         <div className="header-titles">
           <h1>EXAM PERFORMANCE REPORT</h1>

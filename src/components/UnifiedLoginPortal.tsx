@@ -373,10 +373,9 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         )}
         
         {/* Logo/Brand Header */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <span style={{ fontSize: '1.8rem', animation: 'pulse 2s infinite' }}>⚡</span>
-            <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.05em' }}>Appex</span>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <img src="/logo.png" alt="APEX" style={{ height: '80px', objectFit: 'contain' }} />
           </div>
           <h2 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: 800, color: '#2d3748' }}>
             {isStudentApp ? 'Student Results Portal' : 'Single Sign-On Gateway'}

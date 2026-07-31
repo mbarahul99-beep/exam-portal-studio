@@ -491,10 +491,11 @@ export default function App() {
       if (parts.length >= 2) {
         const num = parts[0].trim();
         const name = parts[1].trim();
-        const cls = (parts[2] || selectedClassName || 'NEET').trim();
-        const phone = (parts[3] || '').trim();
-        const waNum = (parts[4] || '').trim();
-        const email = (parts[5] || '').trim();
+        const fatherName = (parts[2] || '').trim();
+        const cls = (parts[3] || selectedClassName || 'NEET').trim();
+        const phone = (parts[4] || '').trim();
+        const waNum = (parts[5] || '').trim();
+        const email = (parts[6] || '').trim();
 
         if (num.length >= 1 && !isNaN(Number(num))) {
           try {
@@ -506,6 +507,7 @@ export default function App() {
             if (exists) {
               await db.students.update(exists.id!, {
                 name,
+                fatherName: fatherName || undefined,
                 phone: phone || undefined,
                 whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined,
                 email: email || undefined
@@ -516,6 +518,7 @@ export default function App() {
               const newStId = await db.students.add({ 
                 studentNum: num, 
                 name, 
+                fatherName: fatherName || undefined,
                 className: cls,
                 phone: phone || undefined,
                 whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined,
@@ -553,9 +556,9 @@ export default function App() {
 
   const downloadCsvTemplate = () => {
     const templateRows = [
-      'Roll ID,Name,ClassName,Phone,WhatsApp,Email',
-      '1000000001,John Doe,Grade 12,9876543210,9876543210,john@gmail.com',
-      '1000000002,Jane Smith,Grade 12,9876543211,9876543211,jane@gmail.com'
+      'Roll ID,Name,Father Name,ClassName,Phone,WhatsApp,Email',
+      '1000000001,John Doe,Richard Doe,Grade 12,9876543210,9876543210,john@gmail.com',
+      '1000000002,Jane Smith,Robert Smith,Grade 12,9876543211,9876543211,jane@gmail.com'
     ];
     const blob = new Blob([templateRows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -5134,7 +5137,7 @@ export default function App() {
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '20px', textAlign: 'left' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '6px' }}>CSV Column Format:</span>
               <code style={{ fontSize: '0.7rem', color: '#0f172a', background: '#e2e8f0', padding: '4px 6px', borderRadius: '4px', display: 'block', wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                Roll ID, Name, ClassName, Phone, WhatsApp, Email
+                Roll ID, Name, Father Name, ClassName, Phone, WhatsApp, Email
               </code>
               <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Need a template?</span>

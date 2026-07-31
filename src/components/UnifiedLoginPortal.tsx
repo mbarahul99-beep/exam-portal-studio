@@ -323,7 +323,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
         
         {/* Logo/Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
             <img src="/logo.png" alt="APEX" style={{ height: `${loginLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
             <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${loginLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
           </div>

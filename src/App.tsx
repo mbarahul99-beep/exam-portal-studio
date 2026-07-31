@@ -1906,7 +1906,6 @@ export default function App() {
           setSessionStudentId(studId || null);
           setSessionTeacherId(tId || null);
         }}
-        onRegisterClick={() => setInviteClassParam('NEET-2026')}
       />
     );
   }

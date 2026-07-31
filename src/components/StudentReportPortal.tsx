@@ -27,10 +27,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
   // PWA Install Promo States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallPromo, setShowInstallPromo] = useState(() => {
-    const dismissed = localStorage.getItem('apex_student_app_promo_dismissed');
-    return dismissed !== 'true';
-  });
+  const [showInstallPromo, setShowInstallPromo] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
@@ -387,7 +384,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             {publicMode && (
               <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <img src="/logo.png" alt="APEX Logo" style={{ height: '32px', objectFit: 'contain' }} />
+                  <img src="/logo.png" alt="APEX Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
                   <span style={{ fontSize: '0.75rem', background: '#f0fdf4', color: '#16a34a', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Official Scorecard</span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>
@@ -663,7 +660,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <img src="/logo.png" alt="APEX Logo" style={{ height: '36px', objectFit: 'contain' }} />
+                  <img src="/logo.png" alt="APEX Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
                   <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Candidate Hub</span>
                 </div>
                 <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>

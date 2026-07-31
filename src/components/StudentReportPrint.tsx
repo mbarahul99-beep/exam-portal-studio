@@ -213,13 +213,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .print-logo-img {
-          height: 36px;
+          height: 42px;
           width: auto;
           object-fit: contain;
         }
 
         .print-logo-name-img {
-          height: 22px;
+          height: 26px;
           width: auto;
           object-fit: contain;
         }

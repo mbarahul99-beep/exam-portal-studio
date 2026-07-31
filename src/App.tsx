@@ -1947,8 +1947,7 @@ export default function App() {
         <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
       )}
 
-      {/* Mobile Top Header Navigation */}
-      <header className="mobile-header no-print">
+      <header className="mobile-header no-print" style={{ justifyContent: 'flex-start', gap: '16px', padding: '12px 16px' }}>
         <button 
           className="hamburger-btn" 
           onClick={() => setMobileMenuOpen(true)}
@@ -1957,10 +1956,9 @@ export default function App() {
           <Menu size={24} />
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo.png" alt="APEX Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
-          <img src="/logo_name.png" alt="Institute APEX" style={{ height: '20px', width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="APEX Logo" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo_name.png" alt="Institute APEX" style={{ height: '26px', width: 'auto', objectFit: 'contain' }} />
         </div>
-        <div style={{ width: '24px' }}></div>
       </header>
 
       <div className="no-print app-layout">

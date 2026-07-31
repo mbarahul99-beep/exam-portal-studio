@@ -262,6 +262,7 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
   const [viewingQrStudent, setViewingQrStudent] = useState<Student | null>(null);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
+  const [showImportCsvModal, setShowImportCsvModal] = useState(false);
 
   // Face Enrollment States
   const [enrollingFaceStudent, setEnrollingFaceStudent] = useState<Student | null>(null);
@@ -548,6 +549,21 @@ export default function App() {
     }
     pullCloudUpdatesToIndexedDB();
     alert(`CSV Import Complete: ${imported} students imported/updated, ${failed} failed.`);
+  };
+
+  const downloadCsvTemplate = () => {
+    const templateRows = [
+      'Roll ID,Name,ClassName,Phone,WhatsApp,Email',
+      '1000000001,John Doe,Grade 12,9876543210,9876543210,john@gmail.com',
+      '1000000002,Jane Smith,Grade 12,9876543211,9876543211,jane@gmail.com'
+    ];
+    const blob = new Blob([templateRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'apex_student_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleAddClass = async (e?: React.FormEvent) => {
@@ -2418,24 +2434,7 @@ export default function App() {
                             </button>
 
                             <button
-                              onClick={() => {
-                                const input = document.createElement('input');
-                                input.type = 'file';
-                                input.accept = '.csv';
-                                input.onchange = (e: any) => {
-                                  const file = e.target.files[0];
-                                  if (!file) return;
-                                  const reader = new FileReader();
-                                  reader.onload = async (evt: any) => {
-                                    const text = evt.target.result;
-                                    if (typeof text === 'string') {
-                                      handleImportCsvFile(text);
-                                    }
-                                  };
-                                  reader.readAsText(file);
-                                };
-                                input.click();
-                              }}
+                              onClick={() => setShowImportCsvModal(true)}
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                               title="Import CSV"
                             >
@@ -5076,6 +5075,147 @@ export default function App() {
           }
         }
       `}</style>
+
+      {showImportCsvModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.4)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '16px',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '380px',
+            width: '100%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            boxSizing: 'border-box',
+            position: 'relative'
+          }}>
+            {/* Close Button */}
+            <button
+              onClick={() => setShowImportCsvModal(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ background: '#dbeafe', color: '#2563eb', padding: '10px', borderRadius: '10px' }}>
+                <FileSpreadsheet size={24} />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Import Students</h3>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Batch upload student profiles</p>
+              </div>
+            </div>
+
+            {/* Instructions / Template Details */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '20px', textAlign: 'left' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '6px' }}>CSV Column Format:</span>
+              <code style={{ fontSize: '0.7rem', color: '#0f172a', background: '#e2e8f0', padding: '4px 6px', borderRadius: '4px', display: 'block', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                Roll ID, Name, ClassName, Phone, WhatsApp, Email
+              </code>
+              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Need a template?</span>
+                <button
+                  onClick={downloadCsvTemplate}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  📥 Download Template
+                </button>
+              </div>
+            </div>
+
+            {/* Choose File Button */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <label
+                style={{
+                  background: '#2563eb',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  textAlign: 'center',
+                  boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Upload size={16} /> Choose CSV File
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e: any) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async (evt: any) => {
+                      const text = evt.target.result;
+                      if (typeof text === 'string') {
+                        setShowImportCsvModal(false);
+                        handleImportCsvFile(text);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </label>
+
+              <button
+                onClick={() => setShowImportCsvModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #cbd5e0',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PWA Add to Home Screen Prompt Modal / Banner */}
       <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />

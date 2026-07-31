@@ -14,7 +14,7 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
       const manifestLink = document.getElementById('app-manifest-link');
-      if (manifestLink && window.location.search.includes('app=student')) {
+      if (manifestLink && (window.location.search.includes('app=student') || localStorage.getItem('apex_pwa_mode') === 'student')) {
         manifestLink.setAttribute('href', '/student-manifest.json');
       }
 

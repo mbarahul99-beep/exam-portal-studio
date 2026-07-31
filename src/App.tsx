@@ -21,6 +21,7 @@ import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView } from './components/OmrSettingsView';
+import { StudentPortalSetupView } from './components/StudentPortalSetupView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
   Sliders,
@@ -61,7 +62,8 @@ import {
   ArrowLeft,
   MoreVertical,
   User,
-  Shield
+  Shield,
+  Smartphone
 } from 'lucide-react';
 
 class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, tabName: string }, { hasError: boolean, error: any }> {
@@ -100,8 +102,7 @@ class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, t
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'student-portal-setup'>(
     () => (localStorage.getItem('appex_active_tab') as any) || 'dashboard'
   );
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState<number | null>(null);
@@ -2068,6 +2069,15 @@ export default function App() {
               <Settings size={18} /> WhatsApp API
             </button>
             <button 
+              className={`nav-item ${activeTab === 'student-portal-setup' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('student-portal-setup');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Smartphone size={18} /> Student Portal
+            </button>
+            <button 
               className={`nav-item ${activeTab === 'omr-settings' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('omr-settings');
@@ -3594,6 +3604,10 @@ export default function App() {
 
           {activeTab === 'questions-bank' && (
             <QuestionBankManager onBack={() => setActiveTab('dashboard')} />
+          )}
+
+          {activeTab === 'student-portal-setup' && (
+            <StudentPortalSetupView />
           )}
 
           {activeTab === 'omr-settings' && (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Copy, ExternalLink, QrCode, Smartphone, Monitor, Check, BookOpen, Apple } from 'lucide-react';
+import { Share2, Copy, ExternalLink, QrCode, Smartphone, Monitor, Check, BookOpen, Apple, Info } from 'lucide-react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
@@ -235,6 +235,26 @@ export const StudentPortalSetupView: React.FC = () => {
                 >
                   <ExternalLink size={16} />
                 </a>
+              </div>
+            </div>
+
+            {/* Browser Isolation testing warning */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              background: '#fffbeb',
+              border: '1px solid #fef3c7',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              marginTop: '12px',
+              fontSize: '0.75rem',
+              color: '#92400e',
+              lineHeight: '1.4'
+            }}>
+              <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>Testing Tip:</strong> To avoid overwriting your active Admin session in this browser, copy and open this link in an <strong>Incognito / Private Window</strong>, a different browser, or your phone.
               </div>
             </div>
           </div>

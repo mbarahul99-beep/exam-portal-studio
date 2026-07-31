@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, Sparkles, BookOpen } from 'lucide-react';
+import { Shield, Lock, BookOpen } from 'lucide-react';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com';
 import { db } from '../db';
-import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface UnifiedLoginPortalProps {
   onLoginSuccess: (role: 'admin' | 'teacher' | 'student', studentId?: number, teacherId?: number) => void;
@@ -76,10 +75,6 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       }
     });
   }, []);
-
-  // Admin / Teacher form states
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
 
@@ -212,67 +207,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
     }
   };
 
-  const handleAdminSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      alert('Please fill in all fields.');
-      return;
-    }
 
-    if ((username.trim() === 'admin' || username.trim() === 'apex_admin') && (password.trim() === 'admin123' || password.trim() === '2026@Apex')) {
-      onLoginSuccess('admin');
-    } else {
-      alert('Authentication Failed: Incorrect Master Admin username or password.');
-    }
-  };
-
-  const handleTeacherSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      alert('Please fill in both User ID and Password.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // 1. Check local Dexie DB teachers table
-      let matched = await db.teachers.where('userId').equals(username.trim()).first();
-      if (matched && matched.password === password.trim()) {
-        onLoginSuccess('teacher', undefined, matched.id);
-        return;
-      }
-
-      // 2. Check Hostinger MySQL backend endpoint
-      try {
-        const res = await fetch('/api/teacher-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: username.trim(), password: password.trim() })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.teacher) {
-            await pullCloudUpdatesToIndexedDB();
-            let teacherId = data.teacher.id;
-            const localTeacher = await db.teachers.where('userId').equals(username.trim()).first();
-            if (localTeacher) {
-              teacherId = localTeacher.id!;
-            }
-            onLoginSuccess('teacher', undefined, teacherId);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Backend teacher login attempt failed:", err);
-      }
-
-      alert('Authentication Failed: Invalid Teacher User ID or Password.');
-    } catch (err: any) {
-      alert(`Teacher Login Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div style={{ minHeight: '100vh', width: '100vw', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f0f4f8', padding: '20px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif' }}>

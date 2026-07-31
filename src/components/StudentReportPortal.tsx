@@ -617,12 +617,13 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         border = '1px solid #fbd5d5';
                       }
 
+                      const displayAns = sAns === 'MULTIPLE' ? 'M' : (sAns || '-');
                       return (
                         <div 
                           key={qNum}
-                          title={`Q.${qNum} | Correct: ${cAns} | Your Answer: ${sAns || 'Left'}`}
+                          title={`Q.${qNum} | Correct Key: ${cAns} | Student Response: ${sAns || 'Left/Unanswered'}`}
                           style={{
-                            width: '42px',
+                            width: '48px',
                             height: '42px',
                             borderRadius: '8px',
                             background: bg,
@@ -637,10 +638,14 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                             boxSizing: 'border-box'
                           }}
                         >
-                          <span style={{ fontSize: '0.65rem' }}>Q{qNum}</span>
-                          <span style={{ fontSize: '0.55rem', fontWeight: 'normal', opacity: 0.8 }}>
-                            {sAns || '-'}
-                          </span>
+                          <span style={{ fontSize: '0.62rem', color: '#64748b' }}>Q{qNum}</span>
+                          <div style={{ display: 'flex', gap: '3px', fontSize: '0.55rem', marginTop: '1px' }}>
+                            <span style={{ color: '#16a34a', fontWeight: '900' }} title="Correct Key">{cAns}</span>
+                            <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>/</span>
+                            <span style={{ fontWeight: '900', color: isCorrect ? '#16a34a' : isLeft ? '#64748b' : '#ef4444' }} title="Student Response">
+                              {displayAns}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}

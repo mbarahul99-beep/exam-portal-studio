@@ -235,8 +235,12 @@ export async function scanOMRSheet(
       // Anchor size check: must be a big corner mark (at least 0.012% of page area) and square-shaped
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
       const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+      
+      const cArea = cv.contourArea(cnt);
+      const solidity = area > 0 ? cArea / area : 0;
+      const isSolid = solidity >= 0.65;
 
-      if (isCorrectSize && isSquare) {
+      if (isCorrectSize && isSquare && isSolid) {
         const center = {
           x: rect.x + rect.width / 2,
           y: rect.y + rect.height / 2
@@ -262,8 +266,6 @@ export async function scanOMRSheet(
                 const pts = [topCands[i], topCands[j], topCands[k], topCands[l]];
                 
                 // Identify TL, TR, BL, BR
-                // TL: min (x+y), BR: max (x+y)
-                // TR: max (x-y), BL: min (x-y)
                 const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
                 const tl = sortedBySum[0];
                 const br = sortedBySum[3];
@@ -273,7 +275,7 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                // Validate that the areas of the 4 markers are similar (within 80% range to prevent random background matches)
+                // Validate that the areas of the 4 markers are similar
                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
                 if (minArea === 0 || maxArea / minArea > 1.8) continue;
@@ -296,8 +298,20 @@ export async function scanOMRSheet(
                 const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
                 const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
-                if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
-                  const quadArea = avgW * avgH;
+                // Strict constraints:
+                // 1. Minimum sheet size check: detected quad must cover at least 15% of the page
+                const quadArea = avgW * avgH;
+                const pageArea = srcWidth * srcHeight;
+                const isSheetSizeValid = quadArea > pageArea * 0.15;
+
+                // 2. Anchor size proportional to sheet width: anchors must be between 1.5% and 8% of sheet width
+                const isAnchorSizeValid = 
+                  (tl.rect.width >= avgW * 0.015 && tl.rect.width <= avgW * 0.08) &&
+                  (tr.rect.width >= avgW * 0.015 && tr.rect.width <= avgW * 0.08) &&
+                  (bl.rect.width >= avgW * 0.015 && bl.rect.width <= avgW * 0.08) &&
+                  (br.rect.width >= avgW * 0.015 && br.rect.width <= avgW * 0.08);
+
+                if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid && isSheetSizeValid && isAnchorSizeValid) {
                   if (quadArea > maxQuadArea) {
                     maxQuadArea = quadArea;
                     bestQuad = { tl, tr, bl, br };
@@ -345,8 +359,12 @@ export async function scanOMRSheet(
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
         const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+        
+        const cArea = cv.contourArea(cnt);
+        const solidity = area > 0 ? cArea / area : 0;
+        const isSolid = solidity >= 0.65;
 
-        if (isCorrectSize && isSquare) {
+        if (isCorrectSize && isSquare && isSolid) {
           const center = {
             x: rect.x + rect.width / 2,
             y: rect.y + rect.height / 2
@@ -767,11 +785,16 @@ export function findOMRSheetCornersLive(
       const area = rect.width * rect.height;
       const aspectRatio = rect.width / rect.height;
 
-      // Anchors must be big black square marks (at least 0.012% of image area)
+      // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
       const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+      
+      // Check solidity (anchors are solid black squares)
+      const cArea = cv.contourArea(cnt);
+      const solidity = area > 0 ? cArea / area : 0;
+      const isSolid = solidity >= 0.65;
 
-      if (isCorrectSize && isSquare) {
+      if (isCorrectSize && isSquare && isSolid) {
         const center = {
           x: rect.x + rect.width / 2,
           y: rect.y + rect.height / 2
@@ -805,7 +828,7 @@ export function findOMRSheetCornersLive(
             const bl = sortedByDiff[0];
             const tr = sortedByDiff[1];
 
-            // Validate that the areas of the 4 markers are similar (within 80% range to prevent random background matches)
+            // Validate that the areas of the 4 markers are similar
             const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
             const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
             if (minArea === 0 || maxArea / minArea > 1.8) continue;
@@ -825,8 +848,19 @@ export function findOMRSheetCornersLive(
             const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
             const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
-            if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid) {
-              const quadArea = avgW * avgH;
+            // Strict constraints:
+            // 1. Minimum sheet size check: detected quad must cover at least 15% of the viewfinder
+            const quadArea = avgW * avgH;
+            const isSheetSizeValid = quadArea > pageArea * 0.15;
+
+            // 2. Anchor size proportional to sheet width: anchors must be between 2% and 8% of sheet width
+            const isAnchorSizeValid = 
+              (tl.rect.width >= avgW * 0.02 && tl.rect.width <= avgW * 0.08) &&
+              (tr.rect.width >= avgW * 0.02 && tr.rect.width <= avgW * 0.08) &&
+              (bl.rect.width >= avgW * 0.02 && bl.rect.width <= avgW * 0.08) &&
+              (br.rect.width >= avgW * 0.02 && br.rect.width <= avgW * 0.08);
+
+            if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid && isSheetSizeValid && isAnchorSizeValid) {
               if (quadArea > maxQuadArea) {
                 maxQuadArea = quadArea;
                 bestQuad = [

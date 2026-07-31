@@ -133,16 +133,24 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const st of data.students) {
         try {
           const { id: mysqlId, ...studentFields } = st;
-          const existing = await db.students
-            .where('[studentNum+className]')
-            .equals([st.studentNum, st.className])
-            .first();
+          // Match by server ID
+          const existing = await db.students.get(st.id);
+          
           if (!existing) {
-            await db.students.add(studentFields);
+            // Also clean up any legacy student with the same roll + class to avoid index crashes
+            const duplicate = await db.students
+              .where('[studentNum+className]')
+              .equals([st.studentNum, st.className])
+              .first();
+            if (duplicate) {
+              await db.students.delete(duplicate.id!);
+            }
+            await db.students.add({ id: st.id, ...studentFields });
           } else {
             const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
             const facePhoto = st.facePhoto || existing.facePhoto;
-            await db.students.update(existing.id!, {
+            await db.students.put({
+              id: st.id,
               ...studentFields,
               faceDescriptor,
               facePhoto
@@ -266,9 +274,9 @@ export async function pullCloudUpdatesToIndexedDB() {
           const { id: mysqlId, ...qFields } = q;
           const existing = await db.questions.get(q.id);
           if (!existing) {
-            await db.questions.add(qFields);
+            await db.questions.add({ id: q.id, ...qFields });
           } else {
-            await db.questions.update(existing.id!, qFields);
+            await db.questions.put({ id: q.id, ...qFields });
           }
         } catch (err) {
           console.warn("Error syncing question item:", err);

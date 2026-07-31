@@ -3153,9 +3153,14 @@ export default function App() {
                             onChange={(e) => handleVerifyStudentChange(e.target.value)}
                           >
                             <option value="">-- Associate Student --</option>
-                            {students.map(s => (
-                              <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
-                            ))}
+                            {(() => {
+                              const examObj = exams.find(e => e.id === scannerExamId);
+                              return students
+                                .filter(s => s.className === examObj?.className)
+                                .map(s => (
+                                  <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
+                                ));
+                            })()}
                           </select>
                         </div>
                       </div>

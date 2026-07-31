@@ -199,7 +199,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       }
 
       if (!matched || matched.phone !== phone.trim()) {
-        alert('Authentication Failed: No registered candidate found with this Roll Number and Mobile combination.\n\nRegistered Demo Student Roll No: 1000000001 (Phone: 9876543210).\nMake sure to run Mock Data populate on Admin dashboard first.');
+        alert('Authentication Failed: No registered candidate found with this Roll Number and Mobile combination.');
         setLoading(false);
         return;
       }
@@ -538,137 +538,24 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             )}
           </form>
         ) : activeTab === 'teacher' ? (
-          <form onSubmit={handleTeacherSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Teacher User ID</label>
-              <input
-                type="text"
-                placeholder="Enter User ID assigned by Master Admin"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
-                required
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Password</label>
-              <input
-                type="password"
-                placeholder="Enter password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                background: '#2563eb',
-                color: '#fff',
-                fontWeight: 'bold',
-                fontSize: '0.85rem',
-                padding: '12px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                marginTop: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)'
-              }}
-            >
-              <Lock size={16} /> {loading ? 'Verifying...' : 'Login to Teacher Portal'}
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-              <span style={{ fontSize: '0.75rem', color: '#a0aec0' }}>OR</span>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
+              Sign in securely to your Teacher workspace using your registered Google Workspace account.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px' }}>
               <div id="google-teacher-signin-btn"></div>
             </div>
-          </form>
+          </div>
         ) : (
-          <form onSubmit={handleAdminSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Master Admin Username</label>
-              <input
-                type="text"
-                placeholder="Enter Master Admin username"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
-                required
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4a5568' }}>Master Admin Password</label>
-              <input
-                type="password"
-                placeholder="Enter Master Admin password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                style={{ padding: '10px 12px', border: '1px solid #cbd5e0', borderRadius: '6px', fontSize: '16px', outline: 'none', background: '#fff', color: '#1a202c' }}
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              style={{
-                background: '#2d3748',
-                color: '#fff',
-                fontWeight: 'bold',
-                fontSize: '0.85rem',
-                padding: '12px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                marginTop: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 6px -1px rgba(45,55,72,0.2)'
-              }}
-            >
-              <Shield size={16} /> Open Master Admin Dashboard
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-              <span style={{ fontSize: '0.75rem', color: '#a0aec0' }}>OR</span>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
+              Sign in securely to the Master Admin control center using your authorized Google account.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px' }}>
               <div id="google-admin-signin-btn"></div>
             </div>
-          </form>
-        )}
-
-        {/* Demo Credentials Helpers */}
-        <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: '8px', padding: '12px', marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#2b6cb0', fontWeight: 'bold' }}>
-            <Sparkles size={14} />
-            <span>Login Access Credentials:</span>
           </div>
-          <span style={{ fontSize: '0.7rem', color: '#4a5568' }}>
-            ● <strong>Student</strong>: Roll No <code>1000000001</code> | Mobile <code>9876543210</code>
-          </span>
-          <span style={{ fontSize: '0.7rem', color: '#4a5568' }}>
-            ● <strong>Master Admin</strong>: Username <code>admin</code> | Password <code>2026@Apex</code>
-          </span>
-        </div>
+        )}
 
       </div>
     </div>

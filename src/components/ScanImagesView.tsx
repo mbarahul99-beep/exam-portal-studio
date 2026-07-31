@@ -430,7 +430,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
             const evaluated = attempted.slice(0, sec.maxAttempts);
             evaluated.forEach(item => {
-              const correctAns = correctKey[item.q] || 'A';
+              const correctAns = correctKey[item.q] || '';
               if (item.ans === correctAns) {
                 score += secCorrectMarks;
                 correctCount++;
@@ -446,7 +446,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           } else {
             qNums.forEach(q => {
               const studentAns = cvResult.answers[q] || '';
-              const correctAns = correctKey[q] || 'A';
+              const correctAns = correctKey[q] || '';
               if (studentAns === '') {
                 score += secUnansweredMarks;
                 unansweredCount++;
@@ -467,7 +467,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         for (let q = 1; q <= exam.numQuestions; q++) {
           const studentAns = cvResult.answers[q] || '';
-          const correctAns = correctKey[q] || 'A';
+          const correctAns = correctKey[q] || '';
 
           if (studentAns === '') {
             score += uMarks;
@@ -740,7 +740,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
             const evaluated = attempted.slice(0, sec.maxAttempts);
             evaluated.forEach(item => {
-              const correctAns = correctKey[item.q] || 'A';
+              const correctAns = correctKey[item.q] || '';
               if (item.ans === correctAns) {
                 score += secCorrectMarks;
                 correctCount++;
@@ -756,7 +756,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           } else {
             qNums.forEach(q => {
               const studentAns = cvResult.answers[q] || '';
-              const correctAns = correctKey[q] || 'A';
+              const correctAns = correctKey[q] || '';
               if (studentAns === '') {
                 score += secUnansweredMarks;
                 unansweredCount++;
@@ -777,7 +777,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         for (let q = 1; q <= exam.numQuestions; q++) {
           const studentAns = cvResult.answers[q] || '';
-          const correctAns = correctKey[q] || 'A';
+          const correctAns = correctKey[q] || '';
 
           if (studentAns === '') {
             score += uMarks;
@@ -1139,6 +1139,43 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </div>
               </div>
 
+              {activeResult && (
+                <div style={{ marginBottom: '14px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                    Verify/Associate Student (Detected Roll: <code>{activeResult.detectedStudentNum || 'N/A'}</code>)
+                  </label>
+                  <select 
+                    value={detectedStudentId || ''} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDetectedStudentId(val ? Number(val) : null);
+                      const sObj = students.find(s => s.id === Number(val));
+                      if (sObj) {
+                        setActiveResult((prev: any) => prev ? {
+                          ...prev,
+                          studentId: sObj.id!,
+                          studentName: sObj.name,
+                          detectedStudentNum: sObj.studentNum
+                        } : null);
+                      } else {
+                        setActiveResult((prev: any) => prev ? {
+                          ...prev,
+                          studentId: null,
+                          studentName: 'Unknown Candidate',
+                          detectedStudentNum: ''
+                        } : null);
+                      }
+                    }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, background: '#fff', outline: 'none' }}
+                  >
+                    <option value="">-- Associate Student --</option>
+                    {students.filter(s => s.className === exam.className).map(s => (
+                      <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button 
                   className="btn-primary" 
@@ -1304,7 +1341,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   let wrongCount = 0;
                   for (let q = 1; q <= exam.numQuestions; q++) {
                     const sAns = sub.answers[q] || '';
-                    const cAns = correctKey[q] || 'A';
+                    const cAns = correctKey[q] || '';
                     if (sAns !== '') {
                       if (sAns === cAns) {
                         correctCount++;
@@ -1416,7 +1453,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   {Array.from({ length: exam.numQuestions }, (_, i) => {
                     const qNum = i + 1;
                     const studentAns = viewingOmrModalUrl.answers?.[qNum] || '';
-                    const correctAns = exam.answerKey[qNum] || 'A';
+                    const correctAns = exam.answerKey[qNum] || '';
                     
                     // Determine option list
                     const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);

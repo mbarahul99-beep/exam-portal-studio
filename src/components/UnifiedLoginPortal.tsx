@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Sparkles, BookOpen } from 'lucide-react';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com';
 import { db } from '../db';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
@@ -66,6 +68,81 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
   const [password, setPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
+
+  // Google Sign-In Callback handler
+  const handleGoogleLoginCallback = async (response: any) => {
+    const idToken = response.credential;
+    if (!idToken) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, clientId: GOOGLE_CLIENT_ID })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Google Authentication failed');
+      }
+
+      if (data.role === 'admin') {
+        onLoginSuccess('admin');
+      } else if (data.role === 'teacher') {
+        onLoginSuccess('teacher', undefined, data.teacher?.id);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Dynamically initialize Google Sign-In and render buttons based on active tab
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).google && (activeTab === 'teacher' || activeTab === 'admin')) {
+      try {
+        const google = (window as any).google;
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleLoginCallback
+        });
+        
+        if (activeTab === 'teacher') {
+          setTimeout(() => {
+            const container = document.getElementById('google-teacher-signin-btn');
+            if (container) {
+              google.accounts.id.renderButton(container, {
+                theme: 'outline',
+                size: 'large',
+                width: 320,
+                text: 'signin_with',
+                shape: 'rectangular'
+              });
+            }
+          }, 100);
+        }
+
+        if (activeTab === 'admin') {
+          setTimeout(() => {
+            const container = document.getElementById('google-admin-signin-btn');
+            if (container) {
+              google.accounts.id.renderButton(container, {
+                theme: 'outline',
+                size: 'large',
+                width: 320,
+                text: 'signin_with',
+                shape: 'rectangular'
+              });
+            }
+          }, 100);
+        }
+      } catch (err) {
+        console.warn("Failed to initialize Google Sign-in:", err);
+      }
+    }
+  }, [activeTab]);
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -494,6 +571,16 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             >
               <Lock size={16} /> {loading ? 'Verifying...' : 'Login to Teacher Portal'}
             </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
+              <span style={{ fontSize: '0.75rem', color: '#a0aec0' }}>OR</span>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div id="google-teacher-signin-btn"></div>
+            </div>
           </form>
         ) : (
           <form onSubmit={handleAdminSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -542,6 +629,16 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             >
               <Shield size={16} /> Open Master Admin Dashboard
             </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
+              <span style={{ fontSize: '0.75rem', color: '#a0aec0' }}>OR</span>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div id="google-admin-signin-btn"></div>
+            </div>
           </form>
         )}
 

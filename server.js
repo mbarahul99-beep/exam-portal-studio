@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import { OAuth2Client } from 'google-auth-library';
 
 dotenv.config();
 
@@ -433,6 +434,71 @@ app.post('/api/teacher-login', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Google Sign-In Verification API (OAuth 2.0 Integration)
+const googleClient = new OAuth2Client();
+
+app.post('/api/auth/google', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { idToken, clientId } = req.body;
+  if (!idToken) return res.status(400).json({ error: 'Missing Google ID Token' });
+  
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: clientId
+    });
+    
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ error: 'Invalid Google token payload' });
+    }
+    
+    const email = payload.email.toLowerCase();
+    const name = payload.name || payload.given_name || 'Google User';
+    
+    // Check if this is the Master Admin (Option A)
+    const adminGoogleEmail = (process.env.ADMIN_GOOGLE_EMAIL || 'admin@example.com').toLowerCase();
+    if (email === adminGoogleEmail) {
+      return res.json({
+        success: true,
+        role: 'admin',
+        user: {
+          id: 'admin',
+          userId: 'admin',
+          name: name,
+          email: email
+        }
+      });
+    }
+    
+    // Check if this is a registered Teacher in the MySQL database
+    const [rows] = await pool.query('SELECT * FROM teachers WHERE LOWER(email) = ?', [email]);
+    if (rows.length > 0) {
+      const teacher = rows[0];
+      return res.json({
+        success: true,
+        role: 'teacher',
+        teacher: {
+          id: teacher.id,
+          userId: teacher.userId,
+          name: teacher.name,
+          email: teacher.email,
+          phone: teacher.phone
+        }
+      });
+    }
+    
+    // Unregistered Account fallback
+    return res.status(401).json({
+      error: `Access Denied: The Google account (${email}) is not registered. Please ask the Master Admin to register your email under Teacher/Staff management.`
+    });
+    
+  } catch (err) {
+    console.error("Google Token Verification Failed:", err);
+    res.status(401).json({ error: `Google Sign-In failed: ${err.message}` });
   }
 });
 

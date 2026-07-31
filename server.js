@@ -4,12 +4,24 @@ import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import { OAuth2Client } from 'google-auth-library';
+import { execSync } from 'child_process';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Auto-install missing dependencies on startup (designed for Hostinger deploys)
+const depPath = path.join(__dirname, 'node_modules', 'google-auth-library');
+if (!fs.existsSync(depPath)) {
+  console.log('📦 Auto-installing missing dependencies (google-auth-library)...');
+  try {
+    execSync('npm install --production', { stdio: 'inherit', cwd: __dirname });
+    console.log('✅ Dependencies installed successfully!');
+  } catch (err) {
+    console.error('❌ Auto-install failed:', err.message);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -438,14 +450,15 @@ app.post('/api/teacher-login', async (req, res) => {
 });
 
 // Google Sign-In Verification API (OAuth 2.0 Integration)
-const googleClient = new OAuth2Client();
-
 app.post('/api/auth/google', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { idToken, clientId } = req.body;
   if (!idToken) return res.status(400).json({ error: 'Missing Google ID Token' });
   
   try {
+    const { OAuth2Client } = await import('google-auth-library');
+    const googleClient = new OAuth2Client();
+
     const ticket = await googleClient.verifyIdToken({
       idToken,
       audience: clientId

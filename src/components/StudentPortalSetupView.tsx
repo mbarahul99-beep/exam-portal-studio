@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Copy, ExternalLink, QrCode, Smartphone, Laptop, Check, Info } from 'lucide-react';
+import { Share2, Copy, ExternalLink, QrCode, Smartphone, Monitor, Check, BookOpen, Apple } from 'lucide-react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
@@ -25,188 +25,259 @@ export const StudentPortalSetupView: React.FC = () => {
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      
-      {/* Header Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
-        borderRadius: '16px',
-        padding: '32px',
-        color: '#ffffff',
-        marginBottom: '28px',
-        boxShadow: '0 10px 25px -5px rgba(13, 148, 136, 0.15)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-          <Smartphone size={32} />
-          <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Student Portal Gateway</h1>
-        </div>
-        <p style={{ margin: 0, fontSize: '0.98rem', color: '#ccfbf1', maxWidth: '680px', lineHeight: '1.5' }}>
-          Distribute and share access to the dedicated standalone candidate app. Students can use this portal to view OMR reports, check schedules, print scoresheets, and practice online exams.
-        </p>
-      </div>
+    <div className="portal-container">
+      {/* Scoped CSS for responsiveness */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .portal-container {
+          padding: 16px;
+          max-width: 900px;
+          margin: 0 auto;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .portal-grid {
+          display: grid;
+          grid-template-columns: 1fr 280px;
+          gap: 20px;
+        }
+        .portal-card {
+          background: #ffffff;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          padding: 20px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .portal-title {
+          margin: 0 0 16px 0;
+          font-size: 1.1rem;
+          color: #1e293b;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .input-group {
+          display: flex;
+          gap: 8px;
+          margin-top: 8px;
+        }
+        .url-input {
+          flex: 1;
+          padding: 10px 12px;
+          border-radius: 8px;
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          color: #334155;
+          font-size: 0.85rem;
+          font-family: monospace;
+          outline: none;
+          min-width: 0;
+        }
+        .btn-action {
+          padding: 0 16px;
+          border-radius: 8px;
+          border: none;
+          background: #0d9488;
+          color: #ffffff;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .btn-action.copied {
+          background: #059669;
+        }
+        .btn-icon {
+          padding: 0 12px;
+          border-radius: 8px;
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          color: #475569;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .guide-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .guide-item {
+          padding: 12px 14px;
+          background: #f8fafc;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        .guide-item-title {
+          margin: 0 0 8px 0;
+          font-size: 0.85rem;
+          color: #0f172a;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 600;
+        }
+        .guide-list {
+          margin: 0;
+          padding-left: 16px;
+          font-size: 0.78rem;
+          color: #475569;
+          line-height: 1.5;
+        }
+        .guide-span-2 {
+          grid-column: span 2;
+        }
+        .qr-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+        .qr-image-wrapper {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 12px;
+          margin: 12px 0;
+        }
+        .qr-image {
+          width: 140px;
+          height: 140px;
+          display: block;
+        }
+        
+        @media (max-width: 768px) {
+          .portal-grid {
+            grid-template-columns: 1fr;
+            gap: 16px;
+          }
+          .guide-grid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+          .guide-span-2 {
+            grid-column: span 1;
+          }
+          .portal-container {
+            padding: 8px;
+          }
+          .portal-card {
+            padding: 16px;
+          }
+        }
+      `}} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '28px', alignItems: 'start' }}>
+      <div className="portal-grid">
         
         {/* Left Column: Link sharing & settings */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
           {/* Card 1: Share Link Setup */}
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '14px',
-            border: '1px solid #e2e8f0',
-            padding: '24px',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)'
-          }}>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Share2 size={20} color="#0d9488" /> Generate Shareable Link
+          <div className="portal-card">
+            <h2 className="portal-title">
+              <Share2 size={18} color="#0d9488" /> Share Student Portal
             </h2>
 
             {/* Optional Invite Class Selector */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
-                Pre-Select Class / Invitation Context (Optional)
-              </label>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                <BookOpen size={14} color="#64748b" />
+                <span>Default Registration Class (Optional)</span>
+              </div>
               <select
                 value={selectedInviteClass}
                 onChange={(e) => setSelectedInviteClass(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
                   border: '1px solid #cbd5e1',
                   background: '#f8fafc',
                   color: '#1e293b',
-                  fontSize: '0.9rem',
+                  fontSize: '0.85rem',
                   outline: 'none',
                   cursor: 'pointer'
                 }}
               >
-                <option value="">-- Generic Student Portal (All Classes) --</option>
+                <option value="">All Classes (Generic Link)</option>
                 {classes.map(c => (
                   <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
               </select>
-              <span style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginTop: '6px', lineHeight: '1.4' }}>
-                Selecting a class generates a direct registration invite link. When students open this link, the registration screen will automatically target the selected class.
-              </span>
             </div>
 
             {/* URL Input Box */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
-                Student Portal URL
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div className="input-group">
                 <input
                   type="text"
                   readOnly
                   value={shareUrl}
-                  style={{
-                    flex: 1,
-                    padding: '12px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    background: '#f1f5f9',
-                    color: '#334155',
-                    fontSize: '0.88rem',
-                    fontFamily: 'monospace',
-                    outline: 'none'
-                  }}
+                  className="url-input"
                 />
                 <button
                   onClick={handleCopyLink}
-                  style={{
-                    padding: '0 18px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: copied ? '#059669' : '#0d9488',
-                    color: '#ffffff',
-                    fontSize: '0.9rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s'
-                  }}
+                  className={`btn-action ${copied ? 'copied' : ''}`}
                 >
-                  {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copied!' : 'Copy Link'}
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  <span>{copied ? 'Copied' : 'Copy'}</span>
                 </button>
                 <a
                   href={shareUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{
-                    padding: '0 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    background: '#ffffff',
-                    color: '#475569',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Test Portal View"
+                  className="btn-icon"
+                  title="Test Link"
                 >
-                  <ExternalLink size={18} />
+                  <ExternalLink size={16} />
                 </a>
               </div>
             </div>
           </div>
 
           {/* Card 2: Standalone Download / Installation Guide */}
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '14px',
-            border: '1px solid #e2e8f0',
-            padding: '24px',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)'
-          }}>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Smartphone size={20} color="#0d9488" /> Separate App Installation Guide
+          <div className="portal-card">
+            <h2 className="portal-title">
+              <Smartphone size={18} color="#0d9488" /> Standalone App Download Guide
             </h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#475569', lineHeight: '1.5' }}>
-              The Student Portal runs as an independent Progressive Web App (PWA). Since it is optimized as a lightweight standalone web app, students do not need to visit an App Store. They can download it directly onto their device via their browser.
-            </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="guide-grid">
               
               {/* iOS Card */}
-              <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
-                <h3 style={{ margin: '0 0 10px 0', fontSize: '0.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                  <Smartphone size={16} color="#0d9488" /> iOS (iPhone / iPad)
+              <div className="guide-item">
+                <h3 className="guide-item-title">
+                  <Apple size={14} color="#475569" /> iOS (Safari)
                 </h3>
-                <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#475569', lineHeight: '1.6' }}>
-                  <li>Open the shared portal link in <strong>Safari browser</strong>.</li>
-                  <li>Tap the <strong>Share</strong> button (up-arrow box icon) in the bottom navigation bar.</li>
-                  <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
-                  <li>Tap <strong>Add</strong> in the top right to download.</li>
+                <ol className="guide-list">
+                  <li>Open link in <strong>Safari</strong></li>
+                  <li>Tap <strong>Share</strong> icon</li>
+                  <li>Tap <strong>Add to Home Screen</strong></li>
                 </ol>
               </div>
 
               {/* Android Card */}
-              <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
-                <h3 style={{ margin: '0 0 10px 0', fontSize: '0.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                  <Smartphone size={16} color="#0d9488" /> Android Mobile
+              <div className="guide-item">
+                <h3 className="guide-item-title">
+                  <Smartphone size={14} color="#475569" /> Android (Chrome)
                 </h3>
-                <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#475569', lineHeight: '1.6' }}>
-                  <li>Open the shared portal link in <strong>Google Chrome</strong>.</li>
-                  <li>Tap the <strong>three dots (menu)</strong> in the top-right corner.</li>
-                  <li>Tap <strong>Install App</strong> or <strong>Add to Home screen</strong>.</li>
-                  <li>Confirm the install prompt to download the standalone student icon.</li>
+                <ol className="guide-list">
+                  <li>Open link in <strong>Chrome</strong></li>
+                  <li>Tap <strong>Menu (3 dots)</strong></li>
+                  <li>Tap <strong>Install App</strong></li>
                 </ol>
               </div>
 
               {/* Desktop Card */}
-              <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #f1f5f9', gridColumn: 'span 2' }}>
-                <h3 style={{ margin: '0 0 10px 0', fontSize: '0.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                  <Laptop size={16} color="#0d9488" /> Desktop (Chrome / Edge)
+              <div className="guide-item guide-span-2">
+                <h3 className="guide-item-title">
+                  <Monitor size={14} color="#475569" /> Desktop (Chrome / Edge)
                 </h3>
-                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#475569', lineHeight: '1.6' }}>
-                  <li>Open the link. Click the <strong>Install App</strong> monitor icon in the right side of the address bar.</li>
-                  <li>Or open the browser menu and select <strong>Save and share &gt; Install page as app</strong> to download.</li>
+                <ul className="guide-list" style={{ listStyleType: 'disc' }}>
+                  <li>Click <strong>Install App</strong> monitor icon on the address bar</li>
                 </ul>
               </div>
 
@@ -215,56 +286,23 @@ export const StudentPortalSetupView: React.FC = () => {
 
         </div>
 
-        {/* Right Column: QR Code & Printable Flyer */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '14px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <QrCode size={18} color="#0d9488" /> QR Code Share
+        {/* Right Column: QR Code */}
+        <div className="portal-card qr-card">
+          <h2 className="portal-title" style={{ marginBottom: '8px' }}>
+            <QrCode size={18} color="#0d9488" /> Scan to Download
           </h2>
-          <p style={{ margin: '0 0 20px 0', fontSize: '0.78rem', color: '#64748b', lineHeight: '1.4' }}>
-            Candidates can scan this code using their phone camera to instantly load and download the student portal app.
-          </p>
-
-          {/* QR Image Container */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #cbd5e1',
-            borderRadius: '12px',
-            padding: '16px',
-            marginBottom: '20px',
-            display: 'inline-block'
-          }}>
+          
+          <div className="qr-image-wrapper">
             <img 
               src={qrCodeUrl} 
-              alt="Scan OMR Student Portal" 
-              style={{ width: '180px', height: '180px', display: 'block' }}
+              alt="Scan Student Portal QR" 
+              className="qr-image"
             />
           </div>
-
-          <div style={{
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: '8px',
-            padding: '12px',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '8px',
-            textAlign: 'left'
-          }}>
-            <Info size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <span style={{ fontSize: '0.76rem', color: '#1e3a8a', lineHeight: '1.4' }}>
-              <strong>Tip:</strong> Right-click the QR code image to copy, download, or insert it into student invitation newsletters.
-            </span>
-          </div>
+          
+          <span style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: '1.4' }}>
+            Scan with phone camera to open and download the student portal.
+          </span>
         </div>
 
       </div>

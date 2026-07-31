@@ -1956,8 +1956,9 @@ export default function App() {
         >
           <Menu size={24} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <img src="/logo.png" alt="APEX Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo_name.png" alt="Institute APEX" style={{ height: '20px', width: 'auto', objectFit: 'contain' }} />
         </div>
         <div style={{ width: '24px' }}></div>
       </header>
@@ -1967,7 +1968,8 @@ export default function App() {
         {/* Sidebar Panel */}
         <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
           <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px', background: '#fff', borderBottom: '1px solid var(--border-color)' }}>
-            <img src="/logo.png" alt="APEX Logo" style={{ height: '40px', width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo.png" alt="APEX Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+            <img src="/logo_name.png" alt="Institute APEX" style={{ height: '22px', width: 'auto', objectFit: 'contain' }} />
           </div>
 
           <nav className="sidebar-nav">

@@ -53,9 +53,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
   return (
     <div className="report-print-page">
       <header className="report-header">
-        <div className="logo-brand">
-          <span className="logo-icon">⚡</span>
-          <span className="logo-name">Appex</span>
+        <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <img src="/logo.png" alt="Logo" className="print-logo-img" />
+          <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" />
         </div>
         <div className="header-titles">
           <h1>EXAM PERFORMANCE REPORT</h1>
@@ -188,14 +188,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .report-print-page {
           width: 210mm;
           height: 297mm;
-          padding: 8mm 12mm;
-          margin: 10px auto;
+          padding: 6mm 10mm;
+          margin: 0 auto;
           box-sizing: border-box;
           background: #ffffff;
           position: relative;
           border: 1px solid #cbd5e1;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+          border-radius: 4px;
         }
 
         .report-header {
@@ -203,26 +202,26 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           justify-content: space-between;
           align-items: center;
           border-bottom: 2px solid #2b6cb0;
-          padding-bottom: 8px;
-          margin-bottom: 12px;
+          padding-bottom: 6px;
+          margin-bottom: 8px;
         }
 
         .logo-brand {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
         }
 
-        .logo-icon {
-          font-size: 24px;
-          color: #ecc94b;
+        .print-logo-img {
+          height: 36px;
+          width: auto;
+          object-fit: contain;
         }
 
-        .logo-name {
-          font-size: 22px;
-          font-weight: 800;
-          color: #2b6cb0;
-          letter-spacing: -0.5px;
+        .print-logo-name-img {
+          height: 22px;
+          width: auto;
+          object-fit: contain;
         }
 
         .header-titles {
@@ -230,45 +229,45 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .header-titles h1 {
-          font-size: 20px;
+          font-size: 16px;
           margin: 0;
           font-weight: 800;
           color: #1a202c;
           letter-spacing: 0.5px;
           word-break: break-word;
-          line-height: 1.25;
+          line-height: 1.2;
         }
 
         .header-titles .subtitle {
-          font-size: 10px;
+          font-size: 9px;
           color: #718096;
           text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-top: 2px;
+          letter-spacing: 0.8px;
+          margin-top: 1px;
         }
 
         .report-section {
-          margin-bottom: 12px;
+          margin-bottom: 8px;
         }
 
         .meta-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 8px 12px;
+          gap: 6px 10px;
           background: #f7fafc;
           border: 1px solid #e2e8f0;
           border-radius: 6px;
-          padding: 8px 12px;
+          padding: 6px 10px;
         }
 
         .meta-item {
           display: flex;
           flex-direction: column;
-          gap: 3px;
+          gap: 2px;
         }
 
         .meta-item .label {
-          font-size: 9px;
+          font-size: 8px;
           font-weight: bold;
           color: #718096;
           text-transform: uppercase;
@@ -276,7 +275,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .meta-item .val {
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 600;
           color: #2d3748;
           word-break: break-word;
@@ -286,13 +285,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .score-grid {
           display: grid;
           grid-template-columns: 1.2fr 1fr;
-          gap: 16px;
+          gap: 12px;
         }
 
         .score-card {
           border: 1.5px solid #2b6cb0;
-          border-radius: 8px;
-          padding: 10px 14px;
+          border-radius: 6px;
+          padding: 8px 12px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -301,7 +300,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .lbl {
-          font-size: 9px;
+          font-size: 8px;
           font-weight: bold;
           color: #2b6cb0;
           text-transform: uppercase;
@@ -309,35 +308,35 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .big-val {
-          font-size: 26px;
+          font-size: 22px;
           font-weight: 800;
           color: #2b6cb0;
-          margin: 4px 0;
+          margin: 2px 0;
         }
 
         .score-card .big-val .denom {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 500;
           opacity: 0.7;
         }
 
         .pct-bar-wrapper {
           width: 100%;
-          height: 6px;
+          height: 5px;
           background: #e2e8f0;
-          border-radius: 3px;
+          border-radius: 2px;
           overflow: hidden;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .pct-bar {
           height: 100%;
           background: #2b6cb0;
-          border-radius: 3px;
+          border-radius: 2px;
         }
 
         .pct-label {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
           color: #2d3748;
         }
@@ -345,15 +344,15 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .score-card-group {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 4px;
         }
 
         .sub-score-card {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 6px 12px;
-          border-radius: 6px;
+          padding: 4px 10px;
+          border-radius: 5px;
           border: 1px solid #e2e8f0;
           background: #ffffff;
         }
@@ -374,19 +373,19 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .sub-score-card .lbl {
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 700;
           color: #4a5568;
         }
 
         .sub-score-card .val {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 800;
           color: #2d3748;
         }
 
         .sub-score-card .pts {
-          font-size: 10px;
+          font-size: 9px;
           font-weight: bold;
           opacity: 0.8;
         }
@@ -396,24 +395,24 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .sub-score-card.left .pts { color: #4a5568; }
 
         .responses-section h2 {
-          font-size: 11px;
-          margin: 0 0 6px 0;
+          font-size: 10px;
+          margin: 0 0 4px 0;
           color: #1a202c;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           border-bottom: 1px solid #edf2f7;
-          padding-bottom: 3px;
+          padding-bottom: 2px;
         }
 
         .responses-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
-          gap: 6px;
+          gap: 4px;
         }
 
         .resp-col {
           border: 1px solid #edf2f7;
-          border-radius: 4px;
+          border-radius: 3px;
           overflow: hidden;
         }
 
@@ -422,8 +421,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           color: #ffffff;
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 2.5px 4px;
-          font-size: 8px;
+          padding: 2px 3px;
+          font-size: 7.5px;
           font-weight: bold;
           text-align: center;
         }
@@ -431,8 +430,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .resp-row {
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 1.5px 4px;
-          font-size: 9px;
+          padding: 1.2px 3px;
+          font-size: 8px;
           text-align: center;
           border-bottom: 0.5px solid #f7fafc;
         }
@@ -472,26 +471,26 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .report-footer {
-          margin-top: 12px;
+          margin-top: 8px;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 20px;
+          gap: 12px;
           text-align: center;
         }
 
         .sig-box {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 4px;
         }
 
         .sig-box .line {
           border-bottom: 1.2px dashed #cbd5e0;
-          height: 12px;
+          height: 10px;
         }
 
         .sig-box span {
-          font-size: 10px;
+          font-size: 8px;
           color: #718096;
           font-weight: 600;
           text-transform: uppercase;
@@ -512,9 +511,10 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
             background: #fff !important;
           }
           .report-print-page {
-            border: 1.5px solid #2b6cb0 !important;
-            border-radius: 4px !important;
+            border: none !important;
+            border-radius: 0 !important;
             margin: 0 !important;
+            padding: 5mm 10mm !important;
             width: 210mm !important;
             height: 297mm !important;
             position: relative !important;

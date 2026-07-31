@@ -413,7 +413,6 @@ export default function App() {
   };
 
   // Form States
-  const [csvText, setCsvText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -466,36 +465,65 @@ export default function App() {
     return cleaned;
   };
 
-  const handleImportCsv = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!csvText.trim()) return;
 
-    const lines = csvText.split('\n');
+
+  const handleImportCsvFile = async (csvContent: string) => {
+    if (!csvContent.trim()) return;
+
+    const lines = csvContent.split('\n');
     let imported = 0;
     let failed = 0;
 
-    for (let line of lines) {
-      line = line.trim();
+    let startIndex = 0;
+    if (lines.length > 0) {
+      const firstLine = lines[0].toLowerCase();
+      if (firstLine.includes('roll') || firstLine.includes('studentnum') || firstLine.includes('name') || firstLine.includes('class')) {
+        startIndex = 1;
+      }
+    }
+
+    for (let i = startIndex; i < lines.length; i++) {
+      let line = lines[i].trim();
       if (!line) continue;
-      const parts = line.split(',');
+      
+      const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
       if (parts.length >= 2) {
         const num = parts[0].trim();
         const name = parts[1].trim();
         const cls = (parts[2] || selectedClassName || 'NEET').trim();
-        const waNum = (parts[3] || '').trim();
+        const phone = (parts[3] || '').trim();
+        const waNum = (parts[4] || '').trim();
+        const email = (parts[5] || '').trim();
 
-        if (num.length === 10 && !isNaN(Number(num))) {
+        if (num.length >= 1 && !isNaN(Number(num))) {
           try {
-            const newStId = await db.students.add({ 
-              studentNum: num, 
-              name, 
-              className: cls,
-              whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined
-            });
-            const newSt = await db.students.get(newStId);
-            if (newSt) await syncStudentToCloud(newSt);
+            const exists = await db.students
+              .where('[studentNum+className]')
+              .equals([num, cls])
+              .first();
             
-            // Auto-register class if it doesn't exist
+            if (exists) {
+              await db.students.update(exists.id!, {
+                name,
+                phone: phone || undefined,
+                whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined,
+                email: email || undefined
+              });
+              const updatedSt = await db.students.get(exists.id!);
+              if (updatedSt) await syncStudentToCloud(updatedSt);
+            } else {
+              const newStId = await db.students.add({ 
+                studentNum: num, 
+                name, 
+                className: cls,
+                phone: phone || undefined,
+                whatsappNumber: waNum ? cleanWhatsAppNumber(waNum) : undefined,
+                email: email || undefined
+              });
+              const newSt = await db.students.get(newStId);
+              if (newSt) await syncStudentToCloud(newSt);
+            }
+            
             const classExists = await db.classes.where('name').equalsIgnoreCase(cls).first();
             if (!classExists) {
               const newClsId = await db.classes.add({
@@ -507,7 +535,8 @@ export default function App() {
               if (newCls) await syncClassToCloud(newCls);
             }
             imported++;
-          } catch {
+          } catch (err) {
+            console.error("Failed to import line:", line, err);
             failed++;
           }
         } else {
@@ -518,8 +547,7 @@ export default function App() {
       }
     }
     pullCloudUpdatesToIndexedDB();
-    setCsvText('');
-    alert(`CSV Import Complete: ${imported} students imported, ${failed} failed.`);
+    alert(`CSV Import Complete: ${imported} students imported/updated, ${failed} failed.`);
   };
 
   const handleAddClass = async (e?: React.FormEvent) => {
@@ -2391,11 +2419,22 @@ export default function App() {
 
                             <button
                               onClick={() => {
-                                const csvInput = prompt("Enter student list CSV:\nFormat: RollNo,Name,ClassName");
-                                if (csvInput) {
-                                  setCsvText(csvInput);
-                                  setTimeout(() => handleImportCsv(), 200);
-                                }
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = '.csv';
+                                input.onchange = (e: any) => {
+                                  const file = e.target.files[0];
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = async (evt: any) => {
+                                    const text = evt.target.result;
+                                    if (typeof text === 'string') {
+                                      handleImportCsvFile(text);
+                                    }
+                                  };
+                                  reader.readAsText(file);
+                                };
+                                input.click();
                               }}
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                               title="Import CSV"

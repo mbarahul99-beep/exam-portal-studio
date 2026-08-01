@@ -310,15 +310,21 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 5. Sync Questions
     if (data.questions && Array.isArray(data.questions)) {
+      // Find all unique examIds present in the incoming exams list
+      const serverExamIds = new Set<number>(data.exams ? data.exams.map((e: any) => Number(e.id)) : []);
+      
+      // Delete local questions for all exams that are synced from server to prevent duplicates
+      for (const examId of serverExamIds) {
+        await db.questions.where('examId').equals(examId).delete();
+      }
+
+      // Add all incoming questions from server to IndexedDB
       for (const q of data.questions) {
         try {
           const { id: mysqlId, ...qFields } = q;
-          const existing = await db.questions.get(q.id);
-          if (!existing) {
-            await db.questions.add({ id: q.id, ...qFields });
-          } else {
-            await db.questions.put({ id: q.id, ...qFields });
-          }
+          qFields.examId = Number(qFields.examId);
+          qFields.correctOptionIdx = Number(qFields.correctOptionIdx);
+          await db.questions.add({ id: q.id, ...qFields });
         } catch (err) {
           console.warn("Error syncing question item:", err);
         }

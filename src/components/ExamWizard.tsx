@@ -85,6 +85,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   const [questionsState, setQuestionsState] = useState<any[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library'>('manual');
+  const [showAddedQuestionsModal, setShowAddedQuestionsModal] = useState(false);
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
 
   // Library filters
@@ -557,11 +558,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           await db.questions.where('examId').equals(examId).delete();
         }
 
-        const questionRecords = questionsState.map((q, idx) => ({
+        const questionRecords = questionsState.map((q) => ({
           examId: finalExamId,
           sectionName: q.sectionName,
-          questionText: q.questionText || `Question ${idx + 1}`,
-          options: q.options.map((opt: string) => opt || `Option`),
+          questionText: q.questionText || '',
+          options: q.options.map((opt: string) => opt || ''),
           correctOptionIdx: q.correctOptionIdx,
           explanation: q.explanation || '',
           questionImage: q.questionImage || undefined
@@ -644,9 +645,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     }
   };
 
+  const isLibraryTab = questionSetupTab === 'library' && step === 4;
+
   return (
     <div className="wizard-overlay animate-fade-in">
-      <div className="wizard-container">
+      <div className="wizard-container" style={isLibraryTab ? { width: '1200px', maxWidth: '96vw', height: '90vh' } : {}}>
         
         {/* Wizard Header */}
         <header className="wizard-header">
@@ -1181,8 +1184,29 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       </button>
                     </div>
 
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Questions Added: <strong>{questionsState.filter(q => q.questionText.trim()).length} / {totalQuestions}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Questions Added: <strong>{questionsState.filter(q => q.questionText.trim()).length} / {totalQuestions}</strong>
+                      </div>
+                      {questionSetupTab === 'library' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddedQuestionsModal(true)}
+                          style={{
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--primary)',
+                            background: 'transparent',
+                            color: 'var(--primary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          View Added Questions
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1500,8 +1524,14 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                           </div>
                         ) : (
                           libraryQuestions.map((qVal, index) => {
-                            const isAddedToActive = questionsState[activeQuestionIndex]?.questionText === qVal.questionText;
+                            const isAddedToExam = questionsState.some(q => q.questionText.trim() === qVal.questionText.trim());
                             const parentBank = banksList.find(b => b.id === qVal.bankId);
+                            
+                            // Find the first empty question slot
+                            const firstEmptyIdx = questionsState.findIndex(q => !q.questionText.trim());
+                            const targetIdx = firstEmptyIdx !== -1 ? firstEmptyIdx : activeQuestionIndex;
+                            const targetQNum = questionsState[targetIdx]?.qNum || (targetIdx + 1);
+
                             return (
                               <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                                 <div style={{ flex: 1 }}>
@@ -1532,33 +1562,35 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      if (isAddedToExam) return;
                                       setQuestionsState(prev => {
                                         const updated = [...prev];
-                                        updated[activeQuestionIndex] = {
-                                          ...updated[activeQuestionIndex],
+                                        updated[targetIdx] = {
+                                          ...updated[targetIdx],
                                           questionText: qVal.questionText,
                                           options: [...qVal.options],
                                           correctOptionIdx: qVal.correctOptionIdx,
-                                          explanation: qVal.explanation || ''
+                                          explanation: qVal.explanation || '',
+                                          questionImage: qVal.questionImage || ''
                                         };
                                         return updated;
                                       });
                                     }}
-                                    disabled={isAddedToActive}
+                                    disabled={isAddedToExam}
                                     style={{
                                       padding: '6px 12px',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      background: isAddedToActive ? '#48bb78' : 'var(--primary)',
+                                      background: isAddedToExam ? '#48bb78' : 'var(--primary)',
                                       color: '#fff',
                                       fontWeight: 'bold',
                                       fontSize: '0.75rem',
-                                      cursor: isAddedToActive ? 'default' : 'pointer',
+                                      cursor: isAddedToExam ? 'default' : 'pointer',
                                       boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                                       width: '110px'
                                     }}
                                   >
-                                    {isAddedToActive ? 'Added ✔' : `Add to Q${questionsState[activeQuestionIndex]?.qNum || 1}`}
+                                    {isAddedToExam ? 'Added ✔' : firstEmptyIdx !== -1 ? `Add to Q${targetQNum}` : `Replace Q${activeQuestionIndex + 1}`}
                                   </button>
                                 </div>
                               </div>
@@ -1735,6 +1767,94 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         </footer>
 
       </div>
+
+      {showAddedQuestionsModal && (
+        <div className="wizard-overlay animate-fade-in" style={{ zIndex: 1100, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)' }}>
+          <div className="wizard-container" style={{ width: '800px', maxWidth: '92vw', height: '80vh', padding: '24px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Added Questions List</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddedQuestionsModal(false)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left', paddingRight: '4px' }}>
+              {(() => {
+                const addedList = questionsState.filter(q => q.questionText.trim() !== '');
+                if (addedList.length === 0) {
+                  return (
+                    <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      No questions have been added to the exam yet.
+                    </div>
+                  );
+                }
+
+                return addedList.map((q, idx) => (
+                  <div key={idx} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', background: '#f8fafc', position: 'relative' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '4px' }}>
+                      Q {q.qNum} ({q.sectionName})
+                    </div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '6px', color: 'var(--text-dark)' }}>
+                      <MathRenderer text={q.questionText} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {q.options.map((opt: string, oIdx: number) => (
+                        <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
+                          <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
+                          <MathRenderer text={opt} />
+                        </div>
+                      ))}
+                    </div>
+                    {q.explanation && (
+                      <div style={{ marginTop: '6px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '4px', fontStyle: 'italic' }}>
+                        Explanation: <MathRenderer text={q.explanation} />
+                      </div>
+                    )}
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuestionsState(prev => {
+                          const updated = [...prev];
+                          const idxInState = updated.findIndex(item => item.qNum === q.qNum);
+                          if (idxInState !== -1) {
+                            updated[idxInState] = {
+                              ...updated[idxInState],
+                              questionText: '',
+                              options: updated[idxInState].options.map(() => ''),
+                              correctOptionIdx: 0,
+                              explanation: '',
+                              questionImage: ''
+                            };
+                          }
+                          return updated;
+                        });
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '12px',
+                        right: '12px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        color: '#e53e3e',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

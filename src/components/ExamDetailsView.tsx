@@ -119,10 +119,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         result.push({
           examId: targetExam.id!,
           sectionName: sec.sectionName,
-          questionText: `Question ${qNum}: Solve the given question.`,
-          options: ['Option A description', 'Option B description', 'Option C description', 'Option D description'],
+          questionText: '',
+          options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
           correctOptionIdx: correctIdx >= 0 ? correctIdx : 0,
-          explanation: `Explanation for Q${qNum}`
+          explanation: ''
         });
       }
     });
@@ -667,48 +667,36 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   };
 
   const handleAddFromLibrary = async (libQ: any) => {
-    const newQ: any = {
-      examId: exam.id!,
-      sectionName: selectedSectionName,
-      questionText: libQ.questionText,
-      options: [...libQ.options],
-      correctOptionIdx: libQ.correctOptionIdx,
-      explanation: libQ.explanation || '',
-      questionImage: libQ.questionImage || undefined
-    };
+    const isAlreadyAdded = questions.some(q => q.questionText.trim() === libQ.questionText.trim());
+    if (isAlreadyAdded) {
+      alert("This question is already added to the exam.");
+      return;
+    }
 
     const sectionQs = questions.filter(q => q.sectionName === selectedSectionName);
-    
-    const sections = exam.sections && exam.sections.length > 0 
-      ? exam.sections 
-      : [{ 
-          subjectName: 'General', 
-          sectionName: 'Section A', 
-          qStart: 1, 
-          qCount: exam.numQuestions || 10,
-          questionType: '4 option' as const,
-          correctMarks: exam.correctMarks ?? 4,
-          incorrectMarks: exam.incorrectMarks ?? -1,
-          allowPartialMarks: false,
-          allowOptionalAttempts: false
-        }];
+    const firstEmptyIndex = sectionQs.findIndex(q => !q.questionText.trim() || q.questionText.startsWith('Question '));
 
-    const otherQsBefore = questions.filter(q => {
-      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
-      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
-      return secIdx < selSecIdx;
-    });
+    if (firstEmptyIndex === -1) {
+      alert("All question slots in this section are already filled. Delete a question first or increase the section question count.");
+      return;
+    }
 
-    const otherQsAfter = questions.filter(q => {
-      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
-      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
-      return secIdx > selSecIdx;
-    });
+    const targetQ = sectionQs[firstEmptyIndex];
+    // Find index of this question in the main questions array
+    const globalIdx = questions.findIndex(q => q.id === targetQ.id || (q.sectionName === targetQ.sectionName && q.questionText === targetQ.questionText));
 
-    const updatedSectionQs = [...sectionQs, newQ];
-    const finalQuestionsList = [...otherQsBefore, ...updatedSectionQs, ...otherQsAfter];
+    if (globalIdx !== -1) {
+      questions[globalIdx] = {
+        ...questions[globalIdx],
+        questionText: libQ.questionText,
+        options: [...libQ.options],
+        correctOptionIdx: libQ.correctOptionIdx,
+        explanation: libQ.explanation || '',
+        questionImage: libQ.questionImage || undefined
+      };
+    }
 
-    await saveQuestionsToDbAndSync(finalQuestionsList);
+    await saveQuestionsToDbAndSync(questions);
   };
 
   const handleDeleteQuestion = async (qId: number) => {
@@ -2113,7 +2101,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 </div>
               ) : (
                 libraryQuestions.map((qVal, index) => {
-                  const isAddedToSection = questions.some(q => q.sectionName === selectedSectionName && q.questionText === qVal.questionText);
+                  const isAddedToExam = questions.some(q => q.questionText.trim() === qVal.questionText.trim());
                   const parentBank = banksList.find(b => b.id === qVal.bankId);
                   
                   return (
@@ -2147,21 +2135,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAddFromLibrary(qVal)}
-                          disabled={isAddedToSection}
+                          disabled={isAddedToExam}
                           style={{
                             padding: '8px 16px',
                             borderRadius: '6px',
                             border: 'none',
-                            background: isAddedToSection ? '#48bb78' : 'var(--primary)',
+                            background: isAddedToExam ? '#48bb78' : 'var(--primary)',
                             color: '#fff',
                             fontWeight: 'bold',
                             fontSize: '0.75rem',
-                            cursor: isAddedToSection ? 'default' : 'pointer',
+                            cursor: isAddedToExam ? 'default' : 'pointer',
                             boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                             width: '110px'
                           }}
                         >
-                          {isAddedToSection ? 'Added ✔' : 'Add'}
+                          {isAddedToExam ? 'Added ✔' : 'Add'}
                         </button>
                       </div>
                     </div>

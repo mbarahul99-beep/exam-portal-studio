@@ -69,7 +69,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [editableKeys, setEditableKeys] = useState<Record<string, Record<number, string>>>(() => {
     const initialKeys: Record<string, Record<number, string>> = {};
     const setsCount = exam.examSetsCount || 1;
-    const sets = Array.from({ length: Math.max(setsCount, 4) }).map((_, i) => String.fromCharCode(65 + i));
+    const sets = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
     sets.forEach(setName => {
       initialKeys[setName] = { ...(exam.answerKeys?.[setName] || (setName === 'A' ? exam.answerKey : {}) || {}) };
     });
@@ -564,15 +564,32 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
     setQuestions(reloaded);
 
-    // 3. Update exam answerKey and numQuestions based on question changes
+    // 3. Update exam answerKey, answerKeys, and numQuestions based on question changes
     const newAnswerKey: Record<number, string> = {};
     reloaded.forEach((q, index) => {
       newAnswerKey[index + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
     });
 
+    const updatedAnswerKeys: Record<string, Record<number, string>> = {};
+    const setsCount = exam.examSetsCount || 1;
+    const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+    setNames.forEach(setName => {
+      const existingSetKey = exam.answerKeys?.[setName] || (setName === 'A' ? exam.answerKey : {}) || {};
+      const newSetKey: Record<number, string> = {};
+      for (let qNum = 1; qNum <= reloaded.length; qNum++) {
+        if (setName === 'A') {
+          newSetKey[qNum] = newAnswerKey[qNum] || 'A';
+        } else {
+          newSetKey[qNum] = existingSetKey[qNum] || 'A';
+        }
+      }
+      updatedAnswerKeys[setName] = newSetKey;
+    });
+
     await db.exams.update(exam.id, {
       numQuestions: reloaded.length,
-      answerKey: newAnswerKey
+      answerKey: newAnswerKey,
+      answerKeys: updatedAnswerKeys
     });
     
     // 4. POST to server MySQL DB
@@ -1363,39 +1380,43 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   </button>
                 ))}
 
-                <div style={{ borderTop: '1px solid #f1f5f9', margin: '6px 0' }} />
-                <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>EDIT SET KEY:</div>
-                {Array.from({ length: Math.max(exam.examSetsCount || 1, 4) }).map((_, idx) => {
-                  const setName = String.fromCharCode(65 + idx);
-                  const isCurrent = activeAnswerKeySet === setName;
-                  return (
-                    <button
-                      key={`switch-set-${setName}`}
-                      onClick={() => {
-                        setActiveAnswerKeySet(setName);
-                        const menu = document.getElementById('ak-quick-menu');
-                        if (menu) menu.style.display = 'none';
-                      }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '8px 16px',
-                        background: isCurrent ? '#f1f5f9' : 'transparent',
-                        border: 'none',
-                        fontSize: '0.88rem',
-                        fontWeight: isCurrent ? 800 : 600,
-                        color: isCurrent ? '#16a34a' : '#1e293b',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <span>Set {setName} Key</span>
-                      {isCurrent && <span style={{ fontSize: '0.7rem' }}>✏️ Active</span>}
-                    </button>
-                  );
-                })}
+                {exam.examSetsCount && exam.examSetsCount > 1 && (
+                  <>
+                    <div style={{ borderTop: '1px solid #f1f5f9', margin: '6px 0' }} />
+                    <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>EDIT SET KEY:</div>
+                    {Array.from({ length: exam.examSetsCount }).map((_, idx) => {
+                      const setName = String.fromCharCode(65 + idx);
+                      const isCurrent = activeAnswerKeySet === setName;
+                      return (
+                        <button
+                          key={`switch-set-${setName}`}
+                          onClick={() => {
+                            setActiveAnswerKeySet(setName);
+                            const menu = document.getElementById('ak-quick-menu');
+                            if (menu) menu.style.display = 'none';
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 16px',
+                            background: isCurrent ? '#f1f5f9' : 'transparent',
+                            border: 'none',
+                            fontSize: '0.88rem',
+                            fontWeight: isCurrent ? 800 : 600,
+                            color: isCurrent ? '#16a34a' : '#1e293b',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <span>Set {setName} Key</span>
+                          {isCurrent && <span style={{ fontSize: '0.7rem' }}>✏️ Active</span>}
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
           </div>

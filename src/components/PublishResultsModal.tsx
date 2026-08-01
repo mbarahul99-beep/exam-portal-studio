@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Globe, Send, CheckCircle2, Lock, ShieldCheck, RefreshCw } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
+import { syncExamToCloud } from '../utils/cloudSync';
 
 interface PublishResultsModalProps {
   exam: Exam;
@@ -35,11 +36,7 @@ export const PublishResultsModal: React.FC<PublishResultsModalProps> = ({
 
       // 2. Sync to Hostinger MySQL
       try {
-        await fetch('/api/exams', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedData)
-        });
+        await syncExamToCloud(updatedData);
       } catch (err) {
         console.warn("MySQL sync warning on publish results:", err);
       }

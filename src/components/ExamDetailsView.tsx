@@ -35,7 +35,7 @@ import { ScanImagesView } from './ScanImagesView';
 import { ResponseAnalysisView } from './ResponseAnalysisView';
 import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
-import { deleteExamFromCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+import { deleteExamFromCloud, pullCloudUpdatesToIndexedDB, syncExamToCloud } from '../utils/cloudSync';
 import { MathRenderer } from './MathRenderer';
 
 interface ExamDetailsViewProps {
@@ -330,11 +330,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       const updatedExam = await db.exams.get(exam.id!);
       if (updatedExam) {
         try {
-          await fetch('/api/exams', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedExam)
-          });
+          await syncExamToCloud(updatedExam);
         } catch (err) {
           console.warn("MySQL exam sync warning:", err);
         }
@@ -606,11 +602,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     try {
       const freshExam = await db.exams.get(exam.id);
       if (freshExam) {
-        await fetch('/api/exams', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(freshExam)
-        });
+        await syncExamToCloud(freshExam);
       }
     } catch (err) {
       console.warn("MySQL exam sync warning:", err);

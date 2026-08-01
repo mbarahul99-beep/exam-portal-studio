@@ -6,11 +6,32 @@ import { db, type Student, type Exam, type ExamSubmission, type PendingRegistrat
 
 export async function syncExamToCloud(exam: Exam) {
   try {
-    await fetch('/api/exams', {
+    const res = await fetch('/api/exams', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(exam)
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.id && Number(data.id) !== Number(exam.id)) {
+        const oldId = exam.id!;
+        const newId = Number(data.id);
+        
+        await db.transaction('rw', [db.exams, db.questions], async () => {
+          const examObj = await db.exams.get(oldId);
+          if (examObj) {
+            await db.exams.delete(oldId);
+            await db.exams.add({ ...examObj, id: newId });
+          }
+          
+          const qs = await db.questions.where('examId').equals(oldId).toArray();
+          for (const q of qs) {
+            await db.questions.delete(q.id!);
+            await db.questions.add({ ...q, examId: newId });
+          }
+        });
+      }
+    }
   } catch (err) {
     console.warn("Cloud sync exam failed:", err);
   }
@@ -243,24 +264,44 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 3. Sync Exams (Add/Update & Purge Deleted)
     if (data.exams && Array.isArray(data.exams)) {
+      const serverExamIds = new Set(data.exams.map((e: any) => Number(e.id)));
       const serverExamTitles = new Set(data.exams.map((e: any) => e.title));
       const localExams = await db.exams.toArray();
       for (const le of localExams) {
-        if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1')) {
+        if (le.id && !serverExamIds.has(le.id)) {
+          await db.exams.delete(le.id);
+        } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1')) {
           await db.exams.delete(le.id!);
         }
       }
       for (const ex of data.exams) {
         try {
-          const { id: mysqlId, ...examFields } = ex;
-          let existing = await db.exams.where('title').equalsIgnoreCase(ex.title).first();
-          if (!existing && ex.id) {
-            existing = await db.exams.get(ex.id);
+          const examFields = { ...ex };
+          if (examFields.answerKey && typeof examFields.answerKey === 'string') {
+            examFields.answerKey = JSON.parse(examFields.answerKey);
           }
+          if (examFields.answerKeys && typeof examFields.answerKeys === 'string') {
+            examFields.answerKeys = JSON.parse(examFields.answerKeys);
+          }
+          if (examFields.sections && typeof examFields.sections === 'string') {
+            examFields.sections = JSON.parse(examFields.sections);
+          }
+          if (examFields.subjects && typeof examFields.subjects === 'string') {
+            examFields.subjects = JSON.parse(examFields.subjects);
+          }
+          if (examFields.sectionsMarking && typeof examFields.sectionsMarking === 'string') {
+            examFields.sectionsMarking = JSON.parse(examFields.sectionsMarking);
+          }
+          examFields.isResultsPublished = Boolean(examFields.isResultsPublished);
+
+          const existing = await db.exams.get(Number(ex.id));
           if (!existing) {
-            await db.exams.add(examFields);
+            await db.exams.add({
+              ...examFields,
+              id: Number(ex.id)
+            });
           } else {
-            await db.exams.update(existing.id!, examFields);
+            await db.exams.update(Number(ex.id), examFields);
           }
         } catch (err) {
           console.warn("Error syncing exam item:", err);

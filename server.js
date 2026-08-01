@@ -240,6 +240,47 @@ const initDatabase = async () => {
           AND name NOT IN (SELECT DISTINCT className FROM students);
       `);
       console.log('✅ Legacy demo data automatically purged from Hostinger MySQL!');
+      
+      // Self-healing database optimization & deduplication check
+      try {
+        console.log('🔄 Optimizing and deduplicating exams & questions database tables...');
+        
+        // 1. Delete duplicate exams keeping only the latest exam ID for each title + class
+        await conn.query(`
+          DELETE e1 FROM exams e1
+          INNER JOIN exams e2 
+          ON e1.title = e2.title AND e1.className = e2.className AND e1.id < e2.id
+        `);
+        
+        // 2. Clean up orphaned questions and submissions
+        await conn.query(`
+          DELETE FROM questions 
+          WHERE examId NOT IN (SELECT id FROM exams)
+        `);
+        await conn.query(`
+          DELETE FROM submissions 
+          WHERE examId NOT IN (SELECT id FROM exams)
+        `);
+        
+        // 3. Deduplicate questions table by removing duplicate questions linked to the same exam
+        await conn.query(`
+          DELETE q1 FROM questions q1
+          INNER JOIN questions q2
+          ON q1.examId = q2.examId AND q1.questionText = q2.questionText AND q1.id > q2.id
+        `);
+        
+        // 4. Reset bloated numQuestions counts of exams to match the actual questions count
+        const [examsList] = await conn.query('SELECT id FROM exams');
+        for (const exRow of examsList) {
+          const [qCountRow] = await conn.query('SELECT COUNT(*) as count FROM questions WHERE examId = ?', [exRow.id]);
+          const actualCount = qCountRow[0].count;
+          await conn.query('UPDATE exams SET numQuestions = ? WHERE id = ?', [actualCount, exRow.id]);
+        }
+        
+        console.log('✅ MySQL tables optimized, deduplicated, and synced successfully!');
+      } catch (err) {
+        console.warn('⚠️ Database self-healing optimization warning:', err.message);
+      }
     } catch (e) {
       console.warn('Demo data cleanup notice:', e.message);
     }

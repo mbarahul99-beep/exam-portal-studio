@@ -480,8 +480,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
               <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
                 Sign in securely to your Teacher workspace using your registered Google Workspace account.
               </p>
-              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', minHeight: '40px' }}>
-                <div id="google-teacher-signin-btn"></div>
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', height: '40px', overflow: 'hidden' }}>
+                <div id="google-teacher-signin-btn" style={{ width: '320px', height: '40px', overflow: 'hidden', flexShrink: 0 }}></div>
               </div>
             </div>
 
@@ -490,8 +490,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
               <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
                 Sign in securely to the Master Admin control center using your authorized Google account.
               </p>
-              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', minHeight: '40px' }}>
-                <div id="google-admin-signin-btn"></div>
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', height: '40px', overflow: 'hidden' }}>
+                <div id="google-admin-signin-btn" style={{ width: '320px', height: '40px', overflow: 'hidden', flexShrink: 0 }}></div>
               </div>
             </div>
           </>

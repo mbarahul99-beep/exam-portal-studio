@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Key, Check } from 'lucide-react';
+import { X, User, Check } from 'lucide-react';
 import { db, type Teacher } from '../db';
 
 interface TeacherProfileModalProps {
@@ -12,9 +12,6 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ teache
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -39,30 +36,12 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ teache
       return;
     }
 
-    let updatedPassword = teacher.password;
-    if (newPassword.trim()) {
-      if (currentPassword !== teacher.password) {
-        alert("Current password verification failed. Please enter your correct current password.");
-        return;
-      }
-      if (newPassword.trim().length < 4) {
-        alert("New password must be at least 4 characters.");
-        return;
-      }
-      if (newPassword !== confirmPassword) {
-        alert("New password and confirm password do not match.");
-        return;
-      }
-      updatedPassword = newPassword.trim();
-    }
-
     setIsSubmitting(true);
     try {
       await db.teachers.update(teacherId, {
         name: name.trim(),
         phone: phone.trim() || undefined,
-        email: email.trim() || undefined,
-        password: updatedPassword
+        email: email.trim() || undefined
       });
 
       // Sync to Hostinger MySQL
@@ -73,7 +52,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ teache
           body: JSON.stringify({
             id: teacherId,
             userId: teacher.userId,
-            password: updatedPassword,
+            password: teacher.password,
             name: name.trim(),
             phone: phone.trim(),
             email: email.trim()
@@ -161,46 +140,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({ teache
             />
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
 
-          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Key size={16} color="#64748b" /> Change Password (Optional)
-          </h4>
-
-          <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>CURRENT PASSWORD</label>
-            <input 
-              type="password" 
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="Required to change password"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>NEW PASSWORD</label>
-              <input 
-                type="password" 
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>CONFIRM NEW PASSWORD</label>
-              <input 
-                type="password" 
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm password"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <button type="button" onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', background: '#e2e8f0', color: '#475569', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>

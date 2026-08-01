@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Copy, Check, Share2, GraduationCap, ArrowLeft, Smartphone, ExternalLink, Info } from 'lucide-react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -8,14 +8,8 @@ interface InviteStudentModalProps {
 }
 
 export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose }) => {
-  const classesList = useLiveQuery(async () => {
-    try {
-      const all = await db.classes.toArray();
-      return all || [];
-    } catch {
-      return [];
-    }
-  }, []) || [];
+  // Reactive query of classes from IndexedDB database without static dependency arrays
+  const classesList = useLiveQuery(() => db.classes.toArray()) || [];
 
   const [selectedClass, setSelectedClass] = useState<string>('NEET-2026');
   const [copiedReg, setCopiedReg] = useState(false);
@@ -63,18 +57,25 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
+  // Pre-select first class when loaded
+  useEffect(() => {
+    if (classesList.length > 0 && !selectedClass) {
+      setSelectedClass(classesList[0].name);
+    }
+  }, [classesList, selectedClass]);
+
   return (
     <div className="invite-modal-overlay">
       {/* Responsive Scoped Styles */}
       <style dangerouslySetInnerHTML={{__html: `
         .invite-modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          zIndex: 99999;
-          background: #f8fafc;
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          z-index: 999999 !important;
+          background: #f8fafc !important;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
@@ -95,7 +96,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
           width: 100%;
           max-width: 900px;
           margin: 0 auto;
-          padding: 20px;
+          padding: 20px 20px 80px 20px;
           box-sizing: border-box;
         }
         .invite-grid {
@@ -192,7 +193,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
             gap: 16px;
           }
           .invite-container {
-            padding: 10px;
+            padding: 10px 10px 80px 10px;
           }
           .invite-card {
             padding: 16px;
@@ -366,11 +367,6 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
               <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '10px', fontWeight: 600 }}>
                 Scan to Log In
               </span>
-            </div>
-
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px', fontSize: '0.75rem', color: '#1e3a8a', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-              <Info size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
-              <span>Enrolled candidates can log in directly with their roll numbers to see results.</span>
             </div>
           </div>
 

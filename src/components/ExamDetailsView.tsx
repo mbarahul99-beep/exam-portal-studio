@@ -155,16 +155,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         const expectedCount = exam.sections && exam.sections.length > 0 
           ? exam.sections.reduce((sum, sec) => sum + Number(sec.qCount), 0) 
           : (exam.numQuestions || 0);
-        
-        // Detect if questions are missing, duplicated, or contain legacy dummy text placeholders
-        const hasPlaceholder = dbQs.some(isPlaceholderQuestion);
 
-        if (dbQs.length === 0 || dbQs.length !== expectedCount || hasPlaceholder) {
-          console.log(`Self-healing questions for exam ${exam.id}: loaded ${dbQs.length}, expected ${expectedCount}. Rebuilding...`);
+        if (dbQs.length === 0 || dbQs.length !== expectedCount) {
           const defaultQs = generateDefaultQuestions(exam);
-          
           if (dbQs.length > 0) {
-            // Preserve user-added questions by index positioning
             defaultQs.forEach((dq, idx) => {
               const existingQ = dbQs[idx];
               if (existingQ && !isPlaceholderQuestion(existingQ)) {
@@ -176,27 +170,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               }
             });
           }
-
-          // Wipes any duplicate or corrupted local questions
-          await db.questions.where('examId').equals(exam.id).delete();
-          await db.questions.bulkAdd(defaultQs);
-          
-          // Reload the cleaned questions list
-          dbQs = await db.questions.where('examId').equals(exam.id).toArray();
-          
-          // Re-sync cleaned questions list to cloud database
-          try {
-            await fetch('/api/questions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ examId: exam.id, questions: dbQs })
-            });
-          } catch (err) {
-            console.warn("MySQL questions sync warning during self-healing:", err);
-          }
+          setQuestions(defaultQs);
+        } else {
+          const sanitizedQs = dbQs.map(q => {
+            if (isPlaceholderQuestion(q)) {
+              return {
+                ...q,
+                questionText: '',
+                options: q.options ? q.options.map(() => '') : ['', '', '', ''],
+                explanation: ''
+              };
+            }
+            return q;
+          });
+          setQuestions(sanitizedQs);
         }
-
-        setQuestions(dbQs);
 
         // 2. Fetch list of question banks
         const banks = await db.questionBanks.toArray();
@@ -632,69 +620,36 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const saveQuestionsToDbAndSync = async (updatedQuestions: any[]) => {
     if (!exam.id) return;
     
-    // 1. Delete old questions for this exam in IndexedDB
-    await db.questions.where('examId').equals(exam.id).delete();
-    
-    // 2. Add the clean list to IndexedDB
+    // Ensure all question records have clean data and match target schema
     const cleanQuestions = updatedQuestions.map(q => ({
       examId: exam.id!,
       sectionName: q.sectionName,
-      questionText: q.questionText,
-      options: [...q.options],
-      correctOptionIdx: q.correctOptionIdx,
-      explanation: q.explanation || '',
-      questionImage: q.questionImage
+      questionText: (q.questionText || '').trim(),
+      options: q.options ? q.options.map((o: string) => (o || '').trim()) : ['', '', '', ''],
+      correctOptionIdx: Number(q.correctOptionIdx || 0),
+      explanation: (q.explanation || '').trim(),
+      questionImage: q.questionImage || undefined
     }));
+
+    // 1. Delete and insert into IndexedDB to get fresh IDs
+    await db.questions.where('examId').equals(exam.id).delete();
     await db.questions.bulkAdd(cleanQuestions);
     
-    // 3. Reload from IndexedDB to get the generated IDs
+    // 2. Reload to set state
     const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
     setQuestions(reloaded);
-    
-    // 4. Recalculate exam sections, numQuestions, and answerKey!
-    let currentQNum = 1;
+
+    // 3. Update exam answerKey based on question changes
     const newAnswerKey: Record<number, string> = {};
-    const sections = exam.sections && exam.sections.length > 0 
-      ? exam.sections 
-      : [{ 
-          subjectName: 'General', 
-          sectionName: 'Section A', 
-          qStart: 1, 
-          qCount: exam.numQuestions || 10,
-          questionType: '4 option' as const,
-          correctMarks: exam.correctMarks ?? 4,
-          incorrectMarks: exam.incorrectMarks ?? -1,
-          allowPartialMarks: false,
-          allowOptionalAttempts: false
-        }];
-    
-    const updatedSections = sections.map(sec => {
-      const secQs = reloaded.filter(q => q.sectionName === sec.sectionName);
-      const qStart = currentQNum;
-      const qCount = secQs.length;
-      
-      secQs.forEach((q, index) => {
-        newAnswerKey[qStart + index] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
-      });
-      
-      currentQNum += qCount;
-      return {
-        ...sec,
-        qStart,
-        qCount
-      };
+    reloaded.forEach((q, index) => {
+      newAnswerKey[index + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
     });
-    
-    const totalNumQuestions = reloaded.length;
-    
-    // Update IndexedDB exam
+
     await db.exams.update(exam.id, {
-      numQuestions: totalNumQuestions,
-      answerKey: newAnswerKey,
-      sections: updatedSections
+      answerKey: newAnswerKey
     });
     
-    // 5. POST to server API to sync questions
+    // 4. POST to server MySQL DB
     try {
       await fetch('/api/questions', {
         method: 'POST',
@@ -703,19 +658,6 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       });
     } catch (err) {
       console.warn("MySQL questions sync warning:", err);
-    }
-    
-    try {
-      const freshExam = await db.exams.get(exam.id);
-      if (freshExam) {
-        await fetch('/api/exams', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(freshExam)
-        });
-      }
-    } catch (err) {
-      console.warn("MySQL exam sync warning:", err);
     }
   };
 
@@ -727,15 +669,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     }
 
     const sectionQs = questions.filter(q => q.sectionName === selectedSectionName);
-    const firstEmptyIndex = sectionQs.findIndex(q => !q.questionText.trim() || q.questionText.startsWith('Question '));
+    const firstEmptyIndex = sectionQs.findIndex(q => !q.questionText.trim());
 
     if (firstEmptyIndex === -1) {
-      alert("All question slots in this section are already filled. Delete a question first or increase the section question count.");
+      alert("All question slots in this section are already filled. Clear an existing slot first.");
       return;
     }
 
     const targetQ = sectionQs[firstEmptyIndex];
-    // Find index of this question in the main questions array
     const globalIdx = questions.findIndex(q => q.id === targetQ.id || (q.sectionName === targetQ.sectionName && q.questionText === targetQ.questionText));
 
     if (globalIdx !== -1) {
@@ -753,8 +694,20 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   };
 
   const handleDeleteQuestion = async (qId: number) => {
-    if (!confirm("Are you sure you want to delete this question? This will update the layout and marks calculation.")) return;
-    const updated = questions.filter(q => q.id !== qId);
+    if (!confirm("Are you sure you want to clear this question's contents?")) return;
+    const updated = questions.map(q => {
+      if (q.id === qId) {
+        return {
+          ...q,
+          questionText: '',
+          options: q.options.map(() => ''),
+          correctOptionIdx: 0,
+          explanation: '',
+          questionImage: undefined
+        };
+      }
+      return q;
+    });
     await saveQuestionsToDbAndSync(updated);
   };
 
@@ -765,39 +718,33 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
     const targetIndex = direction === 'up' ? qIndexInSection - 1 : qIndexInSection + 1;
     
-    // Swap
-    const temp = sectionQs[qIndexInSection];
-    sectionQs[qIndexInSection] = sectionQs[targetIndex];
-    sectionQs[targetIndex] = temp;
+    const currentQ = sectionQs[qIndexInSection];
+    const targetQ = sectionQs[targetIndex];
 
-    const sections = exam.sections && exam.sections.length > 0 
-      ? exam.sections 
-      : [{ 
-          subjectName: 'General', 
-          sectionName: 'Section A', 
-          qStart: 1, 
-          qCount: exam.numQuestions || 10,
-          questionType: '4 option' as const,
-          correctMarks: exam.correctMarks ?? 4,
-          incorrectMarks: exam.incorrectMarks ?? -1,
-          allowPartialMarks: false,
-          allowOptionalAttempts: false
-        }];
+    const currentGlobalIdx = questions.findIndex(q => q.id === currentQ.id);
+    const targetGlobalIdx = questions.findIndex(q => q.id === targetQ.id);
 
-    const otherQsBefore = questions.filter(q => {
-      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
-      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
-      return secIdx < selSecIdx;
-    });
+    if (currentGlobalIdx !== -1 && targetGlobalIdx !== -1) {
+      const tempText = questions[currentGlobalIdx].questionText;
+      const tempOptions = [...questions[currentGlobalIdx].options];
+      const tempCorrect = questions[currentGlobalIdx].correctOptionIdx;
+      const tempExpl = questions[currentGlobalIdx].explanation;
+      const tempImg = questions[currentGlobalIdx].questionImage;
 
-    const otherQsAfter = questions.filter(q => {
-      const secIdx = sections.findIndex(s => s.sectionName === q.sectionName);
-      const selSecIdx = sections.findIndex(s => s.sectionName === selectedSectionName);
-      return secIdx > selSecIdx;
-    });
+      questions[currentGlobalIdx].questionText = questions[targetGlobalIdx].questionText;
+      questions[currentGlobalIdx].options = [...questions[targetGlobalIdx].options];
+      questions[currentGlobalIdx].correctOptionIdx = questions[targetGlobalIdx].correctOptionIdx;
+      questions[currentGlobalIdx].explanation = questions[targetGlobalIdx].explanation;
+      questions[currentGlobalIdx].questionImage = questions[targetGlobalIdx].questionImage;
 
-    const finalQuestionsList = [...otherQsBefore, ...sectionQs, ...otherQsAfter];
-    await saveQuestionsToDbAndSync(finalQuestionsList);
+      questions[targetGlobalIdx].questionText = tempText;
+      questions[targetGlobalIdx].options = tempOptions;
+      questions[targetGlobalIdx].correctOptionIdx = tempCorrect;
+      questions[targetGlobalIdx].explanation = tempExpl;
+      questions[targetGlobalIdx].questionImage = tempImg;
+    }
+
+    await saveQuestionsToDbAndSync(questions);
   };
 
   const startEditingQuestion = (q: any) => {

@@ -26,8 +26,11 @@ export async function syncExamToCloud(exam: Exam) {
           
           const qs = await db.questions.where('examId').equals(oldId).toArray();
           for (const q of qs) {
-            await db.questions.delete(q.id!);
-            await db.questions.add({ ...q, examId: newId });
+            if (q.id) {
+              await db.questions.delete(q.id);
+              const { id, ...qFields } = q;
+              await db.questions.add({ ...qFields, examId: newId });
+            }
           }
         });
       }
@@ -200,7 +203,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const localStudents = await db.students.toArray();
       for (const ls of localStudents) {
         if (ls.id && !serverStudentIds.has(ls.id) && !ls.email?.includes('@appexjind.in')) {
-          await db.students.delete(ls.id!);
+          await db.students.delete(ls.id);
         }
       }
 
@@ -217,8 +220,8 @@ export async function pullCloudUpdatesToIndexedDB() {
               .where('[studentNum+className]')
               .equals([st.studentNum, st.className])
               .first();
-            if (duplicate) {
-              await db.students.delete(duplicate.id!);
+            if (duplicate && duplicate.id) {
+              await db.students.delete(duplicate.id);
             }
             await db.students.add({ id: st.id, ...studentFields });
           } else {
@@ -243,8 +246,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverClassNames = new Set(data.classes.map((c: any) => c.name));
       const localClasses = await db.classes.toArray();
       for (const lc of localClasses) {
-        if (lc.name && !serverClassNames.has(lc.name)) {
-          await db.classes.delete(lc.id!);
+        if (lc.name && !serverClassNames.has(lc.name) && lc.id) {
+          await db.classes.delete(lc.id);
         }
       }
 
@@ -286,8 +289,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const le of localExams) {
         if (le.id && !serverExamIds.has(le.id)) {
           await db.exams.delete(le.id);
-        } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1')) {
-          await db.exams.delete(le.id!);
+        } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1') && le.id) {
+          await db.exams.delete(le.id);
         }
       }
       for (const ex of data.exams) {
@@ -349,11 +352,13 @@ export async function pullCloudUpdatesToIndexedDB() {
             await db.submissions.add({ id: sub.id, ...subFields });
           } else {
             // Update the primary submission record & remove any duplicate local rows
-            if (!isRecordEqual(matchingSubs[0], subFields)) {
-              await db.submissions.update(matchingSubs[0].id!, subFields);
+            if (matchingSubs[0].id && !isRecordEqual(matchingSubs[0], subFields)) {
+              await db.submissions.update(matchingSubs[0].id, subFields);
             }
             for (let i = 1; i < matchingSubs.length; i++) {
-              await db.submissions.delete(matchingSubs[i].id!);
+              if (matchingSubs[i].id) {
+                await db.submissions.delete(matchingSubs[i].id);
+              }
             }
           }
         } catch (err) {
@@ -368,8 +373,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       const activeExamIds = new Set(activeExams.map(e => e.id).filter(Boolean));
       const allSubmissions = await db.submissions.toArray();
       for (const sub of allSubmissions) {
-        if (!activeExamIds.has(sub.examId)) {
-          await db.submissions.delete(sub.id!);
+        if (!activeExamIds.has(sub.examId) && sub.id) {
+          await db.submissions.delete(sub.id);
           try {
             await fetch(`/api/submissions/${sub.id}`, { method: 'DELETE' });
           } catch {}
@@ -412,8 +417,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverTeacherUserIds = new Set(data.teachers.map((t: any) => t.userId));
       const localTeachers = await db.teachers.toArray();
       for (const lt of localTeachers) {
-        if (lt.userId && !serverTeacherUserIds.has(lt.userId)) {
-          await db.teachers.delete(lt.id!);
+        if (lt.userId && !serverTeacherUserIds.has(lt.userId) && lt.id) {
+          await db.teachers.delete(lt.id);
         }
       }
 
@@ -464,7 +469,9 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (!existing) {
             await db.settings.add({ key, value: val });
           } else {
-            await db.settings.update(existing.id!, { value: val });
+            if (existing.value !== val) {
+              await db.settings.update(existing.id!, { value: val });
+            }
           }
         } catch (err) {
           console.warn("Error syncing app settings item:", err);

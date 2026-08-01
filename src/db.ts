@@ -216,7 +216,27 @@ db.submissions.hook('creating', (_, obj) => {
 });
 
 // Seed default system settings & migrate legacy submissions
-db.on('ready', () => {
+db.on('ready', async () => {
+  // One-time database alignment migration to prevent primary key conflicts after server-assigned ID alignment
+  if (localStorage.getItem('omr_db_aligned_v4') !== 'true') {
+    console.log("Performing one-time database alignment migration...");
+    try {
+      await Promise.all([
+        db.exams.clear(),
+        db.classes.clear(),
+        db.students.clear(),
+        db.submissions.clear(),
+        db.questions.clear(),
+        db.teachers.clear(),
+        db.attendance.clear()
+      ]);
+      localStorage.setItem('omr_db_aligned_v4', 'true');
+      console.log("Database alignment migration completed successfully.");
+    } catch (err) {
+      console.error("Database alignment migration failed:", err);
+    }
+  }
+
   const p1 = db.settings.count().then((count) => {
     if (count === 0) {
       return db.settings.bulkAdd([

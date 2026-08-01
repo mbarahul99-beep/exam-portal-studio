@@ -216,7 +216,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
 
                 <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
                   {reg.whatsappNumber && <div>📱 <strong>Mobile:</strong> {reg.whatsappNumber}</div>}
-                  {reg.email && <div>✉️ <strong>Email:</strong> {reg.email}</div>}
+                  {reg.email && <div style={{ wordBreak: 'break-all' }}>✉️ <strong>Email:</strong> {reg.email}</div>}
                   <div>📅 <strong>Submitted:</strong> {new Date(reg.createdAt).toLocaleDateString()}</div>
                 </div>
 

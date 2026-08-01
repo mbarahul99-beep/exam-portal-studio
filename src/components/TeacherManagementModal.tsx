@@ -443,7 +443,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                               {t.phone || t.email ? (
                                 <div>
                                   {t.phone && <div>📞 {t.phone}</div>}
-                                  {t.email && <div>✉️ {t.email}</div>}
+                                  {t.email && <div style={{ wordBreak: 'break-all' }}>✉️ {t.email}</div>}
                                 </div>
                               ) : '-'}
                             </td>
@@ -531,7 +531,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                               {(t.phone || t.email) && (
                                 <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
                                   {t.phone && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {t.phone}</span>}
-                                  {t.email && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {t.email}</span>}
+                                  {t.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', wordBreak: 'break-all', whiteSpace: 'normal', minWidth: 0 }}><Mail size={12} style={{ flexShrink: 0 }} /> <span style={{ wordBreak: 'break-all' }}>{t.email}</span></span>}
                                 </div>
                               )}
                             </div>

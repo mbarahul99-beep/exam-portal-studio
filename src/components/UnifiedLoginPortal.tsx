@@ -121,50 +121,57 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
     }
   };
 
-  // Dynamically initialize Google Sign-In and render buttons based on active tab
+  // Dynamically initialize Google Sign-In and render buttons once library is loaded
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).google && (activeTab === 'teacher' || activeTab === 'admin')) {
-      try {
-        const google = (window as any).google;
-        google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleLoginCallback
-        });
-        
-        if (activeTab === 'teacher') {
-          setTimeout(() => {
-            const container = document.getElementById('google-teacher-signin-btn');
-            if (container) {
-              google.accounts.id.renderButton(container, {
-                theme: 'outline',
-                size: 'large',
-                width: 320,
-                text: 'signin_with',
-                shape: 'rectangular'
-              });
-            }
-          }, 100);
-        }
+    let intervalId: any;
 
-        if (activeTab === 'admin') {
-          setTimeout(() => {
-            const container = document.getElementById('google-admin-signin-btn');
-            if (container) {
-              google.accounts.id.renderButton(container, {
-                theme: 'outline',
-                size: 'large',
-                width: 320,
-                text: 'signin_with',
-                shape: 'rectangular'
-              });
-            }
-          }, 100);
+    const initGoogleSignIn = () => {
+      const googleObj = (window as any).google;
+      if (googleObj?.accounts?.id) {
+        try {
+          googleObj.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleLoginCallback
+          });
+
+          const teacherContainer = document.getElementById('google-teacher-signin-btn');
+          if (teacherContainer) {
+            googleObj.accounts.id.renderButton(teacherContainer, {
+              theme: 'outline',
+              size: 'large',
+              width: 320,
+              text: 'signin_with',
+              shape: 'rectangular'
+            });
+          }
+
+          const adminContainer = document.getElementById('google-admin-signin-btn');
+          if (adminContainer) {
+            googleObj.accounts.id.renderButton(adminContainer, {
+              theme: 'outline',
+              size: 'large',
+              width: 320,
+              text: 'signin_with',
+              shape: 'rectangular'
+            });
+          }
+
+          if (intervalId) {
+            clearInterval(intervalId);
+          }
+        } catch (err) {
+          console.warn("Failed to initialize Google Sign-in:", err);
         }
-      } catch (err) {
-        console.warn("Failed to initialize Google Sign-in:", err);
       }
-    }
-  }, [activeTab]);
+    };
+
+    initGoogleSignIn();
+    intervalId = setInterval(initGoogleSignIn, 500);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -466,24 +473,28 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
               <BookOpen size={16} /> {loading ? 'Verifying...' : 'Verify & Enter Student Portal'}
             </button>
           </form>
-        ) : activeTab === 'teacher' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
-              Sign in securely to your Teacher workspace using your registered Google Workspace account.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px' }}>
-              <div id="google-teacher-signin-btn"></div>
-            </div>
-          </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
-              Sign in securely to the Master Admin control center using your authorized Google account.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px' }}>
-              <div id="google-admin-signin-btn"></div>
+          <>
+            {/* Teacher Sign-In Panel */}
+            <div style={{ display: activeTab === 'teacher' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
+                Sign in securely to your Teacher workspace using your registered Google Workspace account.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', minHeight: '40px' }}>
+                <div id="google-teacher-signin-btn"></div>
+              </div>
             </div>
-          </div>
+
+            {/* Admin Sign-In Panel */}
+            <div style={{ display: activeTab === 'admin' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#4a5568', textAlign: 'center', lineHeight: '1.4' }}>
+                Sign in securely to the Master Admin control center using your authorized Google account.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '8px', minHeight: '40px' }}>
+                <div id="google-admin-signin-btn"></div>
+              </div>
+            </div>
+          </>
         )}
 
       </div>

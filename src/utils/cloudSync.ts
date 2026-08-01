@@ -173,6 +173,19 @@ export async function deletePendingRegistrationFromCloud(id: number) {
   }
 }
 
+function isRecordEqual(local: any, server: any): boolean {
+  if (!local) return false;
+  for (const key of Object.keys(server)) {
+    if (key === 'id' || key === 'createdAt' || key === 'updatedAt') continue;
+    const localVal = local[key];
+    const serverVal = server[key];
+    if (JSON.stringify(localVal) !== JSON.stringify(serverVal)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function pullCloudUpdatesToIndexedDB() {
   try {
     const res = await fetch('/api/sync/all');
@@ -211,12 +224,13 @@ export async function pullCloudUpdatesToIndexedDB() {
           } else {
             const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
             const facePhoto = st.facePhoto || existing.facePhoto;
-            await db.students.put({
-              id: st.id,
-              ...studentFields,
-              faceDescriptor,
-              facePhoto
-            });
+            const merged = { ...studentFields, faceDescriptor, facePhoto };
+            if (!isRecordEqual(existing, merged)) {
+              await db.students.put({
+                id: st.id,
+                ...merged
+              });
+            }
           }
         } catch (err) {
           console.warn("Error syncing student item:", err);
@@ -241,7 +255,9 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (!existing) {
             await db.classes.add({ id: cls.id, ...classFields });
           } else {
-            await db.classes.update(existing.id!, classFields);
+            if (!isRecordEqual(existing, classFields)) {
+              await db.classes.update(existing.id!, classFields);
+            }
           }
         } catch (err) {
           console.warn("Error syncing class item:", err);
@@ -301,7 +317,9 @@ export async function pullCloudUpdatesToIndexedDB() {
               id: Number(ex.id)
             });
           } else {
-            await db.exams.update(Number(ex.id), examFields);
+            if (!isRecordEqual(existing, examFields)) {
+              await db.exams.update(Number(ex.id), examFields);
+            }
           }
         } catch (err) {
           console.warn("Error syncing exam item:", err);
@@ -331,7 +349,9 @@ export async function pullCloudUpdatesToIndexedDB() {
             await db.submissions.add({ id: sub.id, ...subFields });
           } else {
             // Update the primary submission record & remove any duplicate local rows
-            await db.submissions.update(matchingSubs[0].id!, subFields);
+            if (!isRecordEqual(matchingSubs[0], subFields)) {
+              await db.submissions.update(matchingSubs[0].id!, subFields);
+            }
             for (let i = 1; i < matchingSubs.length; i++) {
               await db.submissions.delete(matchingSubs[i].id!);
             }
@@ -457,13 +477,19 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverBankIds = new Set(data.questionBanks.map((b: any) => b.id));
       const localBanks = await db.questionBanks.toArray();
       for (const lb of localBanks) {
-        if (lb.id && !serverBankIds.has(lb.id)) {
+        if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics") {
           await db.questionBanks.delete(lb.id);
         }
       }
       for (const b of data.questionBanks) {
         try {
           const existing = await db.questionBanks.get(b.id);
+          const incoming = {
+            name: b.name,
+            targetExam: b.targetExam,
+            subject: b.subject,
+            topic: b.topic
+          };
           if (!existing) {
             await db.questionBanks.add({
               id: b.id,
@@ -474,14 +500,16 @@ export async function pullCloudUpdatesToIndexedDB() {
               createdAt: new Date(b.createdAt)
             });
           } else {
-            await db.questionBanks.put({
-              id: b.id,
-              name: b.name,
-              targetExam: b.targetExam,
-              subject: b.subject,
-              topic: b.topic,
-              createdAt: new Date(b.createdAt)
-            });
+            if (!isRecordEqual(existing, incoming)) {
+              await db.questionBanks.put({
+                id: b.id,
+                name: b.name,
+                targetExam: b.targetExam,
+                subject: b.subject,
+                topic: b.topic,
+                createdAt: new Date(b.createdAt)
+              });
+            }
           }
         } catch (err) {
           console.warn("Error syncing question bank item:", err);
@@ -492,15 +520,26 @@ export async function pullCloudUpdatesToIndexedDB() {
     // 10. Sync Bank Questions (db.questionBank table)
     if (data.bankQuestions && Array.isArray(data.bankQuestions)) {
       const serverQIds = new Set(data.bankQuestions.map((q: any) => q.id));
+      const defaultBank = await db.questionBanks.where('name').equals("NEET / JEE - Core Library: Mixed Topics").first();
+      const defaultBankId = defaultBank?.id;
+      
       const localQs = await db.questionBank.toArray();
       for (const lq of localQs) {
-        if (lq.id && !serverQIds.has(lq.id)) {
+        if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId) {
           await db.questionBank.delete(lq.id);
         }
       }
       for (const q of data.bankQuestions) {
         try {
           const existing = await db.questionBank.get(q.id);
+          const incoming = {
+            bankId: q.bankId,
+            questionText: q.questionText,
+            options: q.options,
+            correctOptionIdx: q.correctOptionIdx,
+            difficulty: q.difficulty,
+            explanation: q.explanation || undefined
+          };
           if (!existing) {
             await db.questionBank.add({
               id: q.id,
@@ -513,16 +552,18 @@ export async function pullCloudUpdatesToIndexedDB() {
               createdAt: new Date(q.createdAt)
             });
           } else {
-            await db.questionBank.put({
-              id: q.id,
-              bankId: q.bankId,
-              questionText: q.questionText,
-              options: q.options,
-              correctOptionIdx: q.correctOptionIdx,
-              difficulty: q.difficulty,
-              explanation: q.explanation || undefined,
-              createdAt: new Date(q.createdAt)
-            });
+            if (!isRecordEqual(existing, incoming)) {
+              await db.questionBank.put({
+                id: q.id,
+                bankId: q.bankId,
+                questionText: q.questionText,
+                options: q.options,
+                correctOptionIdx: q.correctOptionIdx,
+                difficulty: q.difficulty,
+                explanation: q.explanation || undefined,
+                createdAt: new Date(q.createdAt)
+              });
+            }
           }
         } catch (err) {
           console.warn("Error syncing bank question item:", err);

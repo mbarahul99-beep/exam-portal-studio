@@ -51,6 +51,11 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
             whatsappNumber: reg.whatsappNumber
           })
         });
+
+        // Delete the pending registration request from Hostinger MySQL server as it is approved
+        await fetch(`/api/pending-registrations/${reg.id}`, {
+          method: 'DELETE'
+        });
       } catch (err) {
         console.warn("MySQL sync optional fallback:", err);
       }

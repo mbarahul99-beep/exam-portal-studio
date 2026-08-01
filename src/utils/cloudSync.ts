@@ -309,12 +309,11 @@ export async function pullCloudUpdatesToIndexedDB() {
         if (Array.isArray(pendingData)) {
           for (const reg of pendingData) {
             try {
-              const { id: mysqlId, ...regFields } = reg;
               const existing = await db.pendingRegistrations.get(reg.id);
               if (!existing) {
-                await db.pendingRegistrations.add(regFields);
+                await db.pendingRegistrations.add(reg);
               } else {
-                await db.pendingRegistrations.update(existing.id!, regFields);
+                await db.pendingRegistrations.put(reg);
               }
             } catch {}
           }

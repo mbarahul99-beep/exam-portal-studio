@@ -122,6 +122,21 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     'D': {}
   });
 
+  const isPlaceholderQuestion = (q: any): boolean => {
+    if (!q) return true;
+    const text = (q.questionText || '').trim();
+    if (!text) return true;
+    if (/^Question\s+\d+$/i.test(text) || text.includes(': Solve the given question') || text.includes('Question ')) return true;
+    
+    const isDefaultOptions = q.options.every((o: string) => {
+      const val = o.trim();
+      return !val || val === 'Option' || /^Option\s+[A-E](\s+description)?$/i.test(val);
+    });
+    if (isDefaultOptions) return true;
+
+    return false;
+  };
+
   React.useEffect(() => {
     if (!examId) return;
 
@@ -613,15 +628,19 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         const list: any[] = [];
         sectionsWithRanges.forEach(sec => {
           for (let q = sec.qStart; q <= sec.qEnd; q++) {
+            const existing = questionsState.find(item => item.qNum === q);
+            const isValid = existing && !isPlaceholderQuestion(existing);
             list.push({
               qNum: q,
               sectionName: sec.sectionName,
               subjectName: sec.subjectName,
-              questionText: '',
-              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
-              correctOptionIdx: 0, // A is default
-              explanation: '',
-              questionImage: ''
+              questionText: isValid ? existing.questionText : '',
+              options: isValid && existing.options && existing.options.length === (sec.questionType === '5 option' ? 5 : 4)
+                ? [...existing.options]
+                : (sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', '']),
+              correctOptionIdx: isValid ? existing.correctOptionIdx : 0,
+              explanation: isValid ? (existing.explanation || '') : '',
+              questionImage: isValid ? (existing.questionImage || '') : ''
             });
           }
         });

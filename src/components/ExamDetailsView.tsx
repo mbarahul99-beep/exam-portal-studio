@@ -28,7 +28,8 @@ import {
   ArrowUp,
   ArrowDown,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
+  RotateCcw
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView } from './ScanImagesView';
@@ -93,6 +94,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
 
+  const isPlaceholderQuestion = (q: any): boolean => {
+    if (!q) return true;
+    const text = (q.questionText || '').trim();
+    if (!text) return true;
+    if (/^Question\s+\d+$/i.test(text) || text.includes(': Solve the given question') || text.includes('Question ')) return true;
+    
+    const isDefaultOptions = q.options.every((o: string) => {
+      const val = o.trim();
+      return !val || val === 'Option' || /^Option\s+[A-E](\s+description)?$/i.test(val);
+    });
+    if (isDefaultOptions) return true;
+
+    return false;
+  };
+
   // Helper to generate default questions aligned with current exam answer key
   const generateDefaultQuestions = (targetExam: Exam): any[] => {
     const result: any[] = [];
@@ -135,15 +151,52 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       const initData = async () => {
         if (!exam.id) return;
         // 1. Fetch questions
-        const dbQs = await db.questions.where('examId').equals(exam.id).toArray();
-        if (dbQs.length > 0) {
-          setQuestions(dbQs);
-        } else {
+        let dbQs = await db.questions.where('examId').equals(exam.id).toArray();
+        const expectedCount = exam.sections && exam.sections.length > 0 
+          ? exam.sections.reduce((sum, sec) => sum + Number(sec.qCount), 0) 
+          : (exam.numQuestions || 0);
+        
+        // Detect if questions are missing, duplicated, or contain legacy dummy text placeholders
+        const hasPlaceholder = dbQs.some(isPlaceholderQuestion);
+
+        if (dbQs.length === 0 || dbQs.length !== expectedCount || hasPlaceholder) {
+          console.log(`Self-healing questions for exam ${exam.id}: loaded ${dbQs.length}, expected ${expectedCount}. Rebuilding...`);
           const defaultQs = generateDefaultQuestions(exam);
+          
+          if (dbQs.length > 0) {
+            // Preserve user-added questions by index positioning
+            defaultQs.forEach((dq, idx) => {
+              const existingQ = dbQs[idx];
+              if (existingQ && !isPlaceholderQuestion(existingQ)) {
+                dq.questionText = existingQ.questionText;
+                dq.options = [...existingQ.options];
+                dq.correctOptionIdx = existingQ.correctOptionIdx;
+                dq.explanation = existingQ.explanation || '';
+                dq.questionImage = existingQ.questionImage;
+              }
+            });
+          }
+
+          // Wipes any duplicate or corrupted local questions
+          await db.questions.where('examId').equals(exam.id).delete();
           await db.questions.bulkAdd(defaultQs);
-          const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
-          setQuestions(reloaded);
+          
+          // Reload the cleaned questions list
+          dbQs = await db.questions.where('examId').equals(exam.id).toArray();
+          
+          // Re-sync cleaned questions list to cloud database
+          try {
+            await fetch('/api/questions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ examId: exam.id, questions: dbQs })
+            });
+          } catch (err) {
+            console.warn("MySQL questions sync warning during self-healing:", err);
+          }
         }
+
+        setQuestions(dbQs);
 
         // 2. Fetch list of question banks
         const banks = await db.questionBanks.toArray();
@@ -1800,6 +1853,32 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 </h3>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm("Are you sure you want to reset all questions to defaults? This will clear all entered question texts and reset to empty slots.")) return;
+                const defaultQs = generateDefaultQuestions(exam);
+                await saveQuestionsToDbAndSync(defaultQs);
+              }}
+              className="btn-secondary"
+              style={{
+                padding: '8px 14px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#fff',
+                border: '1px solid #fed7d7',
+                color: '#e53e3e',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}
+            >
+              <RotateCcw size={14} /> Reset Questions to Default
+            </button>
           </div>
 
           {/* Section Selection Bar */}

@@ -324,7 +324,7 @@ export async function pullCloudUpdatesToIndexedDB() {
           const { id: mysqlId, ...qFields } = q;
           qFields.examId = Number(qFields.examId);
           qFields.correctOptionIdx = Number(qFields.correctOptionIdx);
-          await db.questions.add({ id: q.id, ...qFields });
+          await db.questions.add(qFields);
         } catch (err) {
           console.warn("Error syncing question item:", err);
         }

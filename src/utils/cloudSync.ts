@@ -313,21 +313,28 @@ export async function pullCloudUpdatesToIndexedDB() {
       // Find all unique examIds present in the incoming exams list
       const serverExamIds = new Set<number>(data.exams ? data.exams.map((e: any) => Number(e.id)) : []);
       
-      // Delete local questions for all exams that are synced from server to prevent duplicates
-      for (const examId of serverExamIds) {
-        await db.questions.where('examId').equals(examId).delete();
-      }
+      try {
+        await db.transaction('rw', db.questions, async () => {
+          // Delete local questions for all exams that are synced from server to prevent duplicates
+          for (const examId of serverExamIds) {
+            await db.questions.where('examId').equals(examId).delete();
+          }
 
-      // Add all incoming questions from server to IndexedDB
-      for (const q of data.questions) {
-        try {
-          const { id: mysqlId, ...qFields } = q;
-          qFields.examId = Number(qFields.examId);
-          qFields.correctOptionIdx = Number(qFields.correctOptionIdx);
-          await db.questions.add(qFields);
-        } catch (err) {
-          console.warn("Error syncing question item:", err);
-        }
+          // Prepare clean questions list for bulkAdd
+          const qListToAdd: any[] = [];
+          for (const q of data.questions) {
+            const { id: mysqlId, ...qFields } = q;
+            qFields.examId = Number(qFields.examId);
+            qFields.correctOptionIdx = Number(qFields.correctOptionIdx);
+            qListToAdd.push(qFields);
+          }
+          
+          if (qListToAdd.length > 0) {
+            await db.questions.bulkAdd(qListToAdd);
+          }
+        });
+      } catch (err) {
+        console.warn("Error running sync questions transaction:", err);
       }
     }
 

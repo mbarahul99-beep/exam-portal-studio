@@ -205,8 +205,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
         if (isOnline) {
           const qs = await db.questions.where('examId').equals(examId).toArray();
-          if (qs.length > 0) {
-            const list = qs.map((qVal, idx) => ({
+          const nonPlaceholders = qs.filter(q => !isPlaceholderQuestion(q));
+          if (nonPlaceholders.length > 0) {
+            const list = nonPlaceholders.map((qVal, idx) => ({
               qNum: idx + 1,
               sectionName: qVal.sectionName,
               subjectName: exam.sections?.find(s => s.sectionName === qVal.sectionName)?.subjectName || 'Subject 1',
@@ -217,6 +218,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
               questionImage: qVal.questionImage || ''
             }));
             setQuestionsState(list);
+          } else {
+            setQuestionsState([]);
           }
         }
       } catch (err) {
@@ -625,26 +628,6 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       }
 
       if (examMode === 'online') {
-        const list: any[] = [];
-        sectionsWithRanges.forEach(sec => {
-          for (let q = sec.qStart; q <= sec.qEnd; q++) {
-            const existing = questionsState.find(item => item.qNum === q);
-            const isValid = existing && !isPlaceholderQuestion(existing);
-            list.push({
-              qNum: q,
-              sectionName: sec.sectionName,
-              subjectName: sec.subjectName,
-              questionText: isValid ? existing.questionText : '',
-              options: isValid && existing.options && existing.options.length === (sec.questionType === '5 option' ? 5 : 4)
-                ? [...existing.options]
-                : (sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', '']),
-              correctOptionIdx: isValid ? existing.correctOptionIdx : 0,
-              explanation: isValid ? (existing.explanation || '') : '',
-              questionImage: isValid ? (existing.questionImage || '') : ''
-            });
-          }
-        });
-        setQuestionsState(list);
         setActiveQuestionIndex(0);
         setCsvUploadSuccess(null);
         setStep(4);
@@ -1234,35 +1217,85 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                     <div className="manual-entry-split-layout">
                       
                       {/* Left list panel */}
-                      <div className="manual-entry-left-panel">
-                        {questionsState.map((q, idx) => {
-                          const isFilled = q.questionText.trim().length > 0;
-                          const isActive = idx === activeQuestionIndex;
-                          return (
-                            <button
-                              key={`q-list-btn-${idx}`}
-                              onClick={() => setActiveQuestionIndex(idx)}
-                              className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
-                              style={{
-                                border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
-                                background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
-                                color: isActive ? 'var(--primary)' : '#4a5568',
-                                fontWeight: isActive ? 'bold' : 'normal',
-                                cursor: 'pointer',
-                                fontSize: '0.8rem',
-                                width: '100%',
-                                textAlign: 'left'
-                              }}
-                            >
-                              <span>Q {q.qNum}</span>
-                              {isFilled && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48bb78' }} />}
-                            </button>
-                          );
-                        })}
+                      <div className="manual-entry-left-panel" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuestionsState(prev => {
+                              const newQ = {
+                                qNum: prev.length + 1,
+                                sectionName: sectionsList[0]?.sectionName || 'Section A',
+                                subjectName: sectionsList[0]?.subjectName || 'Subject 1',
+                                questionText: '',
+                                options: ['', '', '', ''],
+                                correctOptionIdx: 0,
+                                explanation: '',
+                                questionImage: ''
+                              };
+                              const updated = [...prev, newQ];
+                              setActiveQuestionIndex(updated.length - 1);
+                              return updated;
+                            });
+                          }}
+                          style={{
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px dashed var(--primary)',
+                            background: '#fff',
+                            color: 'var(--primary)',
+                            fontWeight: 'bold',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            marginBottom: '8px'
+                          }}
+                        >
+                          + Add Question
+                        </button>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', flex: 1 }}>
+                          {questionsState.map((q, idx) => {
+                            const isFilled = q.questionText.trim().length > 0;
+                            const isActive = idx === activeQuestionIndex;
+                            return (
+                              <button
+                                key={`q-list-btn-${idx}`}
+                                onClick={() => setActiveQuestionIndex(idx)}
+                                className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
+                                style={{
+                                  border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                  background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                                  color: isActive ? 'var(--primary)' : '#4a5568',
+                                  fontWeight: isActive ? 'bold' : 'normal',
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem',
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  padding: '8px 12px',
+                                  borderRadius: '6px',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <span>Q {q.qNum}</span>
+                                {isFilled && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48bb78' }} />}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* Right Editor panel */}
-                      {questionsState[activeQuestionIndex] && (() => {
+                      {questionsState.length === 0 ? (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '40px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed var(--border-color)', minHeight: '300px' }}>
+                          No questions added yet. Click "+ Add Question" on the left to start.
+                        </div>
+                      ) : questionsState[activeQuestionIndex] && (() => {
                         const q = questionsState[activeQuestionIndex];
                         return (
                           <div className="manual-entry-right-panel">
@@ -1546,10 +1579,6 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                             const isAddedToExam = questionsState.some(q => q.questionText.trim() === qVal.questionText.trim());
                             const parentBank = banksList.find(b => b.id === qVal.bankId);
                             
-                            // Find the first empty question slot
-                            const firstEmptyIdx = questionsState.findIndex(q => !q.questionText.trim());
-                            const targetIdx = firstEmptyIdx !== -1 ? firstEmptyIdx : activeQuestionIndex;
-                            const targetQNum = questionsState[targetIdx]?.qNum || (targetIdx + 1);
 
                             return (
                               <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
@@ -1583,16 +1612,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                     onClick={() => {
                                       if (isAddedToExam) return;
                                       setQuestionsState(prev => {
-                                        const updated = [...prev];
-                                        updated[targetIdx] = {
-                                          ...updated[targetIdx],
+                                        const newQ = {
+                                          qNum: prev.length + 1,
+                                          sectionName: sectionsList[0]?.sectionName || 'Section A',
+                                          subjectName: sectionsList[0]?.subjectName || 'Subject 1',
                                           questionText: qVal.questionText,
                                           options: [...qVal.options],
                                           correctOptionIdx: qVal.correctOptionIdx,
                                           explanation: qVal.explanation || '',
                                           questionImage: qVal.questionImage || ''
                                         };
-                                        return updated;
+                                        return [...prev, newQ];
                                       });
                                     }}
                                     disabled={isAddedToExam}
@@ -1609,7 +1639,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                       width: '110px'
                                     }}
                                   >
-                                    {isAddedToExam ? 'Added ✔' : firstEmptyIdx !== -1 ? `Add to Q${targetQNum}` : `Replace Q${activeQuestionIndex + 1}`}
+                                    {isAddedToExam ? 'Added ✔' : 'Add Question'}
                                   </button>
                                 </div>
                               </div>

@@ -132,6 +132,7 @@ export async function pullCloudUpdatesToIndexedDB() {
 
       for (const st of data.students) {
         try {
+          st.fatherName = st.fatherName || st.fathername || st.father_name;
           const { id: mysqlId, ...studentFields } = st;
           // Match by server ID
           const existing = await db.students.get(st.id);
@@ -309,6 +310,7 @@ export async function pullCloudUpdatesToIndexedDB() {
         if (Array.isArray(pendingData)) {
           for (const reg of pendingData) {
             try {
+              reg.fatherName = reg.fatherName || reg.fathername || reg.father_name;
               const existing = await db.pendingRegistrations.get(reg.id);
               if (!existing) {
                 await db.pendingRegistrations.add(reg);

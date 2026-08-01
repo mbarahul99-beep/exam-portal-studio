@@ -350,17 +350,6 @@ app.get('/api/sync/all', async (req, res) => {
   }
 });
 
-app.get('/api/debug-db-schema', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  try {
-    const [prCols] = await pool.query('DESCRIBE pending_registrations');
-    const [stCols] = await pool.query('DESCRIBE students');
-    res.json({ pending_registrations: prCols, students: stCols });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // App Settings API Routes
 app.get('/api/settings', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
@@ -529,7 +518,8 @@ app.post('/api/auth/google', async (req, res) => {
 // Upsert Student API
 app.post('/api/students', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
+  const { studentNum, name, fatherName, fathername, father_name, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
+  const resolvedFatherName = fatherName || fathername || father_name || null;
   try {
     if (className) {
       try {
@@ -550,7 +540,7 @@ app.post('/api/students', async (req, res) => {
         faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor),
         facePhoto = COALESCE(VALUES(facePhoto), facePhoto);
     `;
-    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null]);
+    const [result] = await pool.query(query, [studentNum, name, resolvedFatherName, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null]);
     res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
     console.error("Student save error:", err);
@@ -782,13 +772,14 @@ app.get('/api/pending-registrations', async (req, res) => {
 
 app.post('/api/register-student', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, fatherName, className, email, phone, whatsappNumber } = req.body;
+  const { studentNum, name, fatherName, fathername, father_name, className, email, phone, whatsappNumber } = req.body;
+  const resolvedFatherName = fatherName || fathername || father_name || null;
   try {
     const query = `
       INSERT INTO pending_registrations (studentNum, name, fatherName, className, email, phone, whatsappNumber, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending');
     `;
-    const [result] = await pool.query(query, [studentNum, name, fatherName || null, className, email, phone, whatsappNumber]);
+    const [result] = await pool.query(query, [studentNum, name, resolvedFatherName, className, email, phone, whatsappNumber]);
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });

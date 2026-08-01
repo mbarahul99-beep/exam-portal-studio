@@ -258,6 +258,41 @@ const initDatabase = async () => {
       console.warn('app_settings table init warning:', e.message);
     }
 
+    try {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS question_banks (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          targetExam VARCHAR(255) NOT NULL,
+          subject VARCHAR(255) NOT NULL,
+          topic VARCHAR(255) NOT NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log('✅ question_banks table initialized successfully!');
+    } catch (e) {
+      console.warn('question_banks table init warning:', e.message);
+    }
+
+    try {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS bank_questions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          bankId INT NOT NULL,
+          questionText LONGTEXT NOT NULL,
+          options TEXT NOT NULL,
+          correctOptionIdx INT NOT NULL,
+          difficulty VARCHAR(50) NOT NULL,
+          explanation LONGTEXT,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (bankId) REFERENCES question_banks(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log('✅ bank_questions table initialized successfully!');
+    } catch (e) {
+      console.warn('bank_questions table init warning:', e.message);
+    }
+
     conn.release();
     console.log('✅ Hostinger MySQL Database Schema verified & auto-created successfully!');
   } catch (err) {
@@ -313,6 +348,8 @@ app.get('/api/sync/all', async (req, res) => {
     const [questions] = await pool.query('SELECT * FROM questions');
     const [teachers] = await pool.query('SELECT id, userId, password, name, phone, email, createdAt FROM teachers');
     const [settingsRows] = await pool.query('SELECT `key`, `value` FROM app_settings');
+    const [questionBanks] = await pool.query('SELECT * FROM question_banks');
+    const [bankQuestions] = await pool.query('SELECT * FROM bank_questions');
 
     res.json({
       students: students.map(s => ({
@@ -342,7 +379,12 @@ app.get('/api/sync/all', async (req, res) => {
       settings: settingsRows.reduce((acc, r) => {
         acc[r.key] = r.value;
         return acc;
-      }, {})
+      }, {}),
+      questionBanks,
+      bankQuestions: bankQuestions.map(bq => ({
+        ...bq,
+        options: typeof bq.options === 'string' ? JSON.parse(bq.options) : bq.options
+      }))
     });
   } catch (err) {
     console.error('Failed to sync all data:', err);
@@ -377,6 +419,100 @@ app.post('/api/settings', async (req, res) => {
       );
     }
     res.json({ success: true, message: 'Settings saved successfully in Cloud MySQL database!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// QUESTION BANK API ROUTES
+app.get('/api/question-banks', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [rows] = await pool.query('SELECT * FROM question_banks ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/question-banks', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, name, targetExam, subject, topic, createdAt } = req.body;
+  try {
+    const query = `
+      INSERT INTO question_banks (id, name, targetExam, subject, topic, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        name = VALUES(name),
+        targetExam = VALUES(targetExam),
+        subject = VALUES(subject),
+        topic = VALUES(topic),
+        createdAt = VALUES(createdAt);
+    `;
+    const createdTime = createdAt ? new Date(createdAt) : new Date();
+    const [result] = await pool.query(query, [id || null, name, targetExam, subject, topic, createdTime]);
+    res.json({ success: true, id: id || result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/question-banks/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const bankId = req.params.id;
+  try {
+    await pool.query('DELETE FROM question_banks WHERE id = ?', [bankId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/bank-questions', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [rows] = await pool.query('SELECT * FROM bank_questions ORDER BY id DESC');
+    const parsedRows = rows.map(r => ({
+      ...r,
+      options: typeof r.options === 'string' ? JSON.parse(r.options) : r.options
+    }));
+    res.json(parsedRows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bank-questions', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, createdAt } = req.body;
+  try {
+    const optionsJson = Array.isArray(options) ? JSON.stringify(options) : options;
+    const query = `
+      INSERT INTO bank_questions (id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        bankId = VALUES(bankId),
+        questionText = VALUES(questionText),
+        options = VALUES(options),
+        correctOptionIdx = VALUES(correctOptionIdx),
+        difficulty = VALUES(difficulty),
+        explanation = VALUES(explanation),
+        createdAt = VALUES(createdAt);
+    `;
+    const createdTime = createdAt ? new Date(createdAt) : new Date();
+    const [result] = await pool.query(query, [id || null, bankId, questionText, optionsJson, correctOptionIdx, difficulty, explanation || null, createdTime]);
+    res.json({ success: true, id: id || result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/bank-questions/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const qId = req.params.id;
+  try {
+    await pool.query('DELETE FROM bank_questions WHERE id = ?', [qId]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

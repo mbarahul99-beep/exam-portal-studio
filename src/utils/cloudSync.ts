@@ -1,4 +1,4 @@
-import { db, type Student, type Exam, type ExamSubmission, type PendingRegistration, type ClassEntity } from '../db';
+import { db, type Student, type Exam, type ExamSubmission, type PendingRegistration, type ClassEntity, type QuestionBank, type BankQuestion } from '../db';
 
 /**
  * Cloud Sync helper for synchronizing IndexedDB data with Hostinger MySQL Database
@@ -101,6 +101,46 @@ export async function deleteTeacherFromCloud(idOrUserId: number | string) {
     await fetch(`/api/teachers/${idOrUserId}`, { method: 'DELETE' });
   } catch (err) {
     console.warn("Delete teacher cloud sync failed:", err);
+  }
+}
+
+export async function syncQuestionBankToCloud(bank: QuestionBank) {
+  try {
+    await fetch('/api/question-banks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bank)
+    });
+  } catch (err) {
+    console.warn("Cloud sync question bank failed:", err);
+  }
+}
+
+export async function deleteQuestionBankFromCloud(id: number) {
+  try {
+    await fetch(`/api/question-banks/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete question bank cloud sync failed:", err);
+  }
+}
+
+export async function syncBankQuestionToCloud(q: BankQuestion) {
+  try {
+    await fetch('/api/bank-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(q)
+    });
+  } catch (err) {
+    console.warn("Cloud sync bank question failed:", err);
+  }
+}
+
+export async function deleteBankQuestionFromCloud(id: number) {
+  try {
+    await fetch(`/api/bank-questions/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn("Delete bank question cloud sync failed:", err);
   }
 }
 
@@ -338,6 +378,84 @@ export async function pullCloudUpdatesToIndexedDB() {
           }
         } catch (err) {
           console.warn("Error syncing app settings item:", err);
+        }
+      }
+    }
+
+    // 9. Sync Question Banks
+    if (data.questionBanks && Array.isArray(data.questionBanks)) {
+      const serverBankIds = new Set(data.questionBanks.map((b: any) => b.id));
+      const localBanks = await db.questionBanks.toArray();
+      for (const lb of localBanks) {
+        if (lb.id && !serverBankIds.has(lb.id)) {
+          await db.questionBanks.delete(lb.id);
+        }
+      }
+      for (const b of data.questionBanks) {
+        try {
+          const existing = await db.questionBanks.get(b.id);
+          if (!existing) {
+            await db.questionBanks.add({
+              id: b.id,
+              name: b.name,
+              targetExam: b.targetExam,
+              subject: b.subject,
+              topic: b.topic,
+              createdAt: new Date(b.createdAt)
+            });
+          } else {
+            await db.questionBanks.put({
+              id: b.id,
+              name: b.name,
+              targetExam: b.targetExam,
+              subject: b.subject,
+              topic: b.topic,
+              createdAt: new Date(b.createdAt)
+            });
+          }
+        } catch (err) {
+          console.warn("Error syncing question bank item:", err);
+        }
+      }
+    }
+
+    // 10. Sync Bank Questions (db.questionBank table)
+    if (data.bankQuestions && Array.isArray(data.bankQuestions)) {
+      const serverQIds = new Set(data.bankQuestions.map((q: any) => q.id));
+      const localQs = await db.questionBank.toArray();
+      for (const lq of localQs) {
+        if (lq.id && !serverQIds.has(lq.id)) {
+          await db.questionBank.delete(lq.id);
+        }
+      }
+      for (const q of data.bankQuestions) {
+        try {
+          const existing = await db.questionBank.get(q.id);
+          if (!existing) {
+            await db.questionBank.add({
+              id: q.id,
+              bankId: q.bankId,
+              questionText: q.questionText,
+              options: q.options,
+              correctOptionIdx: q.correctOptionIdx,
+              difficulty: q.difficulty,
+              explanation: q.explanation || undefined,
+              createdAt: new Date(q.createdAt)
+            });
+          } else {
+            await db.questionBank.put({
+              id: q.id,
+              bankId: q.bankId,
+              questionText: q.questionText,
+              options: q.options,
+              correctOptionIdx: q.correctOptionIdx,
+              difficulty: q.difficulty,
+              explanation: q.explanation || undefined,
+              createdAt: new Date(q.createdAt)
+            });
+          }
+        } catch (err) {
+          console.warn("Error syncing bank question item:", err);
         }
       }
     }

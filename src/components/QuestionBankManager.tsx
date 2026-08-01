@@ -3,6 +3,13 @@ import { db, type BankQuestion, type QuestionBank } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MathRenderer } from './MathRenderer';
 import { 
+  syncQuestionBankToCloud, 
+  deleteQuestionBankFromCloud, 
+  syncBankQuestionToCloud, 
+  deleteBankQuestionFromCloud,
+  syncExamToCloud 
+} from '../utils/cloudSync';
+import { 
   Plus, 
   Search, 
   Trash2, 
@@ -79,6 +86,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
       const bankId = await db.questionBanks.add(newBank);
       newBank.id = bankId;
+      await syncQuestionBankToCloud(newBank);
       
       // Auto-open the newly created bank
       setSelectedBank(newBank);
@@ -99,7 +107,12 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
     e.stopPropagation();
     if (confirm("Are you sure you want to delete this entire Question Bank and all questions stored inside it?")) {
       await db.questionBanks.delete(bankId);
-      // Delete all questions linked to this bank
+      await deleteQuestionBankFromCloud(bankId);
+      // Delete all questions linked to this bank from local and cloud
+      const qList = await db.questionBank.where('bankId').equals(bankId).toArray();
+      for (const q of qList) {
+        if (q.id) await deleteBankQuestionFromCloud(q.id);
+      }
       await db.questionBank.where('bankId').equals(bankId).delete();
       if (selectedBank && selectedBank.id === bankId) {
         setSelectedBank(null);
@@ -131,7 +144,10 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
         createdAt: new Date()
       };
 
-      await db.questionBank.add(q);
+      const qId = await db.questionBank.add(q);
+      q.id = qId;
+      await syncBankQuestionToCloud(q);
+
       setAddFeedback("Question successfully added to bank!");
       
       // Reset form
@@ -213,7 +229,11 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       });
 
       if (importedList.length > 0) {
-        await db.questionBank.bulkAdd(importedList);
+        for (const item of importedList) {
+          const insertedId = await db.questionBank.add(item);
+          item.id = insertedId;
+          await syncBankQuestionToCloud(item);
+        }
         setCsvFeedback({
           success: true,
           message: `Successfully imported ${importedList.length} questions into bank!${skippedLines > 0 ? ` (Skipped ${skippedLines} invalid lines)` : ''}`
@@ -274,6 +294,22 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
         answerKey: updatedKey,
         answerKeys: Object.keys(updatedKeys).length > 0 ? updatedKeys : undefined
       });
+
+      // 3. Sync updated exam parameters & questions list to Hostinger MySQL
+      const updatedExam = await db.exams.get(exam.id!);
+      if (updatedExam) {
+        await syncExamToCloud(updatedExam);
+      }
+      const allExamQs = await db.questions.where('examId').equals(exam.id!).toArray();
+      try {
+        await fetch('/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ examId: exam.id!, questions: allExamQs })
+        });
+      } catch (err) {
+        console.warn("MySQL questions sync warning:", err);
+      }
 
       setExamSelectFeedback(`Successfully added question as Q${newQNum} to "${exam.title}"!`);
       setTimeout(() => {
@@ -515,6 +551,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                           onClick={async () => {
                             if (confirm("Delete this question from the bank?")) {
                               await db.questionBank.delete(q.id!);
+                              await deleteBankQuestionFromCloud(q.id!);
                             }
                           }}
                           className="btn-danger" 

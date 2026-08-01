@@ -28,6 +28,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
       await db.students.add({
         studentNum: reg.studentNum,
         name: reg.name,
+        fatherName: reg.fatherName,
         className: reg.className,
         email: reg.email,
         phone: reg.phone,
@@ -45,6 +46,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
           body: JSON.stringify({
             studentNum: reg.studentNum,
             name: reg.name,
+            fatherName: reg.fatherName,
             className: reg.className,
             email: reg.email,
             phone: reg.phone,

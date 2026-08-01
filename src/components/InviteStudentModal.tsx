@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Copy, Check, Share2, GraduationCap, ArrowLeft, Smartphone, ExternalLink, Info } from 'lucide-react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -8,14 +8,13 @@ interface InviteStudentModalProps {
 }
 
 export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose }) => {
-  // Reactive query of classes from IndexedDB database without static dependency arrays
+  // Reactive live query of classes from IndexedDB
   const classesList = useLiveQuery(() => db.classes.toArray()) || [];
 
-  const [selectedClass, setSelectedClass] = useState<string>('NEET-2026');
-  const [copiedReg, setCopiedReg] = useState(false);
-  const [copiedPortal, setCopiedPortal] = useState(false);
+  // Default to empty; currentClass will fall back to classesList[0] safely without infinite useEffect loop
+  const [selectedClass, setSelectedClass] = useState<string>('');
 
-  const currentClass = selectedClass || (classesList[0]?.name) || 'NEET-2026';
+  const currentClass = selectedClass || (classesList.length > 0 ? classesList[0].name : 'NEET-2026');
   
   // Registration URL
   const inviteUrl = `${window.location.origin}/?inviteClass=${encodeURIComponent(currentClass)}`;
@@ -43,6 +42,9 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
     }
   };
 
+  const [copiedReg, setCopiedReg] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
+
   const handleWhatsAppShareReg = () => {
     const text = encodeURIComponent(
       `🎓 *Student Registration - Apex*\n\nRegister for class *${currentClass}*:\n👉 ${inviteUrl}`
@@ -56,13 +58,6 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
-
-  // Pre-select first class when loaded
-  useEffect(() => {
-    if (classesList.length > 0 && !selectedClass) {
-      setSelectedClass(classesList[0].name);
-    }
-  }, [classesList, selectedClass]);
 
   return (
     <div className="invite-modal-overlay">
@@ -253,7 +248,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
               cursor: 'pointer'
             }}
           >
-            {classesList.map((c, i) => (
+            {classesList.filter(c => c && c.name).map((c, i) => (
               <option key={`inv-cls-${c.id || i}`} value={c.name}>{c.name}</option>
             ))}
             {!classesList.some(c => c?.name === 'NEET-2026') && <option value="NEET-2026">NEET-2026</option>}

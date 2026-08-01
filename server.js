@@ -350,6 +350,17 @@ app.get('/api/sync/all', async (req, res) => {
   }
 });
 
+app.get('/api/debug-db-schema', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  try {
+    const [prCols] = await pool.query('DESCRIBE pending_registrations');
+    const [stCols] = await pool.query('DESCRIBE students');
+    res.json({ pending_registrations: prCols, students: stCols });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // App Settings API Routes
 app.get('/api/settings', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });

@@ -1889,7 +1889,16 @@ export default function App() {
 
   // 2. Auth Gate: Intercept render if no session is active or logged in as student
   if (inviteClassParam) {
-    return <StudentRegisterPortal initialClassName={inviteClassParam} onDone={() => setInviteClassParam(null)} />;
+    return (
+      <StudentRegisterPortal 
+        initialClassName={inviteClassParam} 
+        onDone={() => {
+          // Clean up the registration URL parameters to route the student back to the login portal cleanly
+          window.history.replaceState({}, '', window.location.pathname + '?app=student');
+          setInviteClassParam(null);
+        }} 
+      />
+    );
   }
 
   if (sessionRole === null) {

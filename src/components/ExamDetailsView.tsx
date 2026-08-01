@@ -616,6 +616,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       return;
     }
 
+    const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
+    const sectionConfig = exam.sections?.find((s: any) => s.sectionName === selectedSectionName);
+    const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
+    
+    if (sectionQuestions.length >= maxAllowed) {
+      alert(`Cannot add more questions. This section/exam is limited to ${maxAllowed} questions.`);
+      return;
+    }
+
     const newQ = {
       examId: exam.id!,
       sectionName: selectedSectionName || 'Section A',
@@ -1810,6 +1819,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
+                    const sectionConfig = exam.sections?.find((s: any) => s.sectionName === selectedSectionName);
+                    const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
+                    
+                    if (sectionQuestions.length >= maxAllowed) {
+                      alert(`Cannot add more questions. This section/exam is limited to ${maxAllowed} questions.`);
+                      return;
+                    }
+
                     const newQ = {
                       examId: exam.id!,
                       sectionName: selectedSectionName || 'Section A',

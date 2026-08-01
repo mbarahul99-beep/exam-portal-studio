@@ -1221,6 +1221,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         <button
                           type="button"
                           onClick={() => {
+                            const maxAllowed = totalQuestions || 15;
+                            if (questionsState.length >= maxAllowed) {
+                              alert(`Cannot add more questions. The exam is limited to ${maxAllowed} questions.`);
+                              return;
+                            }
                             setQuestionsState(prev => {
                               const newQ = {
                                 qNum: prev.length + 1,
@@ -1611,6 +1616,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                     type="button"
                                     onClick={() => {
                                       if (isAddedToExam) return;
+                                      const maxAllowed = totalQuestions || 15;
+                                      if (questionsState.length >= maxAllowed) {
+                                        alert(`Cannot add more questions. The exam is limited to ${maxAllowed} questions.`);
+                                        return;
+                                      }
                                       setQuestionsState(prev => {
                                         const newQ = {
                                           qNum: prev.length + 1,

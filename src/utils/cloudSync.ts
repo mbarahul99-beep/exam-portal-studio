@@ -229,7 +229,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverClassNames = new Set(data.classes.map((c: any) => c.name));
       const localClasses = await db.classes.toArray();
       for (const lc of localClasses) {
-        if (!serverClassNames.has(lc.name) && ['JEE', 'Grade 12-A'].includes(lc.name)) {
+        if (lc.name && !serverClassNames.has(lc.name)) {
           await db.classes.delete(lc.id!);
         }
       }
@@ -239,7 +239,7 @@ export async function pullCloudUpdatesToIndexedDB() {
           const { id: mysqlId, ...classFields } = cls;
           const existing = await db.classes.where('name').equalsIgnoreCase(cls.name).first();
           if (!existing) {
-            await db.classes.add(classFields);
+            await db.classes.add({ id: cls.id, ...classFields });
           } else {
             await db.classes.update(existing.id!, classFields);
           }
@@ -311,6 +311,14 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 4. Sync Submissions
     if (data.submissions && Array.isArray(data.submissions)) {
+      const serverSubIds = new Set(data.submissions.map((s: any) => s.id));
+      const localSubs = await db.submissions.toArray();
+      for (const ls of localSubs) {
+        if (ls.id && !serverSubIds.has(ls.id)) {
+          await db.submissions.delete(ls.id);
+        }
+      }
+
       for (const sub of data.submissions) {
         try {
           const { id: mysqlId, ...subFields } = sub;
@@ -320,7 +328,7 @@ export async function pullCloudUpdatesToIndexedDB() {
             .toArray();
 
           if (matchingSubs.length === 0) {
-            await db.submissions.add(subFields);
+            await db.submissions.add({ id: sub.id, ...subFields });
           } else {
             // Update the primary submission record & remove any duplicate local rows
             await db.submissions.update(matchingSubs[0].id!, subFields);
@@ -381,12 +389,20 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 6. Sync Teachers
     if (data.teachers && Array.isArray(data.teachers)) {
+      const serverTeacherUserIds = new Set(data.teachers.map((t: any) => t.userId));
+      const localTeachers = await db.teachers.toArray();
+      for (const lt of localTeachers) {
+        if (lt.userId && !serverTeacherUserIds.has(lt.userId)) {
+          await db.teachers.delete(lt.id!);
+        }
+      }
+
       for (const t of data.teachers) {
         try {
           const { id: mysqlId, ...tFields } = t;
           const existing = await db.teachers.where('userId').equals(t.userId).first();
           if (!existing) {
-            await db.teachers.add(tFields);
+            await db.teachers.add({ id: t.id, ...tFields });
           } else {
             await db.teachers.update(existing.id!, tFields);
           }

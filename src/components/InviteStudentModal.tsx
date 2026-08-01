@@ -8,20 +8,20 @@ interface InviteStudentModalProps {
 }
 
 export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose }) => {
-  // Reactive live query of classes from IndexedDB
+  // 1. Live query for active classes
   const classesList = useLiveQuery(() => db.classes.toArray()) || [];
 
-  // Default to empty; currentClass will fall back to classesList[0] safely without infinite useEffect loop
+  // 2. Declare all useState hooks at the absolute top of the component
   const [selectedClass, setSelectedClass] = useState<string>('');
+  const [copiedReg, setCopiedReg] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
 
+  // 3. Derive current links and constants
   const currentClass = selectedClass || (classesList.length > 0 ? classesList[0].name : 'NEET-2026');
-  
-  // Registration URL
   const inviteUrl = `${window.location.origin}/?inviteClass=${encodeURIComponent(currentClass)}`;
-  
-  // Portal URL
   const portalUrl = `${window.location.origin}/?app=student`;
 
+  // 4. Clipboard & Sharing Actions
   const handleCopyReg = () => {
     try {
       navigator.clipboard.writeText(inviteUrl);
@@ -42,9 +42,6 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
     }
   };
 
-  const [copiedReg, setCopiedReg] = useState(false);
-  const [copiedPortal, setCopiedPortal] = useState(false);
-
   const handleWhatsAppShareReg = () => {
     const text = encodeURIComponent(
       `🎓 *Student Registration - Apex*\n\nRegister for class *${currentClass}*:\n👉 ${inviteUrl}`
@@ -60,23 +57,25 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
   };
 
   return (
-    <div className="invite-modal-overlay">
-      {/* Responsive Scoped Styles */}
+    <div 
+      className="invite-modal-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 999999,
+        background: '#f8fafc',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}
+    >
+      {/* Scoped CSS Styles */}
       <style dangerouslySetInnerHTML={{__html: `
-        .invite-modal-overlay {
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          z-index: 999999 !important;
-          background: #f8fafc !important;
-          display: flex;
-          flex-direction: column;
-          box-sizing: border-box;
-          overflow-y: auto;
-          font-family: system-ui, -apple-system, sans-serif;
-        }
         .invite-header {
           padding: 14px 20px;
           display: flex;

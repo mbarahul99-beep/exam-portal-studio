@@ -1942,7 +1942,7 @@ export default function App() {
 
       {/* Student Invite & Pending Approvals Modals */}
       {showInviteModal && (
-        <InviteStudentModal onClose={() => setShowInviteModal(false)} />
+        <InviteStudentModal classes={classes} onClose={() => setShowInviteModal(false)} />
       )}
       {showPendingApprovalsModal && (
         <PendingApprovalsModal onClose={() => setShowPendingApprovalsModal(false)} />

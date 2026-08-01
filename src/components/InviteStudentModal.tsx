@@ -1,27 +1,29 @@
 import React, { useState } from 'react';
 import { Copy, Check, Share2, GraduationCap, ArrowLeft, Smartphone, ExternalLink, Info } from 'lucide-react';
-import { db } from '../db';
-import { useLiveQuery } from 'dexie-react-hooks';
 
 interface InviteStudentModalProps {
+  classes: any[];
   onClose: () => void;
 }
 
-export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose }) => {
-  // 1. Live query for active classes
-  const classesList = useLiveQuery(() => db.classes.toArray()) || [];
-
-  // 2. Declare all useState hooks at the absolute top of the component
+export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ classes = [], onClose }) => {
+  // 1. Declare all state hooks at the absolute top of the component
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [copiedReg, setCopiedReg] = useState(false);
   const [copiedPortal, setCopiedPortal] = useState(false);
 
-  // 3. Derive current links and constants
-  const currentClass = selectedClass || (classesList.length > 0 ? classesList[0].name : 'NEET-2026');
+  // Filter valid classes
+  const validClasses = classes.filter(c => c && c.name);
+
+  // Derive target class
+  const currentClass = selectedClass || (validClasses.length > 0 ? validClasses[0].name : 'NEET-2026');
+
+  // Registration URL
   const inviteUrl = `${window.location.origin}/?inviteClass=${encodeURIComponent(currentClass)}`;
+  
+  // Student Portal Login URL
   const portalUrl = `${window.location.origin}/?app=student`;
 
-  // 4. Clipboard & Sharing Actions
   const handleCopyReg = () => {
     try {
       navigator.clipboard.writeText(inviteUrl);
@@ -90,7 +92,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
           width: 100%;
           max-width: 900px;
           margin: 0 auto;
-          padding: 20px 20px 80px 20px;
+          padding: 20px 20px 100px 20px;
           box-sizing: border-box;
         }
         .invite-grid {
@@ -187,7 +189,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
             gap: 16px;
           }
           .invite-container {
-            padding: 10px 10px 80px 10px;
+            padding: 10px 10px 100px 10px;
           }
           .invite-card {
             padding: 16px;
@@ -212,7 +214,7 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
           <ArrowLeft size={22} color="#0f172a" />
         </button>
         <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
-          Onboarding & Portal Invites
+          Onboarding & Portal Links
         </h2>
       </div>
 
@@ -247,11 +249,11 @@ export const InviteStudentModal: React.FC<InviteStudentModalProps> = ({ onClose 
               cursor: 'pointer'
             }}
           >
-            {classesList.filter(c => c && c.name).map((c, i) => (
+            {validClasses.map((c, i) => (
               <option key={`inv-cls-${c.id || i}`} value={c.name}>{c.name}</option>
             ))}
-            {!classesList.some(c => c?.name === 'NEET-2026') && <option value="NEET-2026">NEET-2026</option>}
-            {!classesList.some(c => c?.name === 'JEE-2026') && <option value="JEE-2026">JEE-2026</option>}
+            {!validClasses.some(c => c.name === 'NEET-2026') && <option value="NEET-2026">NEET-2026</option>}
+            {!validClasses.some(c => c.name === 'JEE-2026') && <option value="JEE-2026">JEE-2026</option>}
           </select>
         </div>
 

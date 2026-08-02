@@ -468,6 +468,8 @@ export default function App() {
     wrongCount?: number;
     unansweredCount?: number;
   } | null>(null);
+  const [isEditingScanResult, setIsEditingScanResult] = useState(false);
+  const [editRollNumber, setEditRollNumber] = useState('');
 
   // Webcam stream states
   const [useWebcam, setUseWebcam] = useState(false);
@@ -1552,6 +1554,8 @@ export default function App() {
         wrongCount,
         unansweredCount
       });
+      setIsEditingScanResult(false);
+      setEditRollNumber(result.studentNum);
 
       if (student) {
         confetti({ particleCount: 50, spread: 45 });
@@ -1712,6 +1716,7 @@ export default function App() {
         studentName: student.name,
         detectedStudentNum: student.studentNum
       } : null);
+      setEditRollNumber(student.studentNum);
     }
   };
 
@@ -1789,6 +1794,8 @@ export default function App() {
       // Reset scan states
       setScanResult(null);
       setUseWebcam(false);
+      setIsEditingScanResult(false);
+      setEditRollNumber('');
     } catch (err: any) {
       alert(`Error saving submission: ${err.message}`);
     }
@@ -3150,10 +3157,47 @@ export default function App() {
                       {/* Map ID Verification */}
                       <div className="verify-student-row">
                         <div className="form-group">
-                          <label>Detected Student ID: <code>{scanResult.detectedStudentNum}</code></label>
+                          <label>Student Roll Number:</label>
+                          {isEditingScanResult ? (
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                              <input 
+                                type="text"
+                                className="form-control"
+                                placeholder="Enter Roll Number"
+                                value={editRollNumber}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setEditRollNumber(val);
+                                  // Live-match roll number to student in this class
+                                  const examObj = exams.find(ex => ex.id === scannerExamId);
+                                  const matchedStudent = students.find(
+                                    s => s.studentNum.trim().toLowerCase() === val.trim().toLowerCase() && 
+                                         s.className === examObj?.className
+                                  );
+                                  setScanResult(prev => prev ? {
+                                    ...prev,
+                                    detectedStudentNum: val,
+                                    studentId: matchedStudent ? matchedStudent.id! : null,
+                                    studentName: matchedStudent ? matchedStudent.name : 'Unknown Student'
+                                  } : null);
+                                }}
+                                style={{ flex: 1, padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                              />
+                            </div>
+                          ) : (
+                            <div style={{ marginBottom: '8px' }}>
+                              <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>
+                                Detected Roll Number: <code style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 'bold' }}>{scanResult.detectedStudentNum}</code>
+                              </label>
+                            </div>
+                          )}
+                          
                           <select 
                             value={scanResult.studentId || ''} 
                             onChange={(e) => handleVerifyStudentChange(e.target.value)}
+                            disabled={!isEditingScanResult}
+                            className="form-control"
+                            style={{ opacity: isEditingScanResult ? 1 : 0.8 }}
                           >
                             <option value="">-- Associate Student --</option>
                             {(() => {
@@ -3209,14 +3253,18 @@ export default function App() {
                                     <button
                                       key={`v-opt-${q}-${opt}`}
                                       className={`v-btn ${scanResult.answers[q] === opt ? 'active' : ''}`}
-                                      onClick={() => handleVerifyAnswerChange(q, opt)}
+                                      onClick={() => isEditingScanResult && handleVerifyAnswerChange(q, opt)}
+                                      disabled={!isEditingScanResult}
+                                      style={{ cursor: isEditingScanResult ? 'pointer' : 'default', opacity: isEditingScanResult ? 1 : 0.8 }}
                                     >
                                       {opt}
                                     </button>
                                   ))}
                                   <button
                                     className={`v-btn empty-btn ${!scanResult.answers[q] ? 'active' : ''}`}
-                                    onClick={() => handleVerifyAnswerChange(q, '')}
+                                    onClick={() => isEditingScanResult && handleVerifyAnswerChange(q, '')}
+                                    disabled={!isEditingScanResult}
+                                    style={{ cursor: isEditingScanResult ? 'pointer' : 'default', opacity: isEditingScanResult ? 1 : 0.8 }}
                                     title="Mark Unanswered"
                                   >
                                     [ ]
@@ -3231,9 +3279,50 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button onClick={handleSaveScanResult} className="btn-primary w-full mt-4">
-                        Confirm & Save Scores
-                      </button>
+                      {isEditingScanResult ? (
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                          <button 
+                            onClick={() => {
+                              setIsEditingScanResult(false);
+                              // Reset temp roll number to current scanned
+                              setEditRollNumber(scanResult.detectedStudentNum);
+                            }} 
+                            className="btn-secondary" 
+                            style={{ flex: 1, padding: '12px', borderRadius: '8px' }}
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setIsEditingScanResult(false);
+                            }} 
+                            className="btn-primary" 
+                            style={{ flex: 1, padding: '12px', borderRadius: '8px' }}
+                          >
+                            Done Editing
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                          <button 
+                            onClick={() => {
+                              setIsEditingScanResult(true);
+                              setEditRollNumber(scanResult.detectedStudentNum);
+                            }} 
+                            className="btn-secondary" 
+                            style={{ flex: 1, padding: '12px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button 
+                            onClick={handleSaveScanResult} 
+                            className="btn-primary" 
+                            style={{ flex: 2, padding: '12px', borderRadius: '8px' }}
+                          >
+                            💾 Save Score
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

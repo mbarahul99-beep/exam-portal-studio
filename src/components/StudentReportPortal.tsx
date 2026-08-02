@@ -63,7 +63,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         filename:     `${student.name}_${activeAnalysisSub.exam.title}_Report.pdf`.replace(/\s+/g, '_'),
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
       };
 
       try {

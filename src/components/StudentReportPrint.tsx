@@ -450,8 +450,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .report-print-page.is-generating-pdf .page-container {
           border: none !important;
           box-shadow: none !important;
-          margin-bottom: 0 !important;
-          margin-top: 0 !important;
+          margin: 0 !important;
           border-radius: 0 !important;
         }
 

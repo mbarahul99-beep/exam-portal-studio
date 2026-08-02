@@ -130,11 +130,35 @@ export async function deleteTeacherFromCloud(idOrUserId: number | string) {
 
 export async function syncQuestionBankToCloud(bank: QuestionBank) {
   try {
-    await fetch('/api/question-banks', {
+    const res = await fetch('/api/question-banks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bank)
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.id && Number(data.id) !== Number(bank.id)) {
+        const oldId = bank.id!;
+        const newId = Number(data.id);
+        
+        await db.transaction('rw', [db.questionBanks, db.questionBank], async () => {
+          const bankObj = await db.questionBanks.get(oldId);
+          if (bankObj) {
+            await db.questionBanks.delete(oldId);
+            await db.questionBanks.add({ ...bankObj, id: newId });
+          }
+          
+          const qs = await db.questionBank.where('bankId').equals(oldId).toArray();
+          for (const q of qs) {
+            if (q.id) {
+              await db.questionBank.delete(q.id);
+              const { id, ...qFields } = q;
+              await db.questionBank.add({ ...qFields, bankId: newId });
+            }
+          }
+        });
+      }
+    }
   } catch (err) {
     console.warn("Cloud sync question bank failed:", err);
   }
@@ -150,11 +174,24 @@ export async function deleteQuestionBankFromCloud(id: number) {
 
 export async function syncBankQuestionToCloud(q: BankQuestion) {
   try {
-    await fetch('/api/bank-questions', {
+    const res = await fetch('/api/bank-questions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(q)
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.id && Number(data.id) !== Number(q.id)) {
+        const oldId = q.id!;
+        const newId = Number(data.id);
+        
+        const qObj = await db.questionBank.get(oldId);
+        if (qObj) {
+          await db.questionBank.delete(oldId);
+          await db.questionBank.add({ ...qObj, id: newId });
+        }
+      }
+    }
   } catch (err) {
     console.warn("Cloud sync bank question failed:", err);
   }
@@ -566,7 +603,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverBankIds = new Set(data.questionBanks.map((b: any) => b.id));
       const localBanks = await db.questionBanks.toArray();
       for (const lb of localBanks) {
-        if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics") {
+        const isNew = lb.createdAt && (new Date().getTime() - new Date(lb.createdAt).getTime() < 8000);
+        if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics" && !isNew) {
           await db.questionBanks.delete(lb.id);
         }
       }
@@ -614,7 +652,8 @@ export async function pullCloudUpdatesToIndexedDB() {
       
       const localQs = await db.questionBank.toArray();
       for (const lq of localQs) {
-        if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId) {
+        const isNew = lq.createdAt && (new Date().getTime() - new Date(lq.createdAt).getTime() < 8000);
+        if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId && !isNew) {
           await db.questionBank.delete(lq.id);
         }
       }

@@ -1161,8 +1161,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 <div className="wizard-step-content animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   
                   {/* Setup Options Header tabs */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="qsetup-tabs-header">
+                    <div className="qsetup-tabs-group">
                       <button 
                         className={`btn-seed ${questionSetupTab === 'manual' ? 'active-tab' : ''}`} 
                         onClick={() => setQuestionSetupTab('manual')}
@@ -1186,7 +1186,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="qsetup-stats-group">
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         Questions Added: <strong>{questionsState.filter(q => q.questionText.trim()).length} / {totalQuestions}</strong>
                       </div>

@@ -4,6 +4,7 @@ import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, D
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
+import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
 
 interface StudentReportPortalProps {
   studentId: number;
@@ -26,6 +27,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
   const [showOmrModal, setShowOmrModal] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [showOnlineViewer, setShowOnlineViewer] = useState(false);
 
   const handleDownloadPdf = async () => {
     if (!activeAnalysisSub || !student) return;
@@ -538,6 +540,14 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     <><Download size={16} /> Download PDF</>
                   )}
                 </button>
+                {activeAnalysisSub.attemptType === 'Online' && (
+                  <button 
+                    onClick={() => setShowOnlineViewer(true)}
+                    style={{ background: '#2563eb', border: 'none', color: '#fff', boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)' }}
+                  >
+                    <BookOpen size={16} /> View Submission
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1191,6 +1201,16 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
           to { opacity: 1; transform: scale(1); }
         }
       `}</style>
+
+      {/* Online Submission Questions & Responses Overlay */}
+      {showOnlineViewer && activeAnalysisSub && (
+        <OnlineSubmissionViewer
+          exam={activeAnalysisSub.exam}
+          submission={activeAnalysisSub}
+          studentName={student.name}
+          onClose={() => setShowOnlineViewer(false)}
+        />
+      )}
 
       {/* OMR Sheet Viewer Modal Overlay */}
       {showOmrModal && activeAnalysisSub && activeAnalysisSub.omrImageUrl && (

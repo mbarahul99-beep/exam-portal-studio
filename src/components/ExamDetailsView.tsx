@@ -37,6 +37,7 @@ import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
 import { deleteExamFromCloud, pullCloudUpdatesToIndexedDB, syncExamToCloud } from '../utils/cloudSync';
 import { MathRenderer } from './MathRenderer';
+import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
 
 interface ExamDetailsViewProps {
   exam: Exam;
@@ -119,6 +120,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number } | null>(null);
+  const [viewingOnlineSubmission, setViewingOnlineSubmission] = useState<{ studentName: string; submission: ExamSubmission } | null>(null);
   const [activeAnswerKeySet, setActiveAnswerKeySet] = useState<string>('A');
   const [editableKeys, setEditableKeys] = useState<Record<string, Record<number, string>>>(() => {
     const initialKeys: Record<string, Record<number, string>> = {};
@@ -1033,86 +1035,119 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                     </div>
 
                     {/* Stats Row */}
-                    <div className="student-card-stats-row">
-                      <div className="stat-score">
-                        <span className="symbol">∑</span>
-                        <span className="score-num">{row.score.toFixed(1)}</span>
+                    <div className="student-card-stats-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div className="stat-score">
+                          <span className="symbol">∑</span>
+                          <span className="score-num">{row.score.toFixed(1)}</span>
+                        </div>
+
+                        <span className="stat-sep">|</span>
+
+                        <div className="stat-pill correct" title="Correct">
+                          <CheckCircle size={14} />
+                          <span>{row.correctCount}</span>
+                        </div>
+
+                        <div className="stat-pill wrong" title="Wrong">
+                          <X size={14} />
+                          <span>{row.wrongCount}</span>
+                        </div>
+
+                        <div className="stat-pill unanswered" title="Left">
+                          <span className="circle-empty">◯</span>
+                          <span>{row.unansweredCount}</span>
+                        </div>
+
+                        <div className="stat-verified-check" style={{ position: 'static', margin: 0 }}>
+                          <Check size={14} />
+                        </div>
                       </div>
 
-                      <span className="stat-sep">|</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                        {row.attemptType === 'Online' ? (
+                          <button 
+                            type="button"
+                            title="View Online Submission"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingOnlineSubmission({
+                                studentName: row.studentName,
+                                submission: row as any
+                              });
+                            }}
+                            style={{
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '16px',
+                              padding: '4px 10px',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              cursor: 'pointer',
+                              flexShrink: 0
+                            }}
+                          >
+                            <Eye size={14} /> View Submission
+                          </button>
+                        ) : (
+                          <button 
+                            type="button"
+                            title="View Scanned OMR Sheet"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingScannedOmr({ 
+                                studentName: row.studentName, 
+                                omrUrl: row.omrImageUrl || undefined, 
+                                answers: row.answers, 
+                                score: row.score, 
+                                correctCount: row.correctCount, 
+                                wrongCount: row.wrongCount 
+                              });
+                            }}
+                            style={{
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '16px',
+                              padding: '4px 10px',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              cursor: 'pointer',
+                              flexShrink: 0
+                            }}
+                          >
+                            <Eye size={14} /> Sheet
+                          </button>
+                        )}
 
-                      <div className="stat-pill correct">
-                        <CheckCircle size={14} />
-                        <span>{row.correctCount}</span>
+                        <button 
+                          type="button"
+                          title="Delete Submission Record"
+                          onClick={(e) => handleDeleteSubmission(e, row.id, row.studentName)}
+                          style={{
+                            background: '#fff5f5',
+                            color: '#e53e3e',
+                            border: '1px solid #fed7d7',
+                            borderRadius: '50%',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-
-                      <div className="stat-pill wrong">
-                        <X size={14} />
-                        <span>{row.wrongCount}</span>
-                      </div>
-
-                      <div className="stat-pill unanswered">
-                        <span className="circle-empty">◯</span>
-                        <span>{row.unansweredCount}</span>
-                      </div>
-
-                      <div className="stat-verified-check">
-                        <Check size={14} />
-                      </div>
-
-                      <button 
-                        type="button"
-                        title="View Scanned OMR Sheet"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewingScannedOmr({ 
-                            studentName: row.studentName, 
-                            omrUrl: row.omrImageUrl || undefined, 
-                            answers: row.answers, 
-                            score: row.score, 
-                            correctCount: row.correctCount, 
-                            wrongCount: row.wrongCount 
-                          });
-                        }}
-                        style={{
-                          background: '#eff6ff',
-                          color: '#2563eb',
-                          border: '1px solid #bfdbfe',
-                          borderRadius: '16px',
-                          padding: '4px 10px',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          cursor: 'pointer',
-                          marginLeft: 'auto',
-                          flexShrink: 0
-                        }}
-                      >
-                        <Eye size={14} /> Sheet
-                      </button>
-
-                      <button 
-                        type="button"
-                        title="Delete Scanned OMR Sheet Record"
-                        onClick={(e) => handleDeleteSubmission(e, row.id, row.studentName)}
-                        style={{
-                          background: '#fff5f5',
-                          color: '#e53e3e',
-                          border: '1px solid #fed7d7',
-                          borderRadius: '50%',
-                          width: '28px',
-                          height: '28px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          marginLeft: '8px'
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </div>
                 );
@@ -1635,6 +1670,16 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           onUpdateExam={(updated) => {
             Object.assign(exam, updated);
           }}
+        />
+      )}
+
+      {/* ONLINE SUBMISSION REVIEW VIEWER OVERLAY */}
+      {viewingOnlineSubmission && (
+        <OnlineSubmissionViewer
+          exam={exam}
+          submission={viewingOnlineSubmission.submission}
+          studentName={viewingOnlineSubmission.studentName}
+          onClose={() => setViewingOnlineSubmission(null)}
         />
       )}
 

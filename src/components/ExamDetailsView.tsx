@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Trash2, 
   TrendingUp, 
@@ -50,7 +50,7 @@ interface ExamDetailsViewProps {
 }
 
 export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ 
-  exam, 
+  exam: rawExam, 
   submissions, 
   students, 
   onClose,
@@ -59,49 +59,59 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onDownloadJPG,
   onViewAnalysis
 }) => {
-  // Local auto-healing for numQuestions and answerKey
-  const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
-    ? exam.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
-    : 0;
+  // Local auto-healing for numQuestions and answerKey (creating a copy to avoid mutating readonly prop)
+  const exam = useMemo(() => {
+    const copy = { ...rawExam };
+    const totalQsFromSections = copy.sections && Array.isArray(copy.sections)
+      ? copy.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
+      : 0;
 
-  if (totalQsFromSections > 0 && (exam.numQuestions || 0) < totalQsFromSections) {
-    exam.numQuestions = totalQsFromSections;
-    if (!exam.answerKey || typeof exam.answerKey !== 'object') {
-      exam.answerKey = {};
+    let healed = false;
+    let healedNumQuestions = copy.numQuestions;
+    if (totalQsFromSections > 0 && (copy.numQuestions || 0) < totalQsFromSections) {
+      healedNumQuestions = totalQsFromSections;
+      healed = true;
     }
-    for (let q = 1; q <= totalQsFromSections; q++) {
-      if (!exam.answerKey[q]) {
-        exam.answerKey[q] = 'A';
+
+    if (copy.answerKey && typeof copy.answerKey === 'object') {
+      const keyCount = Object.keys(copy.answerKey).length;
+      if (keyCount > (healedNumQuestions || 0)) {
+        healedNumQuestions = keyCount;
+        healed = true;
       }
     }
-    const setsCount = exam.examSetsCount || 1;
-    const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
-    if (!exam.answerKeys || typeof exam.answerKeys !== 'object') {
-      exam.answerKeys = {};
-    }
-    setNames.forEach(setName => {
-      if (!exam.answerKeys[setName]) {
-        exam.answerKeys[setName] = {};
-      }
-      for (let q = 1; q <= totalQsFromSections; q++) {
-        if (!exam.answerKeys[setName][q]) {
-          exam.answerKeys[setName][q] = 'A';
+
+    if (healed) {
+      const answerKeyCopy = copy.answerKey ? { ...copy.answerKey } : {};
+      for (let q = 1; q <= healedNumQuestions; q++) {
+        if (!answerKeyCopy[q]) {
+          answerKeyCopy[q] = 'A';
         }
       }
-    });
-  }
 
-  if (exam.answerKey && typeof exam.answerKey === 'object') {
-    const keyCount = Object.keys(exam.answerKey).length;
-    if (keyCount > (exam.numQuestions || 0)) {
-      exam.numQuestions = keyCount;
-      for (let q = 1; q <= exam.numQuestions; q++) {
-        if (!exam.answerKey[q]) {
-          exam.answerKey[q] = 'A';
+      const setsCount = copy.examSetsCount || 1;
+      const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+      const answerKeysCopy: Record<string, Record<number, string>> = copy.answerKeys ? JSON.parse(JSON.stringify(copy.answerKeys)) : {};
+      setNames.forEach(setName => {
+        if (!answerKeysCopy[setName]) {
+          answerKeysCopy[setName] = {};
         }
-      }
+        for (let q = 1; q <= healedNumQuestions; q++) {
+          if (!answerKeysCopy[setName][q]) {
+            answerKeysCopy[setName][q] = 'A';
+          }
+        }
+      });
+
+      return {
+        ...copy,
+        numQuestions: healedNumQuestions,
+        answerKey: answerKeyCopy,
+        answerKeys: answerKeysCopy
+      };
     }
-  }
+    return copy;
+  }, [rawExam]);
 
   // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis' | 'manage-questions'
   const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis' | 'manage-questions'>('hub');

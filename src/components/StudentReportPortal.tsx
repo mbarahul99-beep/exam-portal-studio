@@ -145,8 +145,9 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   // Match exam, calculate rank, and class average for each submission
   const examMap = new Map(exams.map(e => [e.id, e]));
   const studentHistory = submissions.map(sub => {
-    const exam = examMap.get(sub.examId);
-    if (!exam) return null;
+    const rawExam = examMap.get(sub.examId);
+    if (!rawExam) return null;
+    const exam = { ...rawExam };
 
     // Fallback: Auto-heal numQuestions locally in the view if it is less than sections total or answerKey length
     const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
@@ -168,9 +169,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     }
 
     if (localHealed) {
-      if (!exam.answerKey || typeof exam.answerKey !== 'object') {
-        exam.answerKey = {};
-      }
+      exam.answerKey = exam.answerKey ? { ...exam.answerKey } : {};
       for (let q = 1; q <= exam.numQuestions; q++) {
         if (!exam.answerKey[q]) {
           exam.answerKey[q] = 'A';

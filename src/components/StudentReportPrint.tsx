@@ -32,9 +32,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   }
 
   if (localHealed) {
-    if (!exam.answerKey || typeof exam.answerKey !== 'object') {
-      exam.answerKey = {};
-    }
+    exam.answerKey = exam.answerKey ? { ...exam.answerKey } : {};
     for (let q = 1; q <= exam.numQuestions; q++) {
       if (!exam.answerKey[q]) {
         exam.answerKey[q] = 'A';

@@ -1024,7 +1024,7 @@ function generateMockQuestions(numQuestions: number, answerKey: Record<number, s
     const baseCorrectIdx = OPTIONS.indexOf(baseCorrectLetter);
 
     // We must swap options so that the correct answer matches the targetIdx designated by the OMR answerKey
-    if (baseCorrectIdx !== targetIdx) {
+    if (targetIdx !== -1 && baseCorrectIdx !== targetIdx) {
       const temp = baseOptions[targetIdx];
       baseOptions[targetIdx] = baseOptions[baseCorrectIdx];
       baseOptions[baseCorrectIdx] = temp;
@@ -1035,7 +1035,7 @@ function generateMockQuestions(numQuestions: number, answerKey: Record<number, s
       sectionName,
       questionText: `[Q.${i}] ${baseQ.text} (Section: ${sectionName})`,
       options: baseOptions,
-      correctOptionIdx: targetIdx,
+      correctOptionIdx: targetIdx === -1 ? baseCorrectIdx : targetIdx,
       explanation: baseQ.explanation
     });
   }

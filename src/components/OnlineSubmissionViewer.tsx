@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { X, Check, AlertCircle, HelpCircle, BookOpen } from 'lucide-react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { X, Check, AlertCircle, HelpCircle, BookOpen, AlertTriangle, Timer, FileText, Award, Filter } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { db, type Exam, type ExamSubmission, type Question } from '../db';
 
@@ -20,6 +20,8 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
 }) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedQIndex, setSelectedQIndex] = useState<number>(0);
+  const [filterType, setFilterType] = useState<'all' | 'correct' | 'incorrect' | 'skipped'>('all');
 
   useEffect(() => {
     const loadQuestions = async () => {
@@ -28,8 +30,6 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
         // Load custom questions if any exist in the database for this exam
         const dbQs = await db.questions.where('examId').equals(exam.id!).toArray();
         if (dbQs.length > 0) {
-          // Sort by question order if needed (assuming sequential sequence or by id)
-          // We can sort them to align with Q1, Q2, etc.
           const sorted = [...dbQs].sort((a, b) => (a.id || 0) - (b.id || 0));
           setQuestions(sorted);
         } else {
@@ -46,32 +46,87 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
     loadQuestions();
   }, [exam, submission]);
 
-  // Group questions by section name
-  const sectionsMap = new Map<string, Question[]>();
-  questions.forEach((q) => {
-    const sec = q.sectionName || 'General Test';
-    if (!sectionsMap.has(sec)) {
-      sectionsMap.set(sec, []);
+  // Format time taken helper
+  const formattedTimeTaken = useMemo(() => {
+    if (submission.timeTakenSeconds === undefined || submission.timeTakenSeconds === null) {
+      return 'N/A';
     }
-    sectionsMap.get(sec)!.push(q);
-  });
+    const mins = Math.floor(submission.timeTakenSeconds / 60);
+    const secs = submission.timeTakenSeconds % 60;
+    if (mins === 0) return `${secs}s`;
+    return `${mins}m ${secs}s`;
+  }, [submission.timeTakenSeconds]);
 
-  const sectionNames = Array.from(sectionsMap.keys());
+  // Questions status map
+  const questionStatuses = useMemo(() => {
+    return questions.map((q, idx) => {
+      const qNum = idx + 1;
+      const studentAns = submission.answers ? submission.answers[qNum] : '';
+      const correctAns = exam.answerKey ? exam.answerKey[qNum] : '';
+      
+      let status: 'correct' | 'incorrect' | 'skipped' = 'skipped';
+      if (studentAns) {
+        status = studentAns === correctAns ? 'correct' : 'incorrect';
+      }
+      return { qNum, q, studentAns, correctAns, status };
+    });
+  }, [questions, submission.answers, exam.answerKey]);
 
-  // Performance stats
-  let correctCount = 0;
-  let wrongCount = 0;
-  let skippedCount = 0;
+  // Filtered question indices
+  const filteredQuestions = useMemo(() => {
+    return questionStatuses.filter(item => {
+      if (filterType === 'correct') return item.status === 'correct';
+      if (filterType === 'incorrect') return item.status === 'incorrect';
+      if (filterType === 'skipped') return item.status === 'skipped';
+      return true;
+    });
+  }, [questionStatuses, filterType]);
 
-  for (let i = 1; i <= exam.numQuestions; i++) {
-    const studentAns = submission.answers ? submission.answers[i] : '';
-    const correctAns = exam.answerKey ? exam.answerKey[i] : '';
-    if (!studentAns) skippedCount++;
-    else if (studentAns === correctAns) correctCount++;
-    else wrongCount++;
-  }
+  // Safe selected index adjustment if filtered out
+  useEffect(() => {
+    if (filteredQuestions.length > 0) {
+      const stillExists = filteredQuestions.some(item => item.qNum === selectedQIndex + 1);
+      if (!stillExists) {
+        setSelectedQIndex(filteredQuestions[0].qNum - 1);
+      }
+    }
+  }, [filteredQuestions, selectedQIndex]);
+
+  // Performance stats calculations
+  const stats = useMemo(() => {
+    let correct = 0;
+    let incorrect = 0;
+    let skipped = 0;
+    questionStatuses.forEach(item => {
+      if (item.status === 'correct') correct++;
+      else if (item.status === 'incorrect') incorrect++;
+      else skipped++;
+    });
+    return { correct, incorrect, skipped };
+  }, [questionStatuses]);
 
   const maxPossibleScore = exam.numQuestions * (exam.correctMarks || 4);
+
+  // Active selected question details
+  const activeItem = questionStatuses[selectedQIndex] || null;
+
+  // Active section marking rules helper
+  const activeSectionRules = useMemo(() => {
+    if (!activeItem) return null;
+    const secName = activeItem.q.sectionName || 'General Test';
+    return exam.sectionsMarking?.[secName] || {
+      correctMarks: exam.correctMarks || 4,
+      incorrectMarks: exam.incorrectMarks || -1,
+      unansweredMarks: exam.unansweredMarks || 0
+    };
+  }, [activeItem, exam]);
+
+  const activeEarnedMarks = useMemo(() => {
+    if (!activeItem || !activeSectionRules) return 0;
+    if (activeItem.status === 'skipped') return activeSectionRules.unansweredMarks || 0;
+    if (activeItem.status === 'correct') return activeSectionRules.correctMarks;
+    return activeSectionRules.incorrectMarks;
+  }, [activeItem, activeSectionRules]);
 
   return (
     <div className="submission-viewer-overlay">
@@ -82,33 +137,34 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.75);
+          background: rgba(15, 23, 42, 0.8);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          z-index: 9999999;
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 24px;
           box-sizing: border-box;
         }
 
         .submission-viewer-container {
           background: #f8fafc;
           width: 100%;
-          max-width: 900px;
-          height: 90vh;
-          border-radius: 20px;
+          max-width: 1200px;
+          height: 85vh;
+          border-radius: 24px;
           display: flex;
           flex-direction: column;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
           overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.1);
           animation: viewer-scale-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         @keyframes viewer-scale-up {
           0% {
-            transform: scale(0.95);
+            transform: scale(0.96);
             opacity: 0;
           }
           100% {
@@ -119,7 +175,7 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
 
         .viewer-header {
           background: #ffffff;
-          padding: 20px 24px;
+          padding: 20px 28px;
           border-bottom: 1px solid #e2e8f0;
           display: flex;
           justify-content: space-between;
@@ -129,14 +185,15 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
 
         .viewer-header-info h3 {
           margin: 0 0 4px 0;
-          font-size: 1.25rem;
+          font-size: 1.3rem;
           font-weight: 800;
           color: #0f172a;
+          letter-spacing: -0.02em;
         }
 
         .viewer-header-info p {
           margin: 0;
-          font-size: 0.85rem;
+          font-size: 0.88rem;
           color: #64748b;
         }
 
@@ -144,8 +201,8 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
           background: #f1f5f9;
           color: #64748b;
           border: none;
-          width: 36px;
-          height: 36px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -155,218 +212,348 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
         }
 
         .viewer-close-btn:hover {
-          background: #e2e8f0;
+          background: #cbd5e1;
           color: #0f172a;
+          transform: rotate(90deg);
         }
 
-        .viewer-summary-banner {
-          background: #ffffff;
-          padding: 16px 24px;
-          border-bottom: 1px solid #e2e8f0;
+        .viewer-layout-body {
           display: flex;
-          flex-wrap: wrap;
-          gap: 16px;
+          flex: 1;
+          overflow: hidden;
+        }
+
+        .viewer-sidebar {
+          width: 380px;
+          background: #ffffff;
+          border-right: 1px solid #e2e8f0;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .viewer-main-panel {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          background: #f8fafc;
+          overflow-y: auto;
+          padding: 28px;
+          box-sizing: border-box;
+        }
+
+        .sidebar-scrollable-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        /* Stats Blocks */
+        .stats-grid-card {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 16px;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+
+        .stat-box {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .stat-box-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .stat-box-value {
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #1e293b;
+        }
+
+        .stat-box-value.correct { color: #16a34a; }
+        .stat-box-value.wrong { color: #dc2626; }
+        .stat-box-value.score { color: #2563eb; }
+
+        /* Proctoring Alerts */
+        .proctoring-summary-card {
+          border-radius: 16px;
+          padding: 14px 18px;
+          font-size: 0.85rem;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          border: 1px solid #e2e8f0;
+        }
+
+        .proctoring-summary-card.secure {
+          background: #f0fdf4;
+          border-color: #bbf7d0;
+          color: #166534;
+        }
+
+        .proctoring-summary-card.warning {
+          background: #fffbeb;
+          border-color: #fde68a;
+          color: #92400e;
+        }
+
+        /* Filter Selector */
+        .sidebar-filter-bar {
+          display: flex;
+          background: #f1f5f9;
+          border-radius: 12px;
+          padding: 4px;
+          gap: 4px;
+        }
+
+        .filter-btn {
+          flex: 1;
+          border: none;
+          background: transparent;
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #64748b;
+          padding: 6px 4px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+        }
+
+        .filter-btn.active {
+          background: #ffffff;
+          color: #0f172a;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+        }
+
+        /* Visual Grid */
+        .question-visual-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 8px;
+        }
+
+        .grid-card-btn {
+          border: 2px solid transparent;
+          aspect-ratio: 1;
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.85rem;
+          font-weight: 800;
+          cursor: pointer;
+          position: relative;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .grid-card-btn.correct {
+          background: #f0fdf4;
+          border-color: #bbf7d0;
+          color: #166534;
+        }
+        .grid-card-btn.correct:hover {
+          background: #dcfce7;
+        }
+
+        .grid-card-btn.incorrect {
+          background: #fdf2f2;
+          border-color: #fecaca;
+          color: #991b1b;
+        }
+        .grid-card-btn.incorrect:hover {
+          background: #fee2e2;
+        }
+
+        .grid-card-btn.skipped {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+          color: #64748b;
+        }
+        .grid-card-btn.skipped:hover {
+          background: #f1f5f9;
+        }
+
+        .grid-card-btn.active {
+          box-shadow: 0 0 0 3px #3b82f6;
+          transform: translateY(-2px);
+        }
+
+        .grid-card-sublabel {
+          font-size: 0.58rem;
+          opacity: 0.75;
+          margin-top: 1px;
+          font-weight: 600;
+        }
+
+        /* Main details area */
+        .active-question-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 20px;
+          padding: 32px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .active-q-header {
+          display: flex;
           justify-content: space-between;
           align-items: center;
-          flex-shrink: 0;
+          border-bottom: 1px solid #f1f5f9;
+          padding-bottom: 16px;
         }
 
-        .summary-stats-pills {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }
-
-        .summary-pill {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          border-radius: 9999px;
-          font-size: 0.8rem;
-          font-weight: 700;
-        }
-
-        .summary-pill.score {
+        .section-badge {
           background: #eff6ff;
-          color: #2563eb;
+          color: #1d4ed8;
+          font-size: 0.78rem;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 6px;
+          text-transform: uppercase;
         }
 
-        .summary-pill.correct {
-          background: #f0fdf4;
-          color: #16a34a;
+        .marks-earned-badge {
+          font-size: 0.85rem;
+          font-weight: 700;
+          padding: 4px 12px;
+          border-radius: 8px;
         }
 
-        .summary-pill.wrong {
-          background: #fdf2f2;
-          color: #dc2626;
+        .marks-earned-badge.positive {
+          background: #dcfce7;
+          color: #15803d;
         }
-
-        .summary-pill.skipped {
+        .marks-earned-badge.negative {
+          background: #fee2e2;
+          color: #b91c1c;
+        }
+        .marks-earned-badge.zero {
           background: #f1f5f9;
           color: #475569;
         }
 
-        .viewer-content-scroll {
-          flex: 1;
-          overflow-y: auto;
-          padding: 24px;
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          gap: 32px;
-        }
-
-        .section-header-title {
-          font-size: 1rem;
-          font-weight: 800;
-          color: #475569;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          border-left: 4px solid #0d9488;
-          padding-left: 10px;
-          margin: 16px 0 16px 0;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .question-item-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          padding: 24px;
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        }
-
-        .question-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 0.85rem;
-          border-bottom: 1px dashed #e2e8f0;
-          padding-bottom: 12px;
-        }
-
-        .q-num-label {
-          font-weight: 800;
-          color: #0f172a;
-        }
-
-        .q-marks-label {
+        .active-q-body-text {
+          font-size: 1.05rem;
           font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 4px;
+          color: #0f172a;
+          line-height: 1.6;
+          text-align: left;
         }
 
-        .q-marks-label.positive {
-          background: #e6f4ea;
-          color: #137333;
+        .options-review-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
         }
 
-        .q-marks-label.negative {
-          background: #fce8e6;
-          color: #c5221f;
-        }
-
-        .q-marks-label.zero {
-          background: #f1f3f4;
-          color: #5f6368;
-        }
-
-        .option-review-row {
+        .option-review-item {
           display: flex;
           align-items: center;
-          gap: 14px;
-          padding: 14px;
-          border-radius: 10px;
+          gap: 16px;
+          padding: 16px;
+          border-radius: 12px;
           border: 1px solid #e2e8f0;
-          font-size: 0.9rem;
+          font-size: 0.95rem;
           text-align: left;
           transition: all 0.15s ease;
+          background: #ffffff;
         }
 
-        .option-review-row.correct-key {
+        .option-review-item.correct-key {
           border-color: #86efac;
           background: #f0fdf4;
           color: #14532d;
           font-weight: 600;
         }
 
-        .option-review-row.wrong-selected {
+        .option-review-item.wrong-selected {
           border-color: #fca5a5;
           background: #fef2f2;
           color: #7f1d1d;
           font-weight: 600;
         }
 
-        .option-letter-badge {
-          width: 26px;
-          height: 26px;
+        .option-badge-circle {
+          width: 28px;
+          height: 28px;
           border-radius: 50%;
           border: 1px solid #cbd5e1;
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 800;
-          font-size: 0.78rem;
+          font-size: 0.85rem;
           flex-shrink: 0;
           background: #ffffff;
           color: #475569;
         }
 
-        .option-review-row.correct-key .option-letter-badge {
+        .option-review-item.correct-key .option-badge-circle {
           border-color: #22c55e;
           background: #22c55e;
           color: #ffffff;
         }
 
-        .option-review-row.wrong-selected .option-letter-badge {
+        .option-review-item.wrong-selected .option-badge-circle {
           border-color: #ef4444;
           background: #ef4444;
           color: #ffffff;
         }
 
-        .explanation-box {
+        /* Match Widget */
+        .match-widget-card {
           background: #f8fafc;
           border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          padding: 16px;
-          font-size: 0.85rem;
-          color: #475569;
-          line-height: 1.5;
-        }
-
-        .explanation-box-header {
-          font-weight: 700;
-          color: #1e293b;
-          margin-bottom: 6px;
+          border-radius: 12px;
+          padding: 14px 18px;
           display: flex;
           align-items: center;
-          gap: 6px;
-        }
-
-        .response-summary-footer {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          font-size: 0.8rem;
-          color: #64748b;
-          background: #f8fafc;
-          padding: 10px 16px;
-          border-radius: 8px;
+          justify-content: space-between;
+          font-size: 0.88rem;
           font-weight: 600;
         }
 
-        .response-summary-footer span strong {
-          color: #334155;
+        /* Explanation Drawer */
+        .explanation-drawer-box {
+          background: #f0fdfa;
+          border: 1px solid #ccfbf1;
+          border-radius: 14px;
+          padding: 20px;
+          text-align: left;
         }
 
-        @media (max-width: 768px) {
+        .explanation-title {
+          font-weight: 800;
+          color: #0f766e;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.9rem;
+        }
+
+        @media (max-width: 992px) {
           .submission-viewer-overlay {
             padding: 0;
           }
@@ -374,171 +561,267 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
             height: 100vh;
             border-radius: 0;
           }
-          .viewer-header {
-            padding: 16px;
+          .viewer-layout-body {
+            flex-direction: column;
+            overflow-y: auto;
           }
-          .viewer-summary-banner {
-            padding: 12px 16px;
+          .viewer-sidebar {
+            width: 100%;
+            border-right: none;
+            border-bottom: 1px solid #e2e8f0;
+            flex-shrink: 0;
           }
-          .viewer-content-scroll {
+          .viewer-main-panel {
             padding: 16px;
+            overflow-y: visible;
           }
-          .question-item-card {
-            padding: 16px;
-            gap: 12px;
+          .active-question-card {
+            padding: 20px;
           }
         }
       `}</style>
 
       <div className="submission-viewer-container">
-        {/* Modal Header */}
+        {/* Header */}
         <div className="viewer-header">
-          <div className="viewer-header-info">
-            <h3>{exam.title}</h3>
-            <p>Candidate: <strong>{studentName}</strong> • Class: <strong>{exam.className}</strong></p>
+          <div className="viewer-header-info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: '#eff6ff', padding: '8px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileText size={22} style={{ color: '#2563eb' }} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0 }}>{exam.title} Review</h3>
+              <p style={{ margin: 0 }}>Candidate: <strong>{studentName}</strong> • Class: <strong>{exam.className}</strong></p>
+            </div>
           </div>
           <button className="viewer-close-btn" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
         </div>
 
-        {/* Summary Banner */}
-        <div className="viewer-summary-banner">
-          <div className="summary-stats-pills">
-            <div className="summary-pill score">
-              Score: {submission.score.toFixed(1)} / {maxPossibleScore.toFixed(0)}
-            </div>
-            <div className="summary-pill correct">
-              <Check size={14} /> {correctCount} Correct
-            </div>
-            <div className="summary-pill wrong">
-              <X size={14} /> {wrongCount} Wrong
-            </div>
-            <div className="summary-pill skipped">
-              <HelpCircle size={14} /> {skippedCount} Left
+        {/* Layout Body */}
+        <div className="viewer-layout-body">
+          {/* Sidebar */}
+          <div className="viewer-sidebar">
+            <div className="sidebar-scrollable-content">
+              {/* Score & General Stats */}
+              <div className="stats-grid-card">
+                <div className="stat-box">
+                  <span className="stat-box-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Award size={13} style={{ color: '#3b82f6' }} /> Score
+                  </span>
+                  <span className="stat-box-value score">
+                    {submission.score.toFixed(1)} <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>/ {maxPossibleScore}</span>
+                  </span>
+                </div>
+                <div className="stat-box">
+                  <span className="stat-box-label">Correct</span>
+                  <span className="stat-box-value correct">{stats.correct}</span>
+                </div>
+                <div className="stat-box">
+                  <span className="stat-box-label">Incorrect</span>
+                  <span className="stat-box-value wrong">{stats.incorrect}</span>
+                </div>
+                <div className="stat-box">
+                  <span className="stat-box-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <HelpCircle size={13} style={{ color: '#64748b' }} /> Skipped
+                  </span>
+                  <span className="stat-box-value" style={{ color: '#64748b' }}>{stats.skipped}</span>
+                </div>
+              </div>
+
+              {/* Proctoring & Attempt Info */}
+              <div className="stats-grid-card" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <div className="stat-box">
+                  <span className="stat-box-label">Mode / Type</span>
+                  <span className="stat-box-value" style={{ fontSize: '0.9rem' }}>
+                    {submission.attemptType === 'Online' ? '💻 Online' : '📝 OMR Sheet'}
+                  </span>
+                </div>
+                <div className="stat-box">
+                  <span className="stat-box-label">Booklet Set</span>
+                  <span className="stat-box-value" style={{ fontSize: '0.9rem' }}>
+                    Set {submission.bookletSet || 'A'}
+                  </span>
+                </div>
+                {submission.attemptType === 'Online' && (
+                  <>
+                    <div className="stat-box">
+                      <span className="stat-box-label">Time Taken</span>
+                      <span className="stat-box-value" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
+                        <Timer size={14} style={{ color: '#64748b' }} /> {formattedTimeTaken}
+                      </span>
+                    </div>
+                    <div className="stat-box">
+                      <span className="stat-box-label">Alerts</span>
+                      <span className={`stat-box-value ${submission.cheatingAlertsCount && submission.cheatingAlertsCount > 0 ? 'wrong' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.9rem' }}>
+                        <AlertTriangle size={14} style={{ color: submission.cheatingAlertsCount && submission.cheatingAlertsCount > 0 ? '#dc2626' : '#64748b' }} />
+                        {submission.cheatingAlertsCount || 0}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Proctoring Alerts Summary Box */}
+              {submission.attemptType === 'Online' && (
+                submission.cheatingAlertsCount && submission.cheatingAlertsCount > 0 ? (
+                  <div className="proctoring-summary-card warning">
+                    <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                    <div>
+                      <strong>Proctoring Alert:</strong> {submission.cheatingAlertsCount} focus loss events occurred during the test.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="proctoring-summary-card secure">
+                    <Check size={18} style={{ flexShrink: 0 }} />
+                    <div>
+                      <strong>Session Secure:</strong> No suspicious tab switching or cheating alerts recorded.
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Filter Cards Bar */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Filter size={13} style={{ color: '#475569' }} /> Filter Questions
+                </span>
+                <div className="sidebar-filter-bar">
+                  <button className={`filter-btn ${filterType === 'all' ? 'active' : ''}`} onClick={() => setFilterType('all')}>All</button>
+                  <button className={`filter-btn ${filterType === 'correct' ? 'active' : ''}`} onClick={() => setFilterType('correct')}>🟢 OK</button>
+                  <button className={`filter-btn ${filterType === 'incorrect' ? 'active' : ''}`} onClick={() => setFilterType('incorrect')}>🔴 Err</button>
+                  <button className={`filter-btn ${filterType === 'skipped' ? 'active' : ''}`} onClick={() => setFilterType('skipped')}>⚫ Skip</button>
+                </div>
+              </div>
+
+              {/* Interactive Visual Question Selector Grid */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <BookOpen size={13} style={{ color: '#475569' }} /> Question Navigator
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                    Showing {filteredQuestions.length} of {questions.length}
+                  </span>
+                </div>
+
+                <div className="question-visual-grid">
+                  {filteredQuestions.map((item) => {
+                    const isActive = selectedQIndex === item.qNum - 1;
+                    return (
+                      <button
+                        key={item.qNum}
+                        className={`grid-card-btn ${item.status} ${isActive ? 'active' : ''}`}
+                        onClick={() => setSelectedQIndex(item.qNum - 1)}
+                        title={`Question ${item.qNum} (${item.status.toUpperCase()})`}
+                      >
+                        {item.qNum}
+                        <span className="grid-card-sublabel">
+                          {item.status === 'skipped' ? '—' : item.studentAns || 'X'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {filteredQuestions.length === 0 && (
+                    <div style={{ gridColumn: 'span 5', textAlign: 'center', padding: '20px 0', fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                      No questions match this filter.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Main scrollable questions container */}
-        <div className="viewer-content-scroll">
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#64748b' }}>
-              <div style={{ width: '40px', height: '40px', border: '4px solid #cbd5e1', borderTopColor: '#0d9488', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <span>Loading questions...</span>
-              <style>{`
-                @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-              `}</style>
-            </div>
-          ) : (
-            sectionNames.map((sectionName) => {
-              const secQs = sectionsMap.get(sectionName) || [];
-              return (
-                <div key={sectionName} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h4 className="section-header-title">
-                    <BookOpen size={16} /> {sectionName}
-                  </h4>
+          {/* Main Question View Panel */}
+          <div className="viewer-main-panel">
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#64748b' }}>
+                <div style={{ width: '40px', height: '40px', border: '4px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span>Loading Question Details...</span>
+              </div>
+            ) : activeItem ? (
+              <div className="active-question-card">
+                {/* Header (Section & Marks) */}
+                <div className="active-q-header">
+                  <span className="section-badge">
+                    {activeItem.q.sectionName || 'General Test'} • Q.{activeItem.qNum}
+                  </span>
+                  
+                  <span className={`marks-earned-badge ${activeItem.status === 'correct' ? 'positive' : activeItem.status === 'incorrect' ? 'negative' : 'zero'}`}>
+                    {activeItem.status === 'correct' && `Correct (+${activeSectionRules?.correctMarks || 4} Pts)`}
+                    {activeItem.status === 'incorrect' && `Incorrect (${activeSectionRules?.incorrectMarks || -1} Pts)`}
+                    {activeItem.status === 'skipped' && `Skipped (${activeEarnedMarks >= 0 ? '+' : ''}${activeEarnedMarks} Pts)`}
+                  </span>
+                </div>
 
-                  {secQs.map((q, idx) => {
-                    // Determine absolute question number
-                    // Map questions to find its 1-based index in the master questions list
-                    const qIndexInMaster = questions.findIndex((masterQ) => masterQ.id === q.id || (masterQ.questionText === q.questionText && masterQ.sectionName === q.sectionName));
-                    const qNum = qIndexInMaster !== -1 ? qIndexInMaster + 1 : idx + 1;
+                {/* Question text content */}
+                <div className="active-q-body-text">
+                  <MathRenderer text={activeItem.q.questionText} />
+                </div>
 
-                    const studentAns = submission.answers ? submission.answers[qNum] : '';
-                    const correctAns = exam.answerKey ? exam.answerKey[qNum] : '';
+                {/* Diagram if available */}
+                {activeItem.q.questionImage && (
+                  <div style={{ alignSelf: 'flex-start', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px', background: '#f8fafc', maxWidth: '100%' }}>
+                    <img src={activeItem.q.questionImage} alt={`Question ${activeItem.qNum} illustration`} style={{ maxHeight: '250px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }} />
+                  </div>
+                )}
 
-                    // Calculate marks for this question
-                    const secRules = exam.sectionsMarking?.[sectionName] || {
-                      correctMarks: exam.correctMarks || 4,
-                      incorrectMarks: exam.incorrectMarks || -1,
-                      unansweredMarks: exam.unansweredMarks || 0
-                    };
+                {/* Option Rows */}
+                <div className="options-review-list">
+                  {activeItem.q.options.map((optText, optIdx) => {
+                    const letter = OPTIONS_LETTERS[optIdx];
+                    const isCorrectKey = letter === activeItem.correctAns;
+                    const isSelectedWrong = (letter === activeItem.studentAns) && (activeItem.studentAns !== activeItem.correctAns);
 
-                    let earnedMarks = 0;
-                    let marksClass = 'zero';
-                    if (!studentAns) {
-                      earnedMarks = secRules.unansweredMarks || 0;
-                      marksClass = earnedMarks > 0 ? 'positive' : earnedMarks < 0 ? 'negative' : 'zero';
-                    } else if (studentAns === correctAns) {
-                      earnedMarks = secRules.correctMarks;
-                      marksClass = 'positive';
-                    } else {
-                      earnedMarks = secRules.incorrectMarks;
-                      marksClass = 'negative';
-                    }
+                    let itemClass = '';
+                    if (isCorrectKey) itemClass = 'correct-key';
+                    else if (isSelectedWrong) itemClass = 'wrong-selected';
 
                     return (
-                      <div key={q.id || idx} className="question-item-card">
-                        {/* Header: Question Number & Marks */}
-                        <div className="question-card-header">
-                          <span className="q-num-label">QUESTION {qNum}</span>
-                          <span className={`q-marks-label ${marksClass}`}>
-                            {earnedMarks >= 0 ? `+${earnedMarks.toFixed(1)}` : earnedMarks.toFixed(1)} Marks
-                          </span>
-                        </div>
-
-                        {/* Question Text */}
-                        <div style={{ fontSize: '0.95rem', color: '#1e293b', fontWeight: '700', textAlign: 'left', lineHeight: '1.6' }}>
-                          <MathRenderer text={q.questionText} />
-                        </div>
-
-                        {/* Question Image */}
-                        {q.questionImage && (
-                          <div style={{ alignSelf: 'center', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px', maxWidth: '100%', display: 'inline-block' }}>
-                            <img src={q.questionImage} alt={`Q.${qNum} diagram`} style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain' }} />
-                          </div>
-                        )}
-
-                        {/* Options List */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {q.options.map((optText, optIdx) => {
-                            const letter = OPTIONS_LETTERS[optIdx];
-                            const isCorrectKey = letter === correctAns;
-                            const isSelectedWrong = (letter === studentAns) && (studentAns !== correctAns);
-
-                            let optionClass = '';
-                            if (isCorrectKey) optionClass = 'correct-key';
-                            else if (isSelectedWrong) optionClass = 'wrong-selected';
-
-                            return (
-                              <div key={optIdx} className={`option-review-row ${optionClass}`}>
-                                <span className="option-letter-badge">{letter}</span>
-                                <span style={{ flex: 1 }}><MathRenderer text={optText} /></span>
-                                {isCorrectKey && <Check size={18} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
-                                {isSelectedWrong && <X size={18} style={{ color: '#dc2626', marginLeft: 'auto', flexShrink: 0 }} />}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Question Stats Footer */}
-                        <div className="response-summary-footer">
-                          <span>Correct Answer: <strong style={{ color: '#16a34a' }}>{correctAns}</strong></span>
-                          <span>Student's Response: <strong style={studentAns === correctAns ? { color: '#16a34a' } : studentAns ? { color: '#dc2626' } : { color: '#64748b' }}>{studentAns || 'Skipped (Left)'}</strong></span>
-                        </div>
-
-                        {/* Explanation Box */}
-                        {q.explanation && (
-                          <div className="explanation-box">
-                            <div className="explanation-box-header">
-                              <AlertCircle size={14} style={{ color: '#0d9488' }} /> Explanation
-                            </div>
-                            <div style={{ textAlign: 'left' }}>
-                              <MathRenderer text={q.explanation} />
-                            </div>
-                          </div>
-                        )}
+                      <div key={optIdx} className={`option-review-item ${itemClass}`}>
+                        <span className="option-badge-circle">{letter}</span>
+                        <span style={{ flex: 1 }}><MathRenderer text={optText} /></span>
+                        {isCorrectKey && <Check size={18} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
+                        {isSelectedWrong && <X size={18} style={{ color: '#dc2626', marginLeft: 'auto', flexShrink: 0 }} />}
                       </div>
                     );
                   })}
                 </div>
-              );
-            })
-          )}
+
+                {/* Bottom Match Comparison Widget */}
+                <div className="match-widget-card">
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Correct Answer: <strong style={{ color: '#16a34a', fontSize: '1rem' }}>{activeItem.correctAns}</strong>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Student Answer: 
+                    <strong style={{ 
+                      color: activeItem.status === 'correct' ? '#16a34a' : activeItem.status === 'incorrect' ? '#dc2626' : '#64748b',
+                      fontSize: '1rem'
+                    }}>
+                      {activeItem.studentAns || 'Skipped (No Option)'}
+                    </strong>
+                  </span>
+                </div>
+
+                {/* Explanation Markdown Box */}
+                {activeItem.q.explanation && (
+                  <div className="explanation-drawer-box">
+                    <div className="explanation-title">
+                      <AlertCircle size={15} /> Explanation & Solution Detail
+                    </div>
+                    <div style={{ fontSize: '0.92rem', color: '#0f766e', lineHeight: 1.6 }}>
+                      <MathRenderer text={activeItem.q.explanation} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                Select a question from the navigator to view details.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

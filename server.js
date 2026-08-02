@@ -178,6 +178,10 @@ const initDatabase = async () => {
         scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         omrImageUrl LONGTEXT,
         accessToken VARCHAR(255),
+        attemptType VARCHAR(20) DEFAULT 'OMR',
+        cheatingAlertsCount INT DEFAULT 0,
+        timeTakenSeconds INT DEFAULT 0,
+        bookletSet VARCHAR(10) DEFAULT 'A',
         UNIQUE KEY unique_exam_student (examId, studentId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
@@ -193,6 +197,14 @@ const initDatabase = async () => {
     try { await conn.query('ALTER TABLE submissions ADD UNIQUE KEY unique_exam_student (examId, studentId)'); } catch {}
     try { await conn.query('ALTER TABLE submissions MODIFY COLUMN omrImageUrl LONGTEXT'); } catch {}
     try { await conn.query('ALTER TABLE submissions MODIFY COLUMN scannedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'); } catch {}
+
+    const addSubCol = async (colDef) => {
+      try { await conn.query(`ALTER TABLE submissions ADD COLUMN ${colDef}`); } catch {}
+    };
+    await addSubCol("attemptType VARCHAR(20) DEFAULT 'OMR'");
+    await addSubCol("cheatingAlertsCount INT DEFAULT 0");
+    await addSubCol("timeTakenSeconds INT DEFAULT 0");
+    await addSubCol("bookletSet VARCHAR(10) DEFAULT 'A'");
 
     // 7. Pending Registrations Table for Student Invite Links
     await conn.query(`
@@ -912,22 +924,51 @@ app.post('/api/questions', async (req, res) => {
 // Upsert Submission API (Save student scores & graded responses in Hostinger MySQL)
 app.post('/api/submissions', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { examId, studentId, score, answers, omrImageUrl, accessToken } = req.body;
+  const { 
+    examId, 
+    studentId, 
+    score, 
+    answers, 
+    omrImageUrl, 
+    accessToken,
+    attemptType,
+    cheatingAlertsCount,
+    timeTakenSeconds,
+    bookletSet
+  } = req.body;
   if (!examId || !studentId) return res.status(400).json({ error: 'Missing examId or studentId' });
   try {
     const ansJson = typeof answers === 'object' ? JSON.stringify(answers) : answers;
     const token = accessToken || Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     const query = `
-      INSERT INTO submissions (examId, studentId, score, answers, omrImageUrl, accessToken)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO submissions (
+        examId, studentId, score, answers, omrImageUrl, accessToken,
+        attemptType, cheatingAlertsCount, timeTakenSeconds, bookletSet
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         score = VALUES(score),
         answers = VALUES(answers),
         omrImageUrl = COALESCE(VALUES(omrImageUrl), omrImageUrl),
         accessToken = COALESCE(VALUES(accessToken), accessToken),
+        attemptType = VALUES(attemptType),
+        cheatingAlertsCount = VALUES(cheatingAlertsCount),
+        timeTakenSeconds = VALUES(timeTakenSeconds),
+        bookletSet = VALUES(bookletSet),
         scannedAt = CURRENT_TIMESTAMP;
     `;
-    const [result] = await pool.query(query, [examId, studentId, score, ansJson, omrImageUrl || null, token]);
+    const [result] = await pool.query(query, [
+      examId, 
+      studentId, 
+      score, 
+      ansJson, 
+      omrImageUrl || null, 
+      token,
+      attemptType || 'OMR',
+      cheatingAlertsCount || 0,
+      timeTakenSeconds || 0,
+      bookletSet || 'A'
+    ]);
     res.json({ success: true, id: result.insertId || result.id });
   } catch (err) {
     console.error("Submission save error:", err);

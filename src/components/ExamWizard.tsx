@@ -236,11 +236,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     const loadQuestionBank = async () => {
       setLibLoading(true);
       try {
-        let results = [];
-        if (selectedLibBankId === 'All') {
-          results = await db.questionBank.toArray();
-        } else {
-          results = await db.questionBank.where('bankId').equals(Number(selectedLibBankId)).toArray();
+        let results = await db.questionBank.toArray();
+        if (selectedLibBankId !== 'All') {
+          results = results.filter((q: any) => Number(q.bankId) === Number(selectedLibBankId));
         }
 
         if (libDifficultyFilter !== 'All') {

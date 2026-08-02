@@ -109,11 +109,14 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       await db.questionBanks.delete(bankId);
       await deleteQuestionBankFromCloud(bankId);
       // Delete all questions linked to this bank from local and cloud
-      const qList = await db.questionBank.where('bankId').equals(bankId).toArray();
-      for (const q of qList) {
-        if (q.id) await deleteBankQuestionFromCloud(q.id);
+      const qList = await db.questionBank.toArray();
+      const linkedQs = qList.filter((q: any) => Number(q.bankId) === Number(bankId));
+      for (const q of linkedQs) {
+        if (q.id) {
+          await deleteBankQuestionFromCloud(q.id);
+          await db.questionBank.delete(q.id);
+        }
       }
-      await db.questionBank.where('bankId').equals(bankId).delete();
       if (selectedBank && selectedBank.id === bankId) {
         setSelectedBank(null);
       }

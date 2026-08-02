@@ -148,7 +148,8 @@ export async function syncQuestionBankToCloud(bank: QuestionBank) {
             await db.questionBanks.add({ ...bankObj, id: newId });
           }
           
-          const qs = await db.questionBank.where('bankId').equals(oldId).toArray();
+          const allQs = await db.questionBank.toArray();
+          const qs = allQs.filter((q: any) => Number(q.bankId) === Number(oldId));
           for (const q of qs) {
             if (q.id) {
               await db.questionBank.delete(q.id);
@@ -647,7 +648,8 @@ export async function pullCloudUpdatesToIndexedDB() {
     // 10. Sync Bank Questions (db.questionBank table)
     if (data.bankQuestions && Array.isArray(data.bankQuestions)) {
       const serverQIds = new Set(data.bankQuestions.map((q: any) => q.id));
-      const defaultBank = await db.questionBanks.where('name').equals("NEET / JEE - Core Library: Mixed Topics").first();
+      const localBanksListForDefault = await db.questionBanks.toArray();
+      const defaultBank = localBanksListForDefault.find(b => b.name === "NEET / JEE - Core Library: Mixed Topics");
       const defaultBankId = defaultBank?.id;
       
       const localQs = await db.questionBank.toArray();

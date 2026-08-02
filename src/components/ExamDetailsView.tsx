@@ -238,6 +238,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const totalClassCount = classStudents.length > 0 ? classStudents.length : Math.max(examSubs.length, 1);
   const scannedPercentage = Math.min(100, Math.round((examSubs.length / totalClassCount) * 100));
 
+  const hasOnline = examSubs.some(s => s.attemptType === 'Online');
+  const hasOmr = examSubs.some(s => !s.attemptType || s.attemptType === 'OMR');
+  const progressLabel = (hasOnline && hasOmr)
+    ? "OMR & Online Submissions"
+    : hasOnline
+      ? "Online Submissions"
+      : "Sheets Scanned";
+
   // Calculate absent students (enrolled in class but sheet not scanned/submitted)
   const submittedStudentIds = new Set(examSubs.map(s => s.studentId));
   const absentStudents = classStudents
@@ -822,7 +830,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             <div className="card-progress-row">
               <div className="progress-info-side">
                 <div className="progress-text-line">
-                  <span className="scanned-label">Sheet Scanned</span>
+                  <span className="scanned-label">{progressLabel}</span>
                   <span className="scanned-ratio">{examSubs.length}/{totalClassCount}</span>
                 </div>
                 <div className="scanned-bar-track">

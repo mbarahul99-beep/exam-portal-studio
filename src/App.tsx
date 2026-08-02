@@ -3599,7 +3599,7 @@ export default function App() {
                                     >
                                       <div className="report-card-desc">
                                         <h5 style={{ margin: 0, fontSize: '0.9rem' }}>{exam ? exam.title : 'Deleted Exam'}</h5>
-                                        <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', opacity: 0.6 }}>Scanned on {new Date(sub.scannedAt).toLocaleDateString()}</p>
+                                        <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', opacity: 0.6 }}>{sub.attemptType === 'Online' ? 'Submitted on ' : 'Scanned on '}{new Date(sub.scannedAt).toLocaleDateString()}</p>
                                       </div>
                                       
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>

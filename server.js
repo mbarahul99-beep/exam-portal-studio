@@ -644,8 +644,10 @@ app.post('/api/auth/google', async (req, res) => {
     const name = payload.name || payload.given_name || 'Google User';
     
     // Check if this is the Master Admin (Option A)
-    const adminGoogleEmail = (process.env.ADMIN_GOOGLE_EMAIL || 'admin@example.com').toLowerCase();
-    if (email === adminGoogleEmail) {
+    const adminGoogleEmails = (process.env.ADMIN_GOOGLE_EMAIL || 'admin@example.com')
+      .split(',')
+      .map(e => e.trim().toLowerCase());
+    if (adminGoogleEmails.includes(email)) {
       return res.json({
         success: true,
         role: 'admin',

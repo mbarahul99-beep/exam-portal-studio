@@ -180,8 +180,13 @@ function isRecordEqual(local: any, server: any): boolean {
   if (!local) return false;
   for (const key of Object.keys(server)) {
     if (key === 'id' || key === 'createdAt' || key === 'updatedAt') continue;
-    const localVal = local[key];
-    const serverVal = server[key];
+    let localVal = local[key];
+    let serverVal = server[key];
+
+    // Normalize null/undefined/empty string to null to prevent false inequality positives
+    if (localVal === undefined || localVal === null || localVal === '') localVal = null;
+    if (serverVal === undefined || serverVal === null || serverVal === '') serverVal = null;
+
     if (JSON.stringify(localVal) !== JSON.stringify(serverVal)) {
       return false;
     }

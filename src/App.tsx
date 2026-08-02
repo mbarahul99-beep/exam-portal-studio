@@ -479,14 +479,7 @@ export default function App() {
   // Selected Student Profile State for Reports
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
-  // Real-time sync: Synchronize database with Hostinger MySQL on mount & every 3s background interval
-  useEffect(() => {
-    pullCloudUpdatesToIndexedDB();
-    const interval = setInterval(() => {
-      pullCloudUpdatesToIndexedDB();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+
 
   const cleanWhatsAppNumber = (num: string): string => {
     let cleaned = num.replace(/[\s\-\(\)\+]/g, '');

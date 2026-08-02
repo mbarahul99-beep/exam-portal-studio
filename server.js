@@ -770,8 +770,12 @@ app.delete('/api/classes/:name', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { name } = req.params;
   try {
+    // Cascading delete: Clean up child records linked to this class
+    await pool.query('DELETE FROM submissions WHERE studentId IN (SELECT id FROM students WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM attendance WHERE className = ?', [name]);
+    await pool.query('DELETE FROM students WHERE className = ?', [name]);
     await pool.query('DELETE FROM classes WHERE name = ?', [name]);
-    res.json({ success: true, message: 'Class deleted successfully' });
+    res.json({ success: true, message: 'Class and all associated records deleted successfully from Cloud database!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

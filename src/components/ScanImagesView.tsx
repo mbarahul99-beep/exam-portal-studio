@@ -62,7 +62,20 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const prevCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
 
   // Registered students in this exam's class limit validation
-  const [lastScanOverlay, setLastScanOverlay] = useState<{ studentName: string; studentNum: string; score: number; correctCount: number; wrongCount: number; unansweredCount: number } | null>(null);
+  const [lastScanOverlay, setLastScanOverlay] = useState<{ 
+    studentName: string; 
+    studentNum: string; 
+    score: number; 
+    correctCount: number; 
+    wrongCount: number; 
+    unansweredCount: number;
+    answers: Record<number, string>;
+    bookletSet: string;
+    omrImageUrl: string;
+    studentId: number | null;
+  } | null>(null);
+  const [isEditingOverlayRoll, setIsEditingOverlayRoll] = useState(false);
+  const [overlayRollInput, setOverlayRollInput] = useState('');
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
   const scannedCount = existingSubmissions.length;
@@ -482,84 +495,25 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      const scanResultData = {
-        studentId,
+      setIsEditingOverlayRoll(false);
+      setOverlayRollInput(cvResult.studentNum || '');
+
+      setLastScanOverlay({
         studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
-        detectedStudentNum: cvResult.studentNum,
-        bookletSet: detectedSet,
+        studentNum: cvResult.studentNum || '',
         score,
         correctCount,
         wrongCount,
         unansweredCount,
         answers: cvResult.answers,
-        warpedCanvas: cvResult.debugWarpedCanvas
-      };
-
-      const studentNum = cvResult.studentNum;
-
-      if (studentId) {
-        // Prevent silent accidental overwrites of already scanned students
-        const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id!, studentId]).first();
-        if (existingSub) {
-          const studentName = matchedStudent ? matchedStudent.name : `Roll ${studentNum}`;
-          const confirmOverwrite = window.confirm(
-            `Roll number ${studentNum || ''} (${studentName}) has already been scanned.\n\nDo you want to overwrite their submission?`
-          );
-          if (!confirmOverwrite) {
-            // Discard this snap, resume camera scan instantly
-            isScanningRef.current = false;
-            setIsScanning(false);
-            return;
-          }
-        }
-
-        // Auto-save to IndexedDB (preventing duplicates)
-        if (exam.id && studentId) {
-          await db.submissions.where('[examId+studentId]').equals([exam.id, studentId]).delete();
-        }
-        const subId = await db.submissions.add({
-          examId: exam.id!,
-          studentId: studentId,
-          score: score,
-          answers: cvResult.answers,
-          bookletSet: detectedSet,
-          omrImageUrl: croppedUrl,
-          scannedAt: new Date()
-        });
-
-        // Sync submission to Hostinger database in background
-        const savedSub = await db.submissions.get(subId);
-        if (savedSub) {
-          syncSubmissionToCloud(savedSub).catch(console.warn);
-        }
-        pullCloudUpdatesToIndexedDB();
-        refreshSubmissions();
-      } else {
-        // If not registered, add to fileList queue so admin can associate manually
-        const newItemId = `cam-${Date.now()}`;
-        const newItem: ScanFileItem = {
-          id: newItemId,
-          name: `Unregistered - Roll ${studentNum || 'OMR'}`,
-          previewUrl: croppedUrl,
-          status: 'Scanned' as const,
-          result: scanResultData
-        };
-        setFileList(prev => [...prev, newItem]);
-        setSelectedFileId(newItemId);
-        setActiveResult(scanResultData);
-        setDetectedStudentId(null);
-      }
-
-      setLastScanOverlay({
-        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
-        studentNum: cvResult.studentNum,
-        score,
-        correctCount,
-        wrongCount,
-        unansweredCount
+        bookletSet: detectedSet,
+        omrImageUrl: croppedUrl,
+        studentId: studentId || null
       });
 
-      confetti({ particleCount: 60, spread: 60 });
+      if (matchedStudent) {
+        confetti({ particleCount: 60, spread: 60 });
+      }
     } catch (err: any) {
       alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Align sheet inside frame."));
     } finally {
@@ -1622,9 +1576,43 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {lastScanOverlay.studentName.split('/')[0].trim()}
                       </h4>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
-                        Roll: {lastScanOverlay.studentNum}
-                      </p>
+                      {isEditingOverlayRoll ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Roll:</span>
+                          <input 
+                            type="text" 
+                            value={overlayRollInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setOverlayRollInput(val);
+                              // Match student by new roll number in this class
+                              const matchedStudent = students.find(
+                                s => s.studentNum.trim().toLowerCase() === val.trim().toLowerCase() && 
+                                     s.className === exam.className
+                              );
+                              setLastScanOverlay(prev => prev ? {
+                                ...prev,
+                                studentNum: val,
+                                studentId: matchedStudent ? matchedStudent.id! : null,
+                                studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate'
+                              } : null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '0.75rem',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              width: '80px',
+                              fontWeight: 700
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                          Roll: {lastScanOverlay.studentNum}
+                        </p>
+                      )}
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'inline-block' }}>
@@ -1653,6 +1641,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           setLastScanOverlay(null);
                           isScanningRef.current = false;
                           setIsScanning(false);
+                          setIsEditingOverlayRoll(false);
                         }}
                         style={{
                           padding: '5px 10px',
@@ -1676,6 +1665,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           setLastScanOverlay(null);
                           isScanningRef.current = false;
                           setIsScanning(false);
+                          setIsEditingOverlayRoll(false);
                         }}
                         style={{
                           padding: '5px 10px',
@@ -1689,6 +1679,107 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                         }}
                       >
                         Finish
+                      </button>
+                      {isEditingOverlayRoll ? (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setIsEditingOverlayRoll(false);
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            background: '#3b82f6',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            fontSize: '0.72rem'
+                          }}
+                        >
+                          Done
+                        </button>
+                      ) : (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setIsEditingOverlayRoll(true);
+                            setOverlayRollInput(lastScanOverlay.studentNum);
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            background: '#e2e8f0',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            fontSize: '0.72rem'
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={async () => {
+                          if (!lastScanOverlay.studentId) {
+                            alert('Please enter a valid roll number that matches a registered student before saving.');
+                            return;
+                          }
+                          try {
+                            if (exam.id && lastScanOverlay.studentId) {
+                              // Check if duplicate submission exists
+                              const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.studentId]).first();
+                              if (existingSub) {
+                                if (!window.confirm(`Submission for ${lastScanOverlay.studentName} already exists. Overwrite?`)) {
+                                  return;
+                                }
+                                await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.studentId]).delete();
+                              }
+
+                              const subId = await db.submissions.add({
+                                examId: exam.id!,
+                                studentId: lastScanOverlay.studentId,
+                                score: lastScanOverlay.score,
+                                answers: lastScanOverlay.answers,
+                                bookletSet: lastScanOverlay.bookletSet,
+                                omrImageUrl: lastScanOverlay.omrImageUrl,
+                                scannedAt: new Date()
+                              });
+
+                              // Sync submission to Hostinger database in background
+                              const savedSub = await db.submissions.get(subId);
+                              if (savedSub) {
+                                syncSubmissionToCloud(savedSub).catch(console.warn);
+                              }
+                              pullCloudUpdatesToIndexedDB();
+                              refreshSubmissions();
+                              alert('Saved successfully!');
+                              
+                              // Reset state, auto scan next
+                              setLastScanOverlay(null);
+                              isScanningRef.current = false;
+                              setIsScanning(false);
+                              setIsEditingOverlayRoll(false);
+                            }
+                          } catch (err: any) {
+                            alert('Error saving submission: ' + err.message);
+                          }
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          background: '#3b82f6',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: '0.72rem',
+                          boxShadow: '0 2px 6px rgba(59,130,246,0.2)'
+                        }}
+                      >
+                        Save
                       </button>
                     </div>
                   </div>

@@ -204,13 +204,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         <span className="label">Exam Title</span>
         <span className="val">{exam.title}</span>
       </div>
-      <div className="meta-item">
+      <div className="meta-item" style={{ gridColumn: student.fatherName ? 'span 1' : 'span 2' }}>
         <span className="label">Exam Date</span>
         <span className="val">{new Date(exam.date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
-      </div>
-      <div className="meta-item" style={{ gridColumn: student.fatherName ? 'span 1' : 'span 2' }}>
-        <span className="label">Scanned Timestamp</span>
-        <span className="val font-mono">{new Date(submission.scannedAt).toLocaleString()}</span>
       </div>
     </section>
   );

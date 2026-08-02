@@ -286,7 +286,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     </section>
   );
 
-  const renderResponsesGridRange = (startQNum: number, endQNum: number, title?: string) => {
+  const renderResponsesGridRange = (startQNum: number, endQNum: number, title?: string, availableHeight: number = 600) => {
     const rangeTotal = endQNum - startQNum + 1;
     const columnsCount = 4;
     const questionsPerCol = Math.ceil(rangeTotal / columnsCount);
@@ -304,35 +304,71 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
       }
     }
 
+    // Dynamic sizing based on available height and row count to fill space fully
+    const maxRows = Math.ceil(rangeTotal / columnsCount);
+    const rowHeight = availableHeight / (maxRows + 1);
+    
+    // Calculate padding and font size to fit rowHeight
+    const paddingY = Math.max(3, Math.min(16, (rowHeight - 14) / 2));
+    const rowPadding = `${paddingY}px 4px`;
+    const fontSize = `${Math.max(8.5, Math.min(11, rowHeight * 0.35))}px`;
+    const colHeaderPadding = `${Math.max(4, Math.min(16, paddingY * 1.1))}px 4px`;
+    const colHeaderFontSize = `${Math.max(8, Math.min(10.5, rowHeight * 0.3))}px`;
+
     return (
-      <section className="report-section responses-section" style={{ marginTop: '4px' }}>
-        <h2>{title || "Question Response Details"}</h2>
+      <section className="report-section responses-section" style={{ marginTop: '4px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <h2 style={{ fontSize: '10px', margin: '0 0 4px 0' }}>{title || "Question Response Details"}</h2>
         <div className="responses-grid" style={{
+          display: 'grid',
           gridTemplateColumns: `repeat(${rangeCols.length}, 1fr)`,
-          gap: '6px'
+          gap: '6px',
+          flex: 1
         }}>
           {rangeCols.map((colGroup, colIdx) => (
-            <div key={`rep-col-${colIdx}`} className="resp-col">
-              <div className="col-header-row">
+            <div key={`rep-col-${colIdx}`} className="resp-col" style={{ border: '1px solid #edf2f7', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div className="col-header-row" style={{
+                background: '#2b6cb0',
+                color: '#ffffff',
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr 1fr',
+                padding: colHeaderPadding,
+                fontSize: colHeaderFontSize,
+                fontWeight: 'bold',
+                textAlign: 'center'
+              }}>
                 <span>Q.No</span>
                 <span>Key</span>
                 <span>Resp</span>
               </div>
-              {colGroup.map((qNum) => {
-                if (qNum > exam.numQuestions) return null;
-                const correctKey = exam.answerKey[qNum];
-                const studentAns = submission.answers[qNum];
-                const isCorrect = studentAns === correctKey;
-                const isUnanswered = !studentAns;
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', flex: 1 }}>
+                {colGroup.map((qNum) => {
+                  if (qNum > exam.numQuestions) return null;
+                  const correctKey = exam.answerKey[qNum];
+                  const studentAns = submission.answers[qNum];
+                  const isCorrect = studentAns === correctKey;
+                  const isUnanswered = !studentAns;
 
-                return (
-                  <div key={`rep-q-${qNum}`} className={`resp-row ${isUnanswered ? 'unanswered' : isCorrect ? 'correct' : 'incorrect'}`}>
-                    <span className="q-lbl font-mono">Q{String(qNum).padStart(2, '0')}</span>
-                    <span className="key-lbl font-mono">{correctKey}</span>
-                    <span className="stud-lbl font-mono">{studentAns || '-'}</span>
-                  </div>
-                );
-              })}
+                  return (
+                    <div key={`rep-q-${qNum}`} 
+                      className={`resp-row ${isUnanswered ? 'unanswered' : isCorrect ? 'correct' : 'incorrect'}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.2fr 1fr 1fr',
+                        padding: rowPadding,
+                        fontSize: fontSize,
+                        textAlign: 'center',
+                        borderBottom: '0.5px solid #f1f5f9',
+                        flex: 1,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span className="q-lbl font-mono" style={{ color: '#64748b', textAlign: 'left' }}>Q{String(qNum).padStart(2, '0')}</span>
+                      <span className="key-lbl font-mono">{correctKey}</span>
+                      <span className="stud-lbl font-mono">{studentAns || '-'}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
@@ -369,7 +405,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
             <div style={{ marginTop: '10px' }} />
             {renderSectionStats()}
             <div style={{ marginTop: '10px' }} />
-            {renderResponsesGridRange(1, pageOneCount, `Question Response Details (Part 1: Q01 - Q${String(pageOneCount).padStart(2, '0')})`)}
+            {renderResponsesGridRange(1, pageOneCount, `Question Response Details (Part 1: Q01 - Q${String(pageOneCount).padStart(2, '0')})`, 540)}
           </div>
 
           {/* PAGE 2 */}
@@ -383,7 +419,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 {student.name} | Roll: {student.studentNum}
               </div>
             </header>
-            {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`)}
+            {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`, 840)}
             <div style={{ flex: 1 }} /> {/* Push footer to bottom */}
             {renderFooter()}
           </div>
@@ -395,7 +431,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           {renderMetaGrid()}
           {renderScoreSummary()}
           {renderSectionStats()}
-          {renderResponsesGridRange(1, totalQuestions, "Question Response Details")}
+          {renderResponsesGridRange(1, totalQuestions, "Question Response Details", 520)}
           {renderFooter()}
         </div>
       )}

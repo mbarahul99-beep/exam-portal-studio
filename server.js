@@ -1025,6 +1025,45 @@ app.post('/api/admin/purge-demo-data', async (req, res) => {
   }
 });
 
+// WhatsApp Webhook Verification Endpoint (GET)
+app.get('/api/whatsapp-webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'ApexOMRVerifyToken2026';
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('✅ WhatsApp Webhook verified successfully!');
+      return res.status(200).send(challenge);
+    } else {
+      console.warn('❌ WhatsApp Webhook verification failed: Token mismatch.');
+      return res.sendStatus(403);
+    }
+  }
+  return res.sendStatus(400);
+});
+
+// WhatsApp Webhook Event Handler Endpoint (POST)
+app.post('/api/whatsapp-webhook', (req, res) => {
+  const body = req.body;
+  if (body.object) {
+    if (
+      body.entry &&
+      body.entry[0].changes &&
+      body.entry[0].changes[0] &&
+      body.entry[0].changes[0].value
+    ) {
+      const value = body.entry[0].changes[0].value;
+      console.log('📱 WhatsApp Webhook event received:', JSON.stringify(value, null, 2));
+    }
+    return res.status(200).send('EVENT_RECEIVED');
+  } else {
+    return res.sendStatus(404);
+  }
+});
+
 // Serve Production Static Assets (Checks both dist folder and root folder for Hostinger)
 if (fs.existsSync(path.join(__dirname, 'dist'))) {
   app.use(express.static(path.join(__dirname, 'dist')));

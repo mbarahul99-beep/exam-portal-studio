@@ -274,7 +274,9 @@ const initDatabase = async () => {
         for (const exRow of examsList) {
           const [qCountRow] = await conn.query('SELECT COUNT(*) as count FROM questions WHERE examId = ?', [exRow.id]);
           const actualCount = qCountRow[0].count;
-          await conn.query('UPDATE exams SET numQuestions = ? WHERE id = ?', [actualCount, exRow.id]);
+          if (actualCount > 0) {
+            await conn.query('UPDATE exams SET numQuestions = ? WHERE id = ?', [actualCount, exRow.id]);
+          }
         }
         
         console.log('✅ MySQL tables optimized, deduplicated, and synced successfully!');

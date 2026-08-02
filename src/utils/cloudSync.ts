@@ -343,6 +343,16 @@ export async function pullCloudUpdatesToIndexedDB() {
           }
           examFields.isResultsPublished = Boolean(examFields.isResultsPublished);
 
+          // Auto-heal numQuestions if it was accidentally wiped to 0 but answerKey exists
+          if ((!examFields.numQuestions || Number(examFields.numQuestions) === 0) && examFields.answerKey && typeof examFields.answerKey === 'object') {
+            const keyCount = Object.keys(examFields.answerKey).length;
+            if (keyCount > 0) {
+              examFields.numQuestions = keyCount;
+              // Sync back corrected exam to server
+              syncExamToCloud({ ...examFields, id: Number(ex.id) } as Exam).catch(console.warn);
+            }
+          }
+
           const existing = await db.exams.get(Number(ex.id));
           if (!existing) {
             await db.exams.add({

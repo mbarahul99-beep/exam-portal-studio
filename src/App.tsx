@@ -282,7 +282,55 @@ export default function App() {
   
   // DB Live Queries
   const students = useLiveQuery(() => db.students.toArray()) || [];
-  const exams = useLiveQuery(() => db.exams.toArray()) || [];
+  const exams = useLiveQuery(async () => {
+    const list = await db.exams.toArray();
+    return list.map(exam => {
+      const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
+        ? exam.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
+        : 0;
+
+      let healed = false;
+      if (totalQsFromSections > 0 && (exam.numQuestions || 0) < totalQsFromSections) {
+        exam.numQuestions = totalQsFromSections;
+        healed = true;
+      }
+
+      if (exam.answerKey && typeof exam.answerKey === 'object') {
+        const keyCount = Object.keys(exam.answerKey).length;
+        if (keyCount > (exam.numQuestions || 0)) {
+          exam.numQuestions = keyCount;
+          healed = true;
+        }
+      }
+
+      if (healed) {
+        if (!exam.answerKey || typeof exam.answerKey !== 'object') {
+          exam.answerKey = {};
+        }
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          if (!exam.answerKey[q]) {
+            exam.answerKey[q] = 'A';
+          }
+        }
+        const setsCount = exam.examSetsCount || 1;
+        const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+        if (!exam.answerKeys || typeof exam.answerKeys !== 'object') {
+          exam.answerKeys = {};
+        }
+        setNames.forEach(setName => {
+          if (!exam.answerKeys[setName]) {
+            exam.answerKeys[setName] = {};
+          }
+          for (let q = 1; q <= exam.numQuestions; q++) {
+            if (!exam.answerKeys[setName][q]) {
+              exam.answerKeys[setName][q] = 'A';
+            }
+          }
+        });
+      }
+      return exam;
+    });
+  }) || [];
   const submissions = useLiveQuery(() => db.submissions.toArray()) || [];
   const classes = useLiveQuery(() => db.classes.toArray()) || [];
 

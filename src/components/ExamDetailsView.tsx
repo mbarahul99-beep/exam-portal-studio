@@ -59,6 +59,50 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onDownloadJPG,
   onViewAnalysis
 }) => {
+  // Local auto-healing for numQuestions and answerKey
+  const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
+    ? exam.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
+    : 0;
+
+  if (totalQsFromSections > 0 && (exam.numQuestions || 0) < totalQsFromSections) {
+    exam.numQuestions = totalQsFromSections;
+    if (!exam.answerKey || typeof exam.answerKey !== 'object') {
+      exam.answerKey = {};
+    }
+    for (let q = 1; q <= totalQsFromSections; q++) {
+      if (!exam.answerKey[q]) {
+        exam.answerKey[q] = 'A';
+      }
+    }
+    const setsCount = exam.examSetsCount || 1;
+    const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+    if (!exam.answerKeys || typeof exam.answerKeys !== 'object') {
+      exam.answerKeys = {};
+    }
+    setNames.forEach(setName => {
+      if (!exam.answerKeys[setName]) {
+        exam.answerKeys[setName] = {};
+      }
+      for (let q = 1; q <= totalQsFromSections; q++) {
+        if (!exam.answerKeys[setName][q]) {
+          exam.answerKeys[setName][q] = 'A';
+        }
+      }
+    });
+  }
+
+  if (exam.answerKey && typeof exam.answerKey === 'object') {
+    const keyCount = Object.keys(exam.answerKey).length;
+    if (keyCount > (exam.numQuestions || 0)) {
+      exam.numQuestions = keyCount;
+      for (let q = 1; q <= exam.numQuestions; q++) {
+        if (!exam.answerKey[q]) {
+          exam.answerKey[q] = 'A';
+        }
+      }
+    }
+  }
+
   // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis' | 'manage-questions'
   const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis' | 'manage-questions'>('hub');
   const [isScanningMode, setIsScanningMode] = useState(false);

@@ -148,11 +148,33 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     const exam = examMap.get(sub.examId);
     if (!exam) return null;
 
-    // Fallback: Auto-heal numQuestions locally in the view if it is less than answerKey length
+    // Fallback: Auto-heal numQuestions locally in the view if it is less than sections total or answerKey length
+    const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
+      ? exam.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
+      : 0;
+
+    let localHealed = false;
+    if (totalQsFromSections > 0 && (exam.numQuestions || 0) < totalQsFromSections) {
+      exam.numQuestions = totalQsFromSections;
+      localHealed = true;
+    }
+
     if (exam.answerKey && typeof exam.answerKey === 'object') {
       const keyCount = Object.keys(exam.answerKey).length;
       if (keyCount > (exam.numQuestions || 0)) {
         exam.numQuestions = keyCount;
+        localHealed = true;
+      }
+    }
+
+    if (localHealed) {
+      if (!exam.answerKey || typeof exam.answerKey !== 'object') {
+        exam.answerKey = {};
+      }
+      for (let q = 1; q <= exam.numQuestions; q++) {
+        if (!exam.answerKey[q]) {
+          exam.answerKey[q] = 'A';
+        }
       }
     }
 

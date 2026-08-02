@@ -343,15 +343,56 @@ export async function pullCloudUpdatesToIndexedDB() {
           }
           examFields.isResultsPublished = Boolean(examFields.isResultsPublished);
 
-          // Auto-heal numQuestions if it was accidentally wiped to 0 or is smaller than answerKey entries count
+          // Auto-heal numQuestions if it was accidentally wiped to 0 or is smaller than answerKey entries count or sections qCount total
+          const totalQsFromSections = examFields.sections && Array.isArray(examFields.sections)
+            ? examFields.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
+            : 0;
+          
+          let needsHeal = false;
+          if (totalQsFromSections > 0 && (Number(examFields.numQuestions) || 0) < totalQsFromSections) {
+            examFields.numQuestions = totalQsFromSections;
+            needsHeal = true;
+          }
+
           if (examFields.answerKey && typeof examFields.answerKey === 'object') {
             const keyCount = Object.keys(examFields.answerKey).length;
             const currentCount = Number(examFields.numQuestions) || 0;
             if (keyCount > currentCount) {
               examFields.numQuestions = keyCount;
-              // Sync back corrected exam to server
-              syncExamToCloud({ ...examFields, id: Number(ex.id) } as Exam).catch(console.warn);
+              needsHeal = true;
             }
+          }
+
+          if (needsHeal) {
+            // Fill missing answer keys in A with default 'A'
+            if (!examFields.answerKey || typeof examFields.answerKey !== 'object') {
+              examFields.answerKey = {};
+            }
+            for (let q = 1; q <= examFields.numQuestions; q++) {
+              if (!examFields.answerKey[q]) {
+                examFields.answerKey[q] = 'A';
+              }
+            }
+
+            // Also fill missing answerKeys sets
+            const setsCount = examFields.examSetsCount || 1;
+            const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+            if (!examFields.answerKeys || typeof examFields.answerKeys !== 'object') {
+              examFields.answerKeys = {};
+            }
+            setNames.forEach(setName => {
+              if (!examFields.answerKeys[setName]) {
+                examFields.answerKeys[setName] = {};
+              }
+              for (let q = 1; q <= examFields.numQuestions; q++) {
+                if (!examFields.answerKeys[setName][q]) {
+                  examFields.answerKeys[setName][q] = 'A';
+                }
+              }
+            });
+
+            // Sync back corrected exam to server
+            syncExamToCloud({ ...examFields, id: Number(ex.id) } as Exam).catch(console.warn);
           }
 
           const existing = await db.exams.get(Number(ex.id));

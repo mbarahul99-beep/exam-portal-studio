@@ -3114,6 +3114,10 @@ button {
   padding: 24px;
   width: 100%;
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+  align-items: start;
 }
 .whatsapp-settings-card {
   padding: 32px;
@@ -3128,6 +3132,8 @@ button {
 @media (max-width: 768px) {
   .whatsapp-settings-container {
     padding: 10px 4px;
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
   .whatsapp-settings-card {
     padding: 16px 12px;

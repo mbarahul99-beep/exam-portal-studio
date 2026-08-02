@@ -643,11 +643,27 @@ app.post('/api/auth/google', async (req, res) => {
     const email = payload.email.toLowerCase();
     const name = payload.name || payload.given_name || 'Google User';
     
-    // Check if this is the Master Admin (Option A)
-    const adminGoogleEmails = (process.env.ADMIN_GOOGLE_EMAIL || 'admin@example.com')
+    // Check if this is the Master Admin (Option A - Environment Variable)
+    const adminGoogleEmailsEnv = (process.env.ADMIN_GOOGLE_EMAIL || 'admin@example.com')
       .split(',')
       .map(e => e.trim().toLowerCase());
-    if (adminGoogleEmails.includes(email)) {
+    
+    // Check if there are other master admins configured in MySQL app_settings (Option B)
+    let adminGoogleEmailsDb = [];
+    try {
+      const [settingsRows] = await pool.query('SELECT `value` FROM app_settings WHERE `key` = ?', ['adminGoogleEmails']);
+      if (settingsRows.length > 0 && settingsRows[0].value) {
+        adminGoogleEmailsDb = settingsRows[0].value
+          .split(',')
+          .map(e => e.trim().toLowerCase());
+      }
+    } catch (e) {
+      console.warn("Could not query adminGoogleEmails from database:", e.message);
+    }
+
+    const allAdminEmails = new Set([...adminGoogleEmailsEnv, ...adminGoogleEmailsDb]);
+
+    if (allAdminEmails.has(email)) {
       return res.json({
         success: true,
         role: 'admin',

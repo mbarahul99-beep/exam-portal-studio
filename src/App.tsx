@@ -381,6 +381,9 @@ export default function App() {
   const [templateType, setTemplateType] = useState<'body_link' | 'button_link'>('body_link');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
 
+  // Admin Google Emails Configuration States
+  const [adminGoogleEmails, setAdminGoogleEmails] = useState('');
+
   // Load WhatsApp settings from IndexedDB (with Cloud MySQL fallback)
   useEffect(() => {
     const loadSettings = async () => {
@@ -390,21 +393,24 @@ export default function App() {
         let templateVal = 'exam_report_notification';
         let typeVal: 'body_link' | 'button_link' = 'body_link';
         let langVal = 'en_US';
+        let adminEmailsVal = '';
 
         const tokenSetting = await db.settings.where('key').equals('metaAccessToken').first();
         const phoneSetting = await db.settings.where('key').equals('phoneNumberId').first();
         const templateSetting = await db.settings.where('key').equals('templateName').first();
         const typeSetting = await db.settings.where('key').equals('templateType').first();
         const langSetting = await db.settings.where('key').equals('templateLanguage').first();
+        const adminEmailsSetting = await db.settings.where('key').equals('adminGoogleEmails').first();
 
         if (tokenSetting) tokenVal = tokenSetting.value;
         if (phoneSetting) phoneVal = phoneSetting.value;
         if (templateSetting) templateVal = templateSetting.value;
         if (typeSetting) typeVal = typeSetting.value as any;
         if (langSetting) langVal = langSetting.value;
+        if (adminEmailsSetting) adminEmailsVal = adminEmailsSetting.value;
 
         // Cloud MySQL Fallback if local credentials are empty
-        if (!tokenVal || !phoneVal) {
+        if (!tokenVal || !phoneVal || !adminEmailsVal) {
           try {
             const cloudRes = await fetch('/api/settings');
             if (cloudRes.ok) {
@@ -439,6 +445,12 @@ export default function App() {
                 if (rec) await db.settings.update(rec.id!, { value: langVal });
                 else await db.settings.add({ key: 'templateLanguage', value: langVal });
               }
+              if (cloudSettings.adminGoogleEmails) {
+                adminEmailsVal = cloudSettings.adminGoogleEmails;
+                const rec = await db.settings.where('key').equals('adminGoogleEmails').first();
+                if (rec) await db.settings.update(rec.id!, { value: adminEmailsVal });
+                else await db.settings.add({ key: 'adminGoogleEmails', value: adminEmailsVal });
+              }
             }
           } catch (e) {
             console.warn("Could not load WhatsApp settings from Cloud:", e);
@@ -450,6 +462,7 @@ export default function App() {
         if (templateVal) setTemplateName(templateVal);
         if (typeVal) setTemplateType(typeVal);
         if (langVal) setTemplateLanguage(langVal);
+        if (adminEmailsVal) setAdminGoogleEmails(adminEmailsVal);
       } catch (err) {
         console.error("Failed to load settings:", err);
       }
@@ -493,6 +506,37 @@ export default function App() {
       alert('WhatsApp API Configuration saved successfully both locally and permanently on the Cloud MySQL Server!');
     } catch (err: any) {
       alert(`Failed to save settings: ${err.message}`);
+    }
+  };
+
+  const handleSaveAdminSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const key = 'adminGoogleEmails';
+      const val = adminGoogleEmails.trim();
+
+      // Save locally to IndexedDB
+      const record = await db.settings.where('key').equals(key).first();
+      if (record) {
+        await db.settings.update(record.id!, { value: val });
+      } else {
+        await db.settings.add({ key, value: val });
+      }
+
+      // Save to Cloud MySQL Database for permanent cloud persistence
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [key]: val })
+        });
+      } catch (cloudErr) {
+        console.warn("Could not backup admin emails to Cloud MySQL:", cloudErr);
+      }
+
+      alert('Admin Login Emails saved successfully both locally and permanently on the Cloud MySQL Server!');
+    } catch (err: any) {
+      alert(`Failed to save admin settings: ${err.message}`);
     }
   };
 
@@ -3723,6 +3767,39 @@ export default function App() {
 
                   <button type="submit" className="btn-primary" style={{ padding: '12px', borderRadius: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
                     Save Configuration
+                  </button>
+                </form>
+              </div>
+
+              <div className="whatsapp-settings-card glass-card animate-scale-up">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+                  <div style={{ background: '#fee2e2', color: '#dc2626', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Shield size={24} />
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Admin Google Accounts</h2>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Restrict admin features to specific Google accounts</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveAdminSettings} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Authorized Email Addresses *</label>
+                    <textarea 
+                      value={adminGoogleEmails}
+                      onChange={(e) => setAdminGoogleEmails(e.target.value)}
+                      placeholder="e.g. admin1@gmail.com, admin2@gmail.com"
+                      required
+                      rows={5}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', fontFamily: 'sans-serif', boxSizing: 'border-box', resize: 'vertical' }}
+                    />
+                    <small style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>
+                      Comma-separated list of Google email addresses authorized to log in as admin and access settings, databases, and teacher controls.
+                    </small>
+                  </div>
+
+                  <button type="submit" className="btn-primary" style={{ padding: '12px', borderRadius: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+                    Save Admin Accounts
                   </button>
                 </form>
               </div>

@@ -290,43 +290,48 @@ export default function App() {
         : 0;
 
       let healed = false;
+      let healedNumQuestions = exam.numQuestions;
       if (totalQsFromSections > 0 && (exam.numQuestions || 0) < totalQsFromSections) {
-        exam.numQuestions = totalQsFromSections;
+        healedNumQuestions = totalQsFromSections;
         healed = true;
       }
 
       if (exam.answerKey && typeof exam.answerKey === 'object') {
         const keyCount = Object.keys(exam.answerKey).length;
-        if (keyCount > (exam.numQuestions || 0)) {
-          exam.numQuestions = keyCount;
+        if (keyCount > (healedNumQuestions || 0)) {
+          healedNumQuestions = keyCount;
           healed = true;
         }
       }
 
       if (healed) {
-        if (!exam.answerKey || typeof exam.answerKey !== 'object') {
-          exam.answerKey = {};
-        }
-        for (let q = 1; q <= exam.numQuestions; q++) {
-          if (!exam.answerKey[q]) {
-            exam.answerKey[q] = 'A';
+        const answerKeyCopy = exam.answerKey ? { ...exam.answerKey } : {};
+        for (let q = 1; q <= healedNumQuestions; q++) {
+          if (!answerKeyCopy[q]) {
+            answerKeyCopy[q] = 'A';
           }
         }
+        
         const setsCount = exam.examSetsCount || 1;
         const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
-        if (!exam.answerKeys || typeof exam.answerKeys !== 'object') {
-          exam.answerKeys = {};
-        }
+        const answerKeysCopy: Record<string, Record<number, string>> = exam.answerKeys ? JSON.parse(JSON.stringify(exam.answerKeys)) : {};
         setNames.forEach(setName => {
-          if (!exam.answerKeys[setName]) {
-            exam.answerKeys[setName] = {};
+          if (!answerKeysCopy[setName]) {
+            answerKeysCopy[setName] = {};
           }
-          for (let q = 1; q <= exam.numQuestions; q++) {
-            if (!exam.answerKeys[setName][q]) {
-              exam.answerKeys[setName][q] = 'A';
+          for (let q = 1; q <= healedNumQuestions; q++) {
+            if (!answerKeysCopy[setName][q]) {
+              answerKeysCopy[setName][q] = 'A';
             }
           }
         });
+
+        return {
+          ...exam,
+          numQuestions: healedNumQuestions,
+          answerKey: answerKeyCopy,
+          answerKeys: answerKeysCopy
+        };
       }
       return exam;
     });

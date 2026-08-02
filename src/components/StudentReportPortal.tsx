@@ -39,7 +39,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
           }
           const script = document.createElement('script');
           script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          script.integrity = 'sha512-GsLlZN/3F2ErC5IfS5QtgpiJtWd83JWQRKNurQc1BP2Lf155xn1IMfZcW3WDmIVXYxxdCO09EhcOb+ZoYYcTCA==';
+          script.integrity = 'sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==';
           script.crossOrigin = 'anonymous';
           script.referrerPolicy = 'no-referrer';
           script.onload = () => resolve((window as any).html2pdf);
@@ -478,8 +478,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             
             {/* Public Brand Header */}
             {publicMode && (
-              <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <header className="report-portal-brand-header">
+                <div className="brand-logos-container">
                   <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
                   <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
                   <span style={{ fontSize: '0.75rem', background: '#f0fdf4', color: '#16a34a', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Official Scorecard</span>
@@ -491,7 +491,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             )}
 
             {/* Analysis Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
+            <div className="dashboard-header-buttons">
               {!publicMode ? (
                 <div className="dashboard-back-btn-group">
                   <button 
@@ -520,12 +520,6 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     <Camera size={16} /> View OMR Sheet
                   </button>
                 )}
-                <button 
-                  onClick={() => window.print()}
-                  style={{ background: '#475569', border: 'none', color: '#fff', boxShadow: '0 4px 6px -1px rgba(71,85,105,0.2)' }}
-                >
-                  🖨️ Print Report
-                </button>
                 <button 
                   onClick={handleDownloadPdf}
                   disabled={isDownloadingPdf}
@@ -1062,6 +1056,15 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         }
 
         /* Result portal buttons styles */
+        .dashboard-header-buttons {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+          width: 100%;
+        }
+
         .dashboard-back-btn-group, .dashboard-actions-btn-group {
           display: flex;
           gap: 10px;
@@ -1072,7 +1075,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
           font-size: 0.8rem;
           font-weight: bold;
           border-radius: 8px;
-          padding: 8px 14px;
+          padding: 8.5px 15px;
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -1080,16 +1083,52 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
           transition: all 0.2s ease;
         }
 
+        .report-portal-brand-header {
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 16px 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+        }
+
+        .brand-logos-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
         @media (max-width: 768px) {
-          .dashboard-back-btn-group button, .dashboard-actions-btn-group button {
-            font-size: 0.72rem !important;
-            padding: 6px 10px !important;
-            border-radius: 6px !important;
+          .dashboard-header-buttons {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
           }
           .dashboard-back-btn-group, .dashboard-actions-btn-group {
             width: 100% !important;
-            justify-content: flex-start !important;
-            gap: 6px !important;
+            display: grid !important;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .dashboard-back-btn-group button, .dashboard-actions-btn-group button {
+            width: 100% !important;
+            justify-content: center !important;
+            font-size: 0.76rem !important;
+            padding: 10px 8px !important;
+            border-radius: 8px !important;
+          }
+          .report-portal-brand-header {
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 12px !important;
+            padding: 14px 16px !important;
+            text-align: center !important;
+          }
+          .brand-logos-container {
+            justify-content: center !important;
           }
         }
 

@@ -56,6 +56,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         return;
       }
 
+      element.classList.add('is-generating-pdf');
+
       const opt = {
         margin:       [0, 0, 0, 0],
         filename:     `${student.name}_${activeAnalysisSub.exam.title}_Report.pdf`.replace(/\s+/g, '_'),
@@ -64,7 +66,11 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
 
-      await html2pdf().from(element).set(opt).save();
+      try {
+        await html2pdf().from(element).set(opt).save();
+      } finally {
+        element.classList.remove('is-generating-pdf');
+      }
     } catch (err: any) {
       alert('Failed to generate PDF: ' + err.message);
     } finally {

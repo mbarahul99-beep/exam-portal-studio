@@ -435,7 +435,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
       <style>{`
         body {
           background: #f1f5f9 !important;
-          color: #1a202c !important;
+          color: #000000 !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
           margin: 0;
           padding: 0;
@@ -445,6 +445,14 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           width: 210mm;
           margin: 0 auto;
           box-sizing: border-box;
+        }
+
+        .report-print-page.is-generating-pdf .page-container {
+          border: none !important;
+          box-shadow: none !important;
+          margin-bottom: 0 !important;
+          margin-top: 0 !important;
+          border-radius: 0 !important;
         }
 
         .page-container {
@@ -470,7 +478,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           padding-bottom: 4px;
           margin-bottom: 12px;
           font-size: 8.5px;
-          color: #475569;
+          color: #000000;
           font-weight: bold;
         }
 
@@ -557,7 +565,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .meta-item .label {
           font-size: 8px;
           font-weight: bold;
-          color: #64748b;
+          color: #000000;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
@@ -565,7 +573,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .meta-item .val {
           font-size: 11px;
           font-weight: 700;
-          color: #1e293b;
+          color: #000000;
           word-break: break-word;
         }
 
@@ -626,7 +634,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .pct-label {
           font-size: 10px;
           font-weight: 700;
-          color: #1e293b;
+          color: #000000;
         }
 
         .score-card-group {
@@ -663,13 +671,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .sub-score-card .lbl {
           font-size: 9px;
           font-weight: 700;
-          color: #475569;
+          color: #000000;
         }
 
         .sub-score-card .val {
           font-size: 12px;
           font-weight: 800;
-          color: #1e293b;
+          color: #000000;
         }
 
         .sub-score-card .pts {
@@ -680,12 +688,12 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .sub-score-card.correct .pts { color: #15803d; }
         .sub-score-card.wrong .pts { color: #b91c1c; }
-        .sub-score-card.left .pts { color: #475569; }
+        .sub-score-card.left .pts { color: #000000; }
 
         .section-stats-section h2, .responses-section h2 {
           font-size: 10px;
           margin: 0 0 6px 0;
-          color: #0f172a;
+          color: #000000;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           border-bottom: 1.5px solid #e2e8f0;
@@ -705,7 +713,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .section-stats-table th {
           background: #f8fafc;
-          color: #475569;
+          color: #000000;
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.5px;
@@ -719,7 +727,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           padding: 6px 10px;
           border-bottom: 1px solid #edf2f7;
           text-align: center;
-          color: #334155;
+          color: #000000;
         }
 
         .section-stats-table tr:last-child td {
@@ -774,7 +782,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         }
 
         .resp-row .q-lbl {
-          color: #64748b;
+          color: #000000;
           text-align: left;
         }
 
@@ -813,7 +821,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .sig-box span {
           font-size: 8.5px;
-          color: #64748b;
+          color: #000000;
           font-weight: 700;
           text-transform: uppercase;
         }

@@ -17,7 +17,7 @@ export async function syncExamToCloud(exam: Exam) {
         const oldId = exam.id!;
         const newId = Number(data.id);
         
-        await db.transaction('rw', [db.exams, db.questions], async () => {
+        await db.transaction('rw', [db.exams, db.questions, db.submissions], async () => {
           const examObj = await db.exams.get(oldId);
           if (examObj) {
             await db.exams.delete(oldId);
@@ -30,6 +30,13 @@ export async function syncExamToCloud(exam: Exam) {
               await db.questions.delete(q.id);
               const { id, ...qFields } = q;
               await db.questions.add({ ...qFields, examId: newId });
+            }
+          }
+
+          const subs = await db.submissions.where('examId').equals(oldId).toArray();
+          for (const sub of subs) {
+            if (sub.id) {
+              await db.submissions.update(sub.id, { examId: newId });
             }
           }
         });
@@ -463,6 +470,13 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const sub of data.submissions) {
         try {
           const { id: mysqlId, ...subFields } = sub;
+
+          // Self-heal: If local record exists by server ID but examId is mismatched, align it
+          const existingById = await db.submissions.get(sub.id);
+          if (existingById && Number(existingById.examId) !== Number(sub.examId)) {
+            await db.submissions.update(sub.id, { examId: sub.examId });
+          }
+
           const matchingSubs = await db.submissions
             .where('[examId+studentId]')
             .equals([sub.examId, sub.studentId])

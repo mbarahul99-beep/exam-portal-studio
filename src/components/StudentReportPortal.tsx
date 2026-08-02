@@ -1055,10 +1055,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         .print-only {
           position: absolute !important;
           left: -9999px !important;
-          top: -9999px !important;
+          top: 0 !important;
           width: 210mm !important;
-          height: 0 !important;
-          overflow: hidden !important;
+          height: auto !important;
+          overflow: visible !important;
           display: block !important;
         }
 

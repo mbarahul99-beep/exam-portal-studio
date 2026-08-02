@@ -135,6 +135,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
   // Dynamically calculate and balance columns to fit questions cleanly on page
   const totalQuestions = exam.numQuestions;
+  const pageOneCount = isTwoPages 
+    ? Math.min(Math.ceil(totalQuestions * 0.42), 90) 
+    : totalQuestions;
   const maxPerCol = isTwoPages ? 45 : 30;
   const numCols = Math.min(5, Math.ceil(totalQuestions / maxPerCol));
   const qPerCol = Math.ceil(totalQuestions / numCols);
@@ -366,7 +369,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
             <div style={{ marginTop: '10px' }} />
             {renderSectionStats()}
             <div style={{ marginTop: '10px' }} />
-            {renderResponsesGridRange(1, 50, "Question Response Details (Part 1: Q01 - Q50)")}
+            {renderResponsesGridRange(1, pageOneCount, `Question Response Details (Part 1: Q01 - Q${String(pageOneCount).padStart(2, '0')})`)}
           </div>
 
           {/* PAGE 2 */}
@@ -380,7 +383,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 {student.name} | Roll: {student.studentNum}
               </div>
             </header>
-            {renderResponsesGridRange(51, totalQuestions, `Question Response Details (Part 2: Q51 - Q${totalQuestions})`)}
+            {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`)}
             <div style={{ flex: 1 }} /> {/* Push footer to bottom */}
             {renderFooter()}
           </div>

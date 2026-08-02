@@ -269,15 +269,7 @@ const initDatabase = async () => {
           ON q1.examId = q2.examId AND q1.questionText = q2.questionText AND q1.id > q2.id
         `);
         
-        // 4. Reset bloated numQuestions counts of exams to match the actual questions count
-        const [examsList] = await conn.query('SELECT id FROM exams');
-        for (const exRow of examsList) {
-          const [qCountRow] = await conn.query('SELECT COUNT(*) as count FROM questions WHERE examId = ?', [exRow.id]);
-          const actualCount = qCountRow[0].count;
-          if (actualCount > 0) {
-            await conn.query('UPDATE exams SET numQuestions = ? WHERE id = ?', [actualCount, exRow.id]);
-          }
-        }
+        // 4. Reset bloated numQuestions counts of exams has been removed as it is handled dynamically and can override offline OMR exams count.
         
         console.log('✅ MySQL tables optimized, deduplicated, and synced successfully!');
       } catch (err) {

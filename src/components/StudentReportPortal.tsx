@@ -148,6 +148,14 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     const exam = examMap.get(sub.examId);
     if (!exam) return null;
 
+    // Fallback: Auto-heal numQuestions locally in the view if it is less than answerKey length
+    if (exam.answerKey && typeof exam.answerKey === 'object') {
+      const keyCount = Object.keys(exam.answerKey).length;
+      if (keyCount > (exam.numQuestions || 0)) {
+        exam.numQuestions = keyCount;
+      }
+    }
+
     // Filter submissions for this exam to calculate rank & class average
     const examSubs = allSubmissions.filter(s => s.examId === sub.examId);
     const sortedSubs = [...examSubs].sort((a, b) => b.score - a.score);
@@ -464,17 +472,17 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             {/* Analysis Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
               {!publicMode ? (
-                <div style={{ display: 'flex', gap: '12px' }}>
+                <div className="dashboard-back-btn-group">
                   <button 
                     onClick={() => setActiveAnalysisSub(null)}
-                    style={{ background: 'transparent', border: '1px solid #2563eb', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ background: 'transparent', border: '1px solid #2563eb', color: '#2563eb' }}
                   >
                     {adminMode ? <TrendingUp size={16} /> : <ChevronLeft size={16} />} {adminMode ? 'Student Dashboard' : 'Back to Dashboard'}
                   </button>
                   {adminMode && (
                     <button 
                       onClick={onClose}
-                      style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 'bold', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      style={{ background: 'transparent', border: '1px solid #cbd5e1', color: '#64748b' }}
                     >
                       Close Analysis
                     </button>
@@ -482,25 +490,25 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                 </div>
               ) : <div />}
 
-              <div style={{ display: 'flex', gap: '10px' }} className="no-print">
+              <div className="dashboard-actions-btn-group no-print">
                 {activeAnalysisSub.omrImageUrl && (
                   <button 
                     onClick={() => setShowOmrModal(true)}
-                    style={{ background: '#0d9488', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(13,148,136,0.2)' }}
+                    style={{ background: '#0d9488', border: 'none', color: '#fff', boxShadow: '0 4px 6px -1px rgba(13,148,136,0.2)' }}
                   >
                     <Camera size={16} /> View OMR Sheet
                   </button>
                 )}
                 <button 
                   onClick={() => window.print()}
-                  style={{ background: '#475569', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(71,85,105,0.2)' }}
+                  style={{ background: '#475569', border: 'none', color: '#fff', boxShadow: '0 4px 6px -1px rgba(71,85,105,0.2)' }}
                 >
                   🖨️ Print Report
                 </button>
                 <button 
                   onClick={handleDownloadPdf}
                   disabled={isDownloadingPdf}
-                  style={{ background: '#16a34a', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(22,163,74,0.2)', opacity: isDownloadingPdf ? 0.7 : 1 }}
+                  style={{ background: '#16a34a', border: 'none', color: '#fff', boxShadow: '0 4px 6px -1px rgba(22,163,74,0.2)', opacity: isDownloadingPdf ? 0.7 : 1 }}
                 >
                   {isDownloadingPdf ? (
                     <>⏳ Downloading...</>
@@ -1023,8 +1031,47 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       {/* Responsive mobile stylesheet overrides */}
       <style>{`
         .print-only {
-          display: none !important;
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+          width: 210mm !important;
+          height: 0 !important;
+          overflow: hidden !important;
+          display: block !important;
         }
+
+        /* Result portal buttons styles */
+        .dashboard-back-btn-group, .dashboard-actions-btn-group {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .dashboard-back-btn-group button, .dashboard-actions-btn-group button {
+          font-size: 0.8rem;
+          font-weight: bold;
+          border-radius: 8px;
+          padding: 8px 14px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+        }
+
+        @media (max-width: 768px) {
+          .dashboard-back-btn-group button, .dashboard-actions-btn-group button {
+            font-size: 0.72rem !important;
+            padding: 6px 10px !important;
+            border-radius: 6px !important;
+          }
+          .dashboard-back-btn-group, .dashboard-actions-btn-group {
+            width: 100% !important;
+            justify-content: flex-start !important;
+            gap: 6px !important;
+          }
+        }
+
         .student-dashboard-split {
           display: grid;
           grid-template-columns: 1.6fr 1fr;
@@ -1065,6 +1112,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
             display: none !important;
           }
           .print-only {
+            position: static !important;
+            width: auto !important;
+            height: auto !important;
+            overflow: visible !important;
             display: block !important;
           }
         }

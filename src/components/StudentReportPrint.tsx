@@ -11,7 +11,15 @@ interface StudentReportPrintProps {
   };
 }
 
-export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, student, submission }) => {
+export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: rawExam, student, submission }) => {
+  const exam = { ...rawExam };
+  if (exam.answerKey && typeof exam.answerKey === 'object') {
+    const keyCount = Object.keys(exam.answerKey).length;
+    if (keyCount > (exam.numQuestions || 0)) {
+      exam.numQuestions = keyCount;
+    }
+  }
+
   const cMarks = typeof exam.correctMarks === 'number' ? exam.correctMarks : 4;
   const iMarks = typeof exam.incorrectMarks === 'number' ? exam.incorrectMarks : -1;
   const uMarks = typeof exam.unansweredMarks === 'number' ? exam.unansweredMarks : 0;

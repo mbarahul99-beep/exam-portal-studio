@@ -38,11 +38,19 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration error:', err));
+          navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+            .then((reg) => {
+              reg.update();
+              if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                window.location.reload();
+              }
+            })
+            .catch(err => console.log('SW registration error:', err));
         });
       }
     </script>
-    <script type="module" crossorigin src="./assets/index-CfpOj4jP.js"></script>
+    <script type="module" crossorigin src="./assets/index-DV7JLUBK.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-3ZF59b8M.css">
   </head>
   <body>

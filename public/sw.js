@@ -1,5 +1,5 @@
 // Service Worker for Apex Exam Portal PWA & OpenCV.js Caching
-const CACHE_NAME = 'apex-exam-v2';
+const CACHE_NAME = 'apex-exam-v3';
 const OPENCV_CACHE_NAME = 'apex-opencv-v1';
 
 self.addEventListener('install', (event) => {
@@ -7,7 +7,18 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME && cacheName !== OPENCV_CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {

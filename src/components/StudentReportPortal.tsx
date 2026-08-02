@@ -5,6 +5,7 @@ import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
 import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
+import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
 interface StudentReportPortalProps {
   studentId: number;
@@ -141,6 +142,14 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
+  }, []);
+
+  useEffect(() => {
+    // Sync latest database data immediately on mount of the student portal
+    pullCloudUpdatesToIndexedDB();
+    // Also set up a periodic sync loop every 5 seconds while in Student portal view
+    const interval = setInterval(pullCloudUpdatesToIndexedDB, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const numStudentId = Number(studentId);

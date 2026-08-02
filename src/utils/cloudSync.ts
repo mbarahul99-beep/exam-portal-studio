@@ -189,7 +189,14 @@ function isRecordEqual(local: any, server: any): boolean {
   return true;
 }
 
+let isPullSyncing = false;
+
 export async function pullCloudUpdatesToIndexedDB() {
+  if (isPullSyncing) {
+    console.log("Sync loop is already running, skipping...");
+    return;
+  }
+  isPullSyncing = true;
   try {
     const res = await fetch('/api/sync/all');
     if (!res.ok) return;
@@ -581,5 +588,7 @@ export async function pullCloudUpdatesToIndexedDB() {
     console.log("✅ Cloud sync from Hostinger MySQL completed successfully.");
   } catch (err) {
     console.warn("Cloud sync pull failed:", err);
+  } finally {
+    isPullSyncing = false;
   }
 }

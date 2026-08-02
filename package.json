@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "postinstall": "npm run build",
+    "postinstall": "node scratch/patch_dexie.cjs && npm run build",
     "start": "node server.js",
     "lint": "oxlint",
     "preview": "vite preview"

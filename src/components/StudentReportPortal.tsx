@@ -25,6 +25,52 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
   const [showOmrModal, setShowOmrModal] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!activeAnalysisSub || !student) return;
+    setIsDownloadingPdf(true);
+    try {
+      const loadHtml2Pdf = () => {
+        return new Promise((resolve, reject) => {
+          if ((window as any).html2pdf) {
+            resolve((window as any).html2pdf);
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+          script.integrity = 'sha512-GsLlZN/3F2ErC5IfS5QtgpiJtWd83JWQRKNurQc1BP2Lf155xn1IMfZcW3WDmIVXYxxdCO09EhcOb+ZoYYcTCA==';
+          script.crossOrigin = 'anonymous';
+          script.referrerPolicy = 'no-referrer';
+          script.onload = () => resolve((window as any).html2pdf);
+          script.onerror = reject;
+          document.body.appendChild(script);
+        });
+      };
+
+      const html2pdf = await loadHtml2Pdf() as any;
+
+      const element = document.querySelector('.report-print-page');
+      if (!element) {
+        alert('Report element not found.');
+        return;
+      }
+
+      const opt = {
+        margin:       [0, 0, 0, 0],
+        filename:     `${student.name}_${activeAnalysisSub.exam.title}_Report.pdf`.replace(/\s+/g, '_'),
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      await html2pdf().from(element).set(opt).save();
+    } catch (err: any) {
+      alert('Failed to generate PDF: ' + err.message);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   // Dynamic Header Logo Scaling States
   const [logoHeight, setLogoHeight] = useState<number>(42);
@@ -447,9 +493,20 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                 )}
                 <button 
                   onClick={() => window.print()}
-                  style={{ background: '#16a34a', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(22,163,74,0.2)' }}
+                  style={{ background: '#475569', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(71,85,105,0.2)' }}
                 >
-                  <Download size={16} /> Download PDF Report
+                  🖨️ Print Report
+                </button>
+                <button 
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  style={{ background: '#16a34a', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(22,163,74,0.2)', opacity: isDownloadingPdf ? 0.7 : 1 }}
+                >
+                  {isDownloadingPdf ? (
+                    <>⏳ Downloading...</>
+                  ) : (
+                    <><Download size={16} /> Download PDF</>
+                  )}
                 </button>
               </div>
             </div>

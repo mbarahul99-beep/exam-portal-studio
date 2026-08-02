@@ -15,28 +15,102 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
   const cMarks = typeof exam.correctMarks === 'number' ? exam.correctMarks : 4;
   const iMarks = typeof exam.incorrectMarks === 'number' ? exam.incorrectMarks : -1;
   const uMarks = typeof exam.unansweredMarks === 'number' ? exam.unansweredMarks : 0;
-  
-  const totalPossible = exam.numQuestions * cMarks;
-  const percentage = totalPossible > 0 ? Math.max(0, Math.round((submission.score / totalPossible) * 100)) : 0;
 
-  // Compute breakdown stats
+  // Helper to determine section name
+  const getQuestionSection = (qIndex: number, exam: Exam): string => {
+    if (exam.sections && exam.sections.length > 0) {
+      const match = exam.sections.find(s => qIndex >= s.qStart && qIndex < s.qStart + s.qCount);
+      if (match) return match.subjectName || match.sectionName || 'General';
+    }
+
+    const numQuestions = exam.numQuestions;
+    if (numQuestions === 200) {
+      if (qIndex <= 50) return 'Physics';
+      if (qIndex <= 100) return 'Chemistry';
+      if (qIndex <= 150) return 'Botany';
+      return 'Zoology';
+    } else if (numQuestions === 180) {
+      if (qIndex <= 45) return 'Physics';
+      if (qIndex <= 90) return 'Chemistry';
+      return 'Biology';
+    } else {
+      const perSec = Math.floor(numQuestions / 3);
+      if (perSec === 0) return 'General';
+      if (qIndex <= perSec) return 'Physics';
+      if (qIndex <= perSec * 2) return 'Chemistry';
+      return 'Biology';
+    }
+  };
+
+  // Compute breakdown stats per section
+  const sectionStatsMap: Record<string, {
+    name: string;
+    correct: number;
+    wrong: number;
+    left: number;
+    score: number;
+    totalPossible: number;
+  }> = {};
+
+  let totalPossible = 0;
   let correct = 0;
   let wrong = 0;
   let left = 0;
+
   for (let q = 1; q <= exam.numQuestions; q++) {
+    const secName = getQuestionSection(q, exam);
     const sAns = submission.answers[q];
     const cAns = exam.answerKey[q];
-    if (!sAns) left++;
-    else if (sAns === cAns) correct++;
-    else wrong++;
+
+    const marking = exam.sectionsMarking?.[secName] || {
+      correctMarks: cMarks,
+      incorrectMarks: iMarks,
+      unansweredMarks: uMarks
+    };
+
+    totalPossible += marking.correctMarks;
+
+    if (!sectionStatsMap[secName]) {
+      sectionStatsMap[secName] = {
+        name: secName,
+        correct: 0,
+        wrong: 0,
+        left: 0,
+        score: 0,
+        totalPossible: 0
+      };
+    }
+
+    const stat = sectionStatsMap[secName];
+    stat.totalPossible += marking.correctMarks;
+
+    if (!sAns) {
+      left++;
+      stat.left++;
+      stat.score += marking.unansweredMarks;
+    } else if (sAns === cAns) {
+      correct++;
+      stat.correct++;
+      stat.score += marking.correctMarks;
+    } else {
+      wrong++;
+      stat.wrong++;
+      stat.score += marking.incorrectMarks;
+    }
   }
 
-  // Dynamically calculate and balance columns to fit questions cleanly on A4
+  const sectionStats = Object.values(sectionStatsMap);
+  const percentage = totalPossible > 0 ? Math.max(0, Math.round((submission.score / totalPossible) * 100)) : 0;
+
+  // Decide if we need exactly 2 pages
+  const isTwoPages = exam.numQuestions > 60;
+
+  // Dynamically calculate and balance columns to fit questions cleanly on page
   const totalQuestions = exam.numQuestions;
-  const maxPerCol = 40;
+  const maxPerCol = isTwoPages ? 45 : 30;
   const numCols = Math.min(5, Math.ceil(totalQuestions / maxPerCol));
   const qPerCol = Math.ceil(totalQuestions / numCols);
-  
+
   const cols: number[][] = [];
   for (let c = 0; c < numCols; c++) {
     const colQuestions: number[] = [];
@@ -62,151 +136,273 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
     } catch (e) {}
   }
 
-  return (
-    <div className="report-print-page">
-      <header className="report-header">
-        <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
-          <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
-        </div>
-        <div className="header-titles">
-          <h1>EXAM PERFORMANCE REPORT</h1>
-          <div className="subtitle">Official Graded Student Response Card</div>
-        </div>
-      </header>
+  const renderHeader = () => (
+    <header className="report-header">
+      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+        <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
+      </div>
+      <div className="header-titles">
+        <h1>EXAM PERFORMANCE REPORT</h1>
+        <div className="subtitle">Official Graded Student Response Card</div>
+      </div>
+    </header>
+  );
 
-      {/* Student Meta Details */}
-      <section className="report-section meta-grid">
+  const renderMetaGrid = () => (
+    <section className="report-section meta-grid">
+      <div className="meta-item">
+        <span className="label">Student Name</span>
+        <span className="val">{student.name}</span>
+      </div>
+      {student.fatherName && (
         <div className="meta-item">
-          <span className="label">Student Name</span>
-          <span className="val">{student.name}</span>
+          <span className="label">Father's Name</span>
+          <span className="val">{student.fatherName}</span>
         </div>
-        {student.fatherName && (
-          <div className="meta-item">
-            <span className="label">Father's Name</span>
-            <span className="val">{student.fatherName}</span>
-          </div>
-        )}
-        <div className="meta-item">
-          <span className="label">Roll ID / Number</span>
-          <span className="val font-mono">{student.studentNum}</span>
-        </div>
-        <div className="meta-item">
-          <span className="label">Class Group</span>
-          <span className="val">{student.className}</span>
-        </div>
-        <div className="meta-item">
-          <span className="label">Exam Title</span>
-          <span className="val">{exam.title}</span>
-        </div>
-        <div className="meta-item">
-          <span className="label">Exam Date</span>
-          <span className="val">{new Date(exam.date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
-        </div>
-        <div className="meta-item">
-          <span className="label">Scanned Timestamp</span>
-          <span className="val font-mono">{new Date(submission.scannedAt).toLocaleString()}</span>
-        </div>
-      </section>
+      )}
+      <div className="meta-item">
+        <span className="label">Roll ID / Number</span>
+        <span className="val font-mono">{student.studentNum}</span>
+      </div>
+      <div className="meta-item">
+        <span className="label">Class Group</span>
+        <span className="val">{student.className}</span>
+      </div>
+      <div className="meta-item">
+        <span className="label">Exam Title</span>
+        <span className="val">{exam.title}</span>
+      </div>
+      <div className="meta-item">
+        <span className="label">Exam Date</span>
+        <span className="val">{new Date(exam.date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+      </div>
+      <div className="meta-item" style={{ gridColumn: student.fatherName ? 'span 1' : 'span 2' }}>
+        <span className="label">Scanned Timestamp</span>
+        <span className="val font-mono">{new Date(submission.scannedAt).toLocaleString()}</span>
+      </div>
+    </section>
+  );
 
-      {/* Score Summary Grid Cards */}
-      <section className="report-section score-grid">
-        <div className="score-card final-score">
-          <div className="lbl">Earned Score</div>
-          <div className="big-val">{submission.score} <span className="denom">/ {totalPossible}</span></div>
-          <div className="pct-bar-wrapper">
-            <div className="pct-bar" style={{ width: `${percentage}%` }}></div>
-          </div>
-          <div className="pct-label">{percentage}% Accuracy Index</div>
+  const renderScoreSummary = () => (
+    <section className="report-section score-grid">
+      <div className="score-card final-score">
+        <div className="lbl">Earned Score</div>
+        <div className="big-val">{submission.score} <span className="denom">/ {totalPossible}</span></div>
+        <div className="pct-bar-wrapper">
+          <div className="pct-bar" style={{ width: `${percentage}%` }}></div>
         </div>
-        
-        <div className="score-card-group">
-          <div className="sub-score-card correct">
-            <span className="lbl">Correct Answers</span>
-            <span className="val">{correct}</span>
-            <span className="pts">+{correct * cMarks} Points</span>
-          </div>
-          <div className="sub-score-card wrong">
-            <span className="lbl">Incorrect Answers</span>
-            <span className="val">{wrong}</span>
-            <span className="pts">{wrong * iMarks} Points</span>
-          </div>
-          <div className="sub-score-card left">
-            <span className="lbl">Left / Unanswered</span>
-            <span className="val">{left}</span>
-            <span className="pts">+{left * uMarks} Points</span>
-          </div>
+        <div className="pct-label">{percentage}% Accuracy Index</div>
+      </div>
+
+      <div className="score-card-group">
+        <div className="sub-score-card correct">
+          <span className="lbl">Correct Answers</span>
+          <span className="val">{correct}</span>
+          <span className="pts">+{correct * cMarks} Points</span>
         </div>
-      </section>
+        <div className="sub-score-card wrong">
+          <span className="lbl">Incorrect Answers</span>
+          <span className="val">{wrong}</span>
+          <span className="pts">{wrong * iMarks} Points</span>
+        </div>
+        <div className="sub-score-card left">
+          <span className="lbl">Left / Unanswered</span>
+          <span className="val">{left}</span>
+          <span className="pts">+{left * uMarks} Points</span>
+        </div>
+      </div>
+    </section>
+  );
 
-      {/* Answer Key Grid Responses */}
-      <section className="report-section responses-section">
-        <h2>Question Response Details</h2>
-        <div className="responses-grid" style={{ 
-          gridTemplateColumns: `repeat(${cols.length}, 1fr)`,
-          maxWidth: cols.length === 1 ? '220px' : cols.length === 2 ? '440px' : '100%',
-          margin: cols.length < 5 ? '0 auto' : '0'
-        }}>
-          {cols.map((colGroup, colIdx) => (
-            <div key={`rep-col-${colIdx}`} className="resp-col">
-              <div className="col-header-row">
-                <span>Q.No</span>
-                <span>Key</span>
-                <span>Resp</span>
-              </div>
-              {colGroup.map((qNum) => {
-                if (qNum > exam.numQuestions) return null;
-                const correctKey = exam.answerKey[qNum];
-                const studentAns = submission.answers[qNum];
-                const isCorrect = studentAns === correctKey;
-                const isUnanswered = !studentAns;
-
-                return (
-                  <div key={`rep-q-${qNum}`} className={`resp-row ${isUnanswered ? 'unanswered' : isCorrect ? 'correct' : 'incorrect'}`}>
-                    <span className="q-lbl font-mono">Q{String(qNum).padStart(2, '0')}</span>
-                    <span className="key-lbl font-mono">{correctKey}</span>
-                    <span className="stud-lbl font-mono">{studentAns || '-'}</span>
+  const renderSectionStats = () => (
+    <section className="report-section section-stats-section">
+      <h2>Subject / Section Performance Breakdown</h2>
+      <table className="section-stats-table">
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left' }}>Subject / Section</th>
+            <th>Correct</th>
+            <th>Incorrect</th>
+            <th>Left</th>
+            <th>Marks Obtained</th>
+            <th>Section Accuracy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sectionStats.map((sec, idx) => {
+            const secAccuracy = sec.totalPossible > 0 ? Math.max(0, Math.round((sec.score / sec.totalPossible) * 100)) : 0;
+            return (
+              <tr key={idx}>
+                <td style={{ textAlign: 'left', fontWeight: 'bold' }}>{sec.name}</td>
+                <td style={{ color: '#15803d', fontWeight: 'bold' }}>{sec.correct}</td>
+                <td style={{ color: '#b91c1c', fontWeight: 'bold' }}>{sec.wrong}</td>
+                <td style={{ color: '#475569' }}>{sec.left}</td>
+                <td><strong>{sec.score}</strong> / {sec.totalPossible}</td>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                    <span style={{ minWidth: '32px', fontWeight: 'bold', textAlign: 'right' }}>{secAccuracy}%</span>
+                    <div style={{ width: '60px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${secAccuracy}%`, height: '100%', background: '#2b6cb0', borderRadius: '3px' }} />
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </section>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
 
-      {/* Signatures footer box */}
-      <footer className="report-footer">
-        <div className="sig-box">
-          <div className="line"></div>
-          <span>Student Signature</span>
+  const renderResponsesGrid = () => (
+    <section className="report-section responses-section">
+      <h2>Question Response Details</h2>
+      <div className="responses-grid" style={{
+        gridTemplateColumns: `repeat(${cols.length}, 1fr)`,
+        maxWidth: cols.length === 1 ? '220px' : cols.length === 2 ? '440px' : '100%',
+        margin: cols.length < 5 ? '0 auto' : '0'
+      }}>
+        {cols.map((colGroup, colIdx) => (
+          <div key={`rep-col-${colIdx}`} className="resp-col">
+            <div className="col-header-row">
+              <span>Q.No</span>
+              <span>Key</span>
+              <span>Resp</span>
+            </div>
+            {colGroup.map((qNum) => {
+              if (qNum > exam.numQuestions) return null;
+              const correctKey = exam.answerKey[qNum];
+              const studentAns = submission.answers[qNum];
+              const isCorrect = studentAns === correctKey;
+              const isUnanswered = !studentAns;
+
+              return (
+                <div key={`rep-q-${qNum}`} className={`resp-row ${isUnanswered ? 'unanswered' : isCorrect ? 'correct' : 'incorrect'}`}>
+                  <span className="q-lbl font-mono">Q{String(qNum).padStart(2, '0')}</span>
+                  <span className="key-lbl font-mono">{correctKey}</span>
+                  <span className="stud-lbl font-mono">{studentAns || '-'}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderFooter = () => (
+    <footer className="report-footer">
+      <div className="sig-box">
+        <div className="line"></div>
+        <span>Student Signature</span>
+      </div>
+      <div className="sig-box">
+        <div className="line"></div>
+        <span>Parent / Guardian</span>
+      </div>
+      <div className="sig-box">
+        <div className="line"></div>
+        <span>Evaluator / Authority</span>
+      </div>
+    </footer>
+  );
+
+  return (
+    <div className={`report-print-page ${isTwoPages ? 'two-pages' : 'one-page'}`}>
+      {isTwoPages ? (
+        <>
+          {/* PAGE 1 */}
+          <div className="page-container page-one">
+            {renderHeader()}
+            {renderMetaGrid()}
+            {renderScoreSummary()}
+            <div style={{ marginTop: '16px' }} />
+            {renderSectionStats()}
+          </div>
+
+          <div className="page-break" style={{ pageBreakAfter: 'always', breakAfter: 'page' }} />
+
+          {/* PAGE 2 */}
+          <div className="page-container page-two">
+            <header className="report-header-minimized">
+              <div className="logo-brand-min">
+                <img src="/logo.png" alt="Logo" className="min-logo" />
+                <span>Institute APEX — NEET Graded Analysis</span>
+              </div>
+              <div className="candidate-min font-mono">
+                {student.name} | Roll: {student.studentNum}
+              </div>
+            </header>
+            {renderResponsesGrid()}
+            <div style={{ flex: 1 }} /> {/* Push footer to bottom */}
+            {renderFooter()}
+          </div>
+        </>
+      ) : (
+        /* SINGLE PAGE */
+        <div className="page-container">
+          {renderHeader()}
+          {renderMetaGrid()}
+          {renderScoreSummary()}
+          {renderSectionStats()}
+          {renderResponsesGrid()}
+          {renderFooter()}
         </div>
-        <div className="sig-box">
-          <div className="line"></div>
-          <span>Parent / Guardian</span>
-        </div>
-        <div className="sig-box">
-          <div className="line"></div>
-          <span>Evaluator / School Authority</span>
-        </div>
-      </footer>
+      )}
 
       <style>{`
         body {
-          background: #ffffff !important;
+          background: #f1f5f9 !important;
           color: #1a202c !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+          margin: 0;
+          padding: 0;
         }
 
         .report-print-page {
           width: 210mm;
-          height: 297mm;
-          padding: 6mm 10mm;
           margin: 0 auto;
+          box-sizing: border-box;
+        }
+
+        .page-container {
+          width: 210mm;
+          height: 297mm;
+          padding: 8mm 12mm;
           box-sizing: border-box;
           background: #ffffff;
           position: relative;
           border: 1px solid #cbd5e1;
-          border-radius: 4px;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+          margin-bottom: 24px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .report-header-minimized {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 2px solid #2b6cb0;
+          padding-bottom: 4px;
+          margin-bottom: 12px;
+          font-size: 8.5px;
+          color: #475569;
+          font-weight: bold;
+        }
+
+        .logo-brand-min {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .min-logo {
+          height: 18px;
+          width: auto;
+          object-fit: contain;
         }
 
         .report-header {
@@ -215,7 +411,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           align-items: center;
           border-bottom: 2px solid #2b6cb0;
           padding-bottom: 6px;
-          margin-bottom: 8px;
+          margin-bottom: 10px;
         }
 
         .logo-brand {
@@ -246,7 +442,6 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           font-weight: 800;
           color: #1a202c;
           letter-spacing: 0.5px;
-          word-break: break-word;
           line-height: 1.2;
         }
 
@@ -259,17 +454,17 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .report-section {
-          margin-bottom: 8px;
+          margin-bottom: 10px;
         }
 
         .meta-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 6px 10px;
-          background: #f7fafc;
+          gap: 8px 12px;
+          background: #f8fafc;
           border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          padding: 6px 10px;
+          border-radius: 8px;
+          padding: 8px 12px;
         }
 
         .meta-item {
@@ -281,28 +476,27 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .meta-item .label {
           font-size: 8px;
           font-weight: bold;
-          color: #718096;
+          color: #64748b;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
 
         .meta-item .val {
           font-size: 11px;
-          font-weight: 600;
-          color: #2d3748;
+          font-weight: 700;
+          color: #1e293b;
           word-break: break-word;
-          white-space: normal;
         }
 
         .score-grid {
           display: grid;
           grid-template-columns: 1.2fr 1fr;
-          gap: 12px;
+          gap: 14px;
         }
 
         .score-card {
           border: 1.5px solid #2b6cb0;
-          border-radius: 6px;
+          border-radius: 8px;
           padding: 8px 12px;
           display: flex;
           flex-direction: column;
@@ -312,7 +506,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .lbl {
-          font-size: 8px;
+          font-size: 8.5px;
           font-weight: bold;
           color: #2b6cb0;
           text-transform: uppercase;
@@ -320,111 +514,145 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .score-card .big-val {
-          font-size: 22px;
+          font-size: 24px;
           font-weight: 800;
           color: #2b6cb0;
           margin: 2px 0;
         }
 
         .score-card .big-val .denom {
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 500;
-          opacity: 0.7;
+          opacity: 0.8;
         }
 
         .pct-bar-wrapper {
           width: 100%;
-          height: 5px;
+          height: 6px;
           background: #e2e8f0;
-          border-radius: 2px;
+          border-radius: 3px;
           overflow: hidden;
           margin-bottom: 4px;
+          margin-top: 4px;
         }
 
         .pct-bar {
           height: 100%;
           background: #2b6cb0;
-          border-radius: 2px;
+          border-radius: 3px;
         }
 
         .pct-label {
           font-size: 10px;
           font-weight: 700;
-          color: #2d3748;
+          color: #1e293b;
         }
 
         .score-card-group {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 6px;
         }
 
         .sub-score-card {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 4px 10px;
-          border-radius: 5px;
+          padding: 6px 12px;
+          border-radius: 6px;
           border: 1px solid #e2e8f0;
           background: #ffffff;
         }
 
         .sub-score-card.correct {
-          border-left: 3px solid #38a169;
+          border-left: 4px solid #16a34a;
           background: #f0fff4;
         }
 
         .sub-score-card.wrong {
-          border-left: 3px solid #e53e3e;
+          border-left: 4px solid #dc2626;
           background: #fff5f5;
         }
 
         .sub-score-card.left {
-          border-left: 3px solid #718096;
-          background: #f7fafc;
+          border-left: 4px solid #64748b;
+          background: #f8fafc;
         }
 
         .sub-score-card .lbl {
           font-size: 9px;
           font-weight: 700;
-          color: #4a5568;
+          color: #475569;
         }
 
         .sub-score-card .val {
           font-size: 12px;
           font-weight: 800;
-          color: #2d3748;
+          color: #1e293b;
         }
 
         .sub-score-card .pts {
-          font-size: 9px;
+          font-size: 9.5px;
           font-weight: bold;
-          opacity: 0.8;
+          opacity: 0.9;
         }
 
-        .sub-score-card.correct .pts { color: #276749; }
-        .sub-score-card.wrong .pts { color: #9b2c2c; }
-        .sub-score-card.left .pts { color: #4a5568; }
+        .sub-score-card.correct .pts { color: #15803d; }
+        .sub-score-card.wrong .pts { color: #b91c1c; }
+        .sub-score-card.left .pts { color: #475569; }
 
-        .responses-section h2 {
+        .section-stats-section h2, .responses-section h2 {
           font-size: 10px;
-          margin: 0 0 4px 0;
-          color: #1a202c;
+          margin: 0 0 6px 0;
+          color: #0f172a;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          border-bottom: 1px solid #edf2f7;
+          border-bottom: 1.5px solid #e2e8f0;
           padding-bottom: 2px;
+          font-weight: 800;
+        }
+
+        .section-stats-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 4px;
+          font-size: 9px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+
+        .section-stats-table th {
+          background: #f8fafc;
+          color: #475569;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          padding: 6px 10px;
+          border-bottom: 1px solid #e2e8f0;
+          font-size: 8.5px;
+          text-align: center;
+        }
+
+        .section-stats-table td {
+          padding: 6px 10px;
+          border-bottom: 1px solid #edf2f7;
+          text-align: center;
+          color: #334155;
+        }
+
+        .section-stats-table tr:last-child td {
+          border-bottom: none;
         }
 
         .responses-grid {
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 4px;
+          gap: 6px;
         }
 
         .resp-col {
           border: 1px solid #edf2f7;
-          border-radius: 3px;
+          border-radius: 4px;
           overflow: hidden;
         }
 
@@ -433,8 +661,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
           color: #ffffff;
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 2px 3px;
-          font-size: 7.5px;
+          padding: 3px 4px;
+          font-size: 8px;
           font-weight: bold;
           text-align: center;
         }
@@ -442,30 +670,30 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         .resp-row {
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
-          padding: 1.2px 3px;
-          font-size: 8px;
+          padding: 2px 4px;
+          font-size: 8.5px;
           text-align: center;
-          border-bottom: 0.5px solid #f7fafc;
+          border-bottom: 0.5px solid #f1f5f9;
         }
 
         .resp-row.correct {
           background: #f0fff4;
-          color: #22543d;
+          color: #166534;
         }
 
         .resp-row.incorrect {
           background: #fff5f5;
-          color: #742a2a;
+          color: #991b1b;
           font-weight: bold;
         }
 
         .resp-row.unanswered {
           background: #ffffff;
-          color: #a0aec0;
+          color: #94a3b8;
         }
 
         .resp-row .q-lbl {
-          color: #718096;
+          color: #64748b;
           text-align: left;
         }
 
@@ -474,20 +702,21 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .resp-row.correct .stud-lbl {
-          color: #38a169;
+          color: #16a34a;
         }
 
         .resp-row.incorrect .stud-lbl {
-          color: #e53e3e;
+          color: #dc2626;
           text-decoration: line-through;
         }
 
         .report-footer {
-          margin-top: 8px;
+          margin-top: auto;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
+          gap: 16px;
           text-align: center;
+          padding-top: 14px;
         }
 
         .sig-box {
@@ -497,14 +726,14 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
         }
 
         .sig-box .line {
-          border-bottom: 1.2px dashed #cbd5e0;
-          height: 10px;
+          border-bottom: 1.2px dashed #cbd5e1;
+          height: 12px;
         }
 
         .sig-box span {
-          font-size: 8px;
-          color: #718096;
-          font-weight: 600;
+          font-size: 8.5px;
+          color: #64748b;
+          font-weight: 700;
           text-transform: uppercase;
         }
 
@@ -514,7 +743,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
             margin: 0 !important;
           }
           #root,
-          .admin-report-portal-modal {
+          .admin-report-portal-modal,
+          .no-print {
             display: none !important;
           }
           body {
@@ -523,14 +753,27 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam, st
             background: #fff !important;
           }
           .report-print-page {
+            width: 100% !important;
+            margin: 0 !important;
+            background: none !important;
+          }
+          .page-container {
             border: none !important;
             border-radius: 0 !important;
+            box-shadow: none !important;
             margin: 0 !important;
-            padding: 5mm 10mm !important;
+            padding: 8mm 12mm !important;
             width: 210mm !important;
             height: 297mm !important;
-            position: relative !important;
-            box-shadow: none !important;
+            page-break-after: always;
+            break-after: page;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .page-container:last-child {
+            page-break-after: avoid;
+            break-after: avoid;
           }
         }
       `}</style>

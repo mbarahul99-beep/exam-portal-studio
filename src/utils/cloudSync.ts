@@ -187,6 +187,24 @@ function isRecordEqual(local: any, server: any): boolean {
     if (localVal === undefined || localVal === null || localVal === '') localVal = null;
     if (serverVal === undefined || serverVal === null || serverVal === '') serverVal = null;
 
+    // Normalize TypedArrays (like Float32Array face descriptors) to standard Arrays
+    if (localVal && typeof localVal === 'object' && 'buffer' in localVal && ArrayBuffer.isView(localVal)) {
+      localVal = Array.from(localVal as any);
+    }
+    if (serverVal && typeof serverVal === 'object' && 'buffer' in serverVal && ArrayBuffer.isView(serverVal)) {
+      serverVal = Array.from(serverVal as any);
+    }
+
+    // Normalize numeric string vs number comparisons
+    if (localVal !== null && serverVal !== null) {
+      if (typeof localVal === 'number' && typeof serverVal === 'string' && !isNaN(Number(serverVal))) {
+        serverVal = Number(serverVal);
+      }
+      if (typeof serverVal === 'number' && typeof localVal === 'string' && !isNaN(Number(localVal))) {
+        localVal = Number(localVal);
+      }
+    }
+
     if (JSON.stringify(localVal) !== JSON.stringify(serverVal)) {
       return false;
     }

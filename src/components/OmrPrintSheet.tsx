@@ -213,26 +213,27 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
              }} 
         />
 
-        {/* Institute Name and Icon Logo Side-by-Side */}
-        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', zIndex: 12 }}>
+        {/* Institute Name (Text) and Icon Logo Side-by-Side */}
+        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', zIndex: 12 }}>
           <img 
             src="/logo.png" 
             alt="APEX Logo" 
             style={{ 
-              height: toY((omrConfig.logoHeight || 42) * 0.85),
+              height: toY((omrConfig.omrLogoHeight || 42) * 0.85),
               width: 'auto',
               objectFit: 'contain'
             }} 
           />
-          <img 
-            src="/logo_name.png" 
-            alt="Institute APEX" 
-            style={{ 
-              height: toY((omrConfig.logoNameHeight || 38) * 0.85),
-              width: 'auto',
-              objectFit: 'contain'
-            }} 
-          />
+          <span style={{
+            fontSize: `${omrConfig.omrInstitutionFontSize || 18}px`,
+            fontWeight: 900,
+            color: '#dc0045',
+            fontFamily: "'Titan One', sans-serif",
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {omrConfig.instituteName || 'INSTITUTE APEX'}
+          </span>
         </div>
 
         {/* Header section inside the margin frame */}

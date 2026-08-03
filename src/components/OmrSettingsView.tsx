@@ -29,6 +29,8 @@ export interface OmrCustomSettings {
   headerSubtitleFontSize: number;
   headerTitleFontSize: number;
   headerCandidateFontSize: number;
+  omrLogoHeight: number;
+  omrInstitutionFontSize: number;
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
@@ -49,7 +51,9 @@ export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
   logoNameHeight: 38,
   headerSubtitleFontSize: 8.5,
   headerTitleFontSize: 11,
-  headerCandidateFontSize: 7.5
+  headerCandidateFontSize: 7.5,
+  omrLogoHeight: 42,
+  omrInstitutionFontSize: 18
 };
 
 export const OmrSettingsView: React.FC = () => {
@@ -363,11 +367,61 @@ export const OmrSettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* SECTION 4: Face Recognition & Biometric Liveness Settings */}
+          {/* SECTION 4: OMR Sheet Branding & Logo Sizes */}
+          <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#dc0045' }}>
+              <Sliders size={18} />
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>4. OMR Sheet Branding & Logo Sizes</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    OMR Sheet Graphic Logo Height
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.omrLogoHeight || 42}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="20"
+                  max="80"
+                  step="1"
+                  value={settings.omrLogoHeight || 42}
+                  onChange={(e) => handleChange('omrLogoHeight', parseInt(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    OMR Sheet Institution Name Font Size (Texts)
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.omrInstitutionFontSize || 18}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="30"
+                  step="0.5"
+                  value={settings.omrInstitutionFontSize || 18}
+                  onChange={(e) => handleChange('omrInstitutionFontSize', parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 5: Face Recognition & Biometric Liveness Settings */}
           <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#8b5cf6' }}>
               <Sliders size={18} />
-              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>4. Face Recognition & Liveness Settings</h3>
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>5. Face Recognition & Liveness Settings</h3>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -435,18 +489,18 @@ export const OmrSettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* SECTION 5: OMR Sheet & App Logo Sizes */}
+          {/* SECTION 6: App Header Branding Sizing */}
           <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#dc0045' }}>
               <Sliders size={18} />
-              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>5. OMR Sheet & App Logo Sizes</h3>
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>6. App Header Branding Sizing</h3>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-                    Graphic Logo Height (OMR & App Header)
+                    Graphic Logo Height (App Header Only)
                   </label>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
                     {settings.logoHeight || 42}px
@@ -466,7 +520,7 @@ export const OmrSettingsView: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-                    Institute Name Logo Height (OMR & App Header)
+                    Institute Name Logo Height (App Header Only)
                   </label>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
                     {settings.logoNameHeight || 38}px
@@ -482,7 +536,7 @@ export const OmrSettingsView: React.FC = () => {
                   style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
                 />
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.72rem', color: '#64748b' }}>
-                  Adjust these sliders to dynamically scale the logo and institute brand text inside all OMR sheets, header layouts, and reports.
+                  Adjust these sliders to dynamically scale the logo and brand logo text in the app dashboard/report layouts.
                 </p>
               </div>
             </div>
@@ -510,18 +564,23 @@ export const OmrSettingsView: React.FC = () => {
                 <div style={{ position: 'absolute', bottom: '4px', left: '4px', width: '8px', height: '8px', background: '#000' }} />
                 <div style={{ position: 'absolute', bottom: '4px', right: '4px', width: '8px', height: '8px', background: '#000' }} />
 
-                {/* Institute Logos Preview */}
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', margin: '4px 0' }}>
+                {/* Institute Logos & Text Preview */}
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
                   <img 
                     src="/logo.png" 
                     alt="Logo" 
-                    style={{ height: `${(settings.logoHeight || 42) * 0.4}px`, width: 'auto', objectFit: 'contain' }} 
+                    style={{ height: `${(settings.omrLogoHeight || 42) * 0.4}px`, width: 'auto', objectFit: 'contain' }} 
                   />
-                  <img 
-                    src="/logo_name.png" 
-                    alt="Institute Brand" 
-                    style={{ height: `${(settings.logoNameHeight || 38) * 0.4}px`, width: 'auto', objectFit: 'contain' }} 
-                  />
+                  <span style={{
+                    fontSize: `${(settings.omrInstitutionFontSize || 18) * 0.55}px`,
+                    fontWeight: 900,
+                    color: '#dc0045',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    fontFamily: "'Titan One', sans-serif"
+                  }}>
+                    {settings.instituteName || 'INSTITUTE APEX'}
+                  </span>
                 </div>
 
                 <div style={{ textAlign: 'center', margin: '0 0 6px 0' }}>

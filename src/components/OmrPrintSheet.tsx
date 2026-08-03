@@ -82,7 +82,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const getBubbleSize = () => {
     if (bubbleScale === 'large') return '4.2mm';
     if (bubbleScale === 'compact') return '3.0mm';
-    return layout.yStep < 18 ? '3.4mm' : '3.8mm';
+    return layout.yStep < 18 ? '3.1mm' : '3.3mm';
   };
 
   return (
@@ -214,21 +214,21 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         />
 
         {/* Institute Name and Icon Logo Side-by-Side */}
-        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', zIndex: 12 }}>
+        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', zIndex: 12 }}>
           <img 
-            src="/logo_name.png" 
-            alt="Institute APEX" 
+            src="/logo.png" 
+            alt="APEX Logo" 
             style={{ 
-              height: toY(30),
+              height: toY((omrConfig.logoHeight || 42) * 0.85),
               width: 'auto',
               objectFit: 'contain'
             }} 
           />
           <img 
-            src="/logo.png" 
-            alt="APEX Logo" 
+            src="/logo_name.png" 
+            alt="Institute APEX" 
             style={{ 
-              height: toY(30),
+              height: toY((omrConfig.logoNameHeight || 38) * 0.85),
               width: 'auto',
               objectFit: 'contain'
             }} 
@@ -237,10 +237,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
         {/* Header section inside the margin frame */}
         <div className="omr-header-section" style={{ top: toY(62), display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 11 }}>
-          <div className="omr-subtitle" style={{ fontSize: '8.5px', padding: '1px 12px', marginBottom: '1.5mm' }}>
+          <div className="omr-subtitle" style={{ fontSize: `${omrConfig.headerSubtitleFontSize || 8.5}px`, padding: '1px 12px', marginBottom: '1.5mm' }}>
             INSTITUTE OF NEET & IIT-JEE COACHING
           </div>
-          <div className="omr-exam-title" style={{ fontSize: '11px', margin: 0, fontWeight: 900, color: '#0f172a' }}>
+          <div className="omr-exam-title" style={{ fontSize: `${omrConfig.headerTitleFontSize || 11}px`, margin: 0, fontWeight: 900, color: '#0f172a' }}>
             CLASS: {exam?.className?.toUpperCase() || 'NEET'} &nbsp;|&nbsp; EXAM: {examTitle.toUpperCase()}
           </div>
 
@@ -255,11 +255,11 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             marginTop: '3.5mm'
           }}>
             <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
-              <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>CANDIDATE NAME:</span>
+              <span style={{ fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`, fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>CANDIDATE NAME:</span>
               <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
             </div>
             <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
-              <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>FATHER'S NAME:</span>
+              <span style={{ fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`, fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>FATHER'S NAME:</span>
               <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
             </div>
           </div>
@@ -411,7 +411,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       style={{
                         left: toX(col.xLabel),
                         top: toY(y),
-                        fontSize: layout.yStep < 18 ? '4.8px' : '5.5px'
+                        fontSize: layout.yStep < 18 ? '6.2px' : '7.2px'
                       }}
                     >
                       {getQuestionLabel(qNum)}
@@ -630,8 +630,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           .omr-q-label {
             position: absolute;
             transform: translate(-50%, -50%);
-            font-weight: 800;
-            color: #0f172a !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
             white-space: nowrap;
           }
 

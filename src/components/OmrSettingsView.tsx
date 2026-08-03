@@ -7,8 +7,7 @@ import {
   CheckCircle, 
   Type, 
   Info,
-  Building2,
-  PenTool
+  Building2
 } from 'lucide-react';
 
 export interface OmrCustomSettings {
@@ -27,6 +26,9 @@ export interface OmrCustomSettings {
   enableLivenessCheck: boolean;
   logoHeight: number;
   logoNameHeight: number;
+  headerSubtitleFontSize: number;
+  headerTitleFontSize: number;
+  headerCandidateFontSize: number;
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
@@ -44,7 +46,10 @@ export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
   faceMatchThreshold: 0.70,
   enableLivenessCheck: true,
   logoHeight: 42,
-  logoNameHeight: 38
+  logoNameHeight: 38,
+  headerSubtitleFontSize: 8.5,
+  headerTitleFontSize: 11,
+  headerCandidateFontSize: 7.5
 };
 
 export const OmrSettingsView: React.FC = () => {
@@ -239,19 +244,6 @@ export const OmrSettingsView: React.FC = () => {
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Test Booklet No Box Title
-                </label>
-                <input
-                  type="text"
-                  value={settings.bookletNoBoxTitle}
-                  onChange={(e) => handleChange('bookletNoBoxTitle', e.target.value)}
-                  placeholder="e.g. TEST BOOKLET NO."
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
                   Booklet Code / Set Box Title
                 </label>
                 <input
@@ -286,82 +278,6 @@ export const OmrSettingsView: React.FC = () => {
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>
-            </div>
-          </div>
-
-          {/* SECTION 3: Bottom Signatures & Footer Notice */}
-          <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#dc0045' }}>
-              <PenTool size={18} />
-              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>3. Signatures & Bottom Disclaimer</h3>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
-              {/* Signature Toggle Switch */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <div>
-                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>Enable Bottom Signature Boxes</span>
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>Show Student and Invigilator signature boxes at bottom</p>
-                </div>
-                
-                <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={settings.showSignatureBoxes}
-                    onChange={(e) => handleChange('showSignatureBoxes', e.target.checked)}
-                    style={{ opacity: 0, width: 0, height: 0 }}
-                  />
-                  <span style={{
-                    position: 'absolute',
-                    cursor: 'pointer',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: settings.showSignatureBoxes ? '#dc0045' : '#cbd5e1',
-                    borderRadius: '24px',
-                    transition: '0.3s'
-                  }}>
-                    <span style={{
-                      position: 'absolute',
-                      content: '""',
-                      height: '18px',
-                      width: '18px',
-                      left: settings.showSignatureBoxes ? '22px' : '3px',
-                      bottom: '3px',
-                      backgroundColor: 'white',
-                      borderRadius: '50%',
-                      transition: '0.3s'
-                    }} />
-                  </span>
-                </label>
-              </div>
-
-              {settings.showSignatureBoxes && (
-                <>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                      Student Signature Box Label
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.studentSignatureLabel}
-                      onChange={(e) => handleChange('studentSignatureLabel', e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                      Invigilator Signature Box Label
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.invigilatorSignatureLabel}
-                      onChange={(e) => handleChange('invigilatorSignatureLabel', e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                    />
-                  </div>
-                </>
-              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
@@ -374,7 +290,76 @@ export const OmrSettingsView: React.FC = () => {
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                 />
               </div>
+            </div>
+          </div>
 
+          {/* SECTION 3: OMR Header Font Sizes */}
+          <div style={{ background: '#ffffff', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#dc0045' }}>
+              <Sliders size={18} />
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800 }}>3. OMR Header Font Sizes</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Subtitle Text Font Size (NEET & IIT-JEE Coaching banner)
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.headerSubtitleFontSize || 8.5}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="6"
+                  max="16"
+                  step="0.5"
+                  value={settings.headerSubtitleFontSize || 8.5}
+                  onChange={(e) => handleChange('headerSubtitleFontSize', parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Class & Exam Title Font Size
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.headerTitleFontSize || 11}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="8"
+                  max="20"
+                  step="0.5"
+                  value={settings.headerTitleFontSize || 11}
+                  onChange={(e) => handleChange('headerTitleFontSize', parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                    Candidate & Father Name Label Font Size
+                  </label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc0045', background: '#fff1f2', padding: '2px 8px', borderRadius: '10px' }}>
+                    {settings.headerCandidateFontSize || 7.5}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="14"
+                  step="0.5"
+                  value={settings.headerCandidateFontSize || 7.5}
+                  onChange={(e) => handleChange('headerCandidateFontSize', parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
+                />
+              </div>
             </div>
           </div>
 
@@ -537,27 +522,20 @@ export const OmrSettingsView: React.FC = () => {
                 </div>
 
                 {/* Box Headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.5fr', gap: '4px', margin: '10px 0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', margin: '10px 0' }}>
                   <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
                     <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
                       {settings.rollNoBoxTitle}
                     </div>
-                    <div style={{ height: '35px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045' }}>① ② ③</div>
-                  </div>
-
-                  <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
-                    <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
-                      {settings.bookletNoBoxTitle}
-                    </div>
-                    <div style={{ height: '35px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045' }}>① ② ③</div>
+                    <div style={{ height: '22px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045' }}>① ② ③</div>
                   </div>
 
                   <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
                     <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
                       {settings.bookletCodeBoxTitle}
                     </div>
-                    <div style={{ height: '35px', padding: '4px', fontSize: '0.55rem' }}>
-                      <div style={{ color: '#dc0045', fontWeight: 'bold' }}>Ⓐ Ⓑ Ⓒ Ⓓ</div>
+                    <div style={{ height: '22px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045', fontWeight: 'bold' }}>
+                      Ⓐ Ⓑ Ⓒ Ⓓ
                     </div>
                   </div>
                 </div>
@@ -577,33 +555,13 @@ export const OmrSettingsView: React.FC = () => {
                   </div>
                   <div>
                     <div style={{ color: '#dc0045', fontWeight: 'bold' }}>Q.No A B C D</div>
-                    <div>37 ◯ ◯ ◯ ◯</div>
-                    <div>38 ◯ ◯ ◯ ◯</div>
+                    <div>31 ◯ ◯ ◯ ◯</div>
+                    <div>32 ◯ ◯ ◯ ◯</div>
                   </div>
                 </div>
 
-                {/* Signature Boxes Preview */}
-                {settings.showSignatureBoxes ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '12px' }}>
-                    <div style={{ border: '1px solid #dc0045', height: '22px', borderRadius: '3px', position: 'relative' }}>
-                      <span style={{ position: 'absolute', bottom: '2px', left: 0, right: 0, textAlign: 'center', fontSize: '0.5rem', fontWeight: 'bold', color: '#dc0045' }}>
-                        {settings.studentSignatureLabel}
-                      </span>
-                    </div>
-                    <div style={{ border: '1px solid #dc0045', height: '22px', borderRadius: '3px', position: 'relative' }}>
-                      <span style={{ position: 'absolute', bottom: '2px', left: 0, right: 0, textAlign: 'center', fontSize: '0.5rem', fontWeight: 'bold', color: '#dc0045' }}>
-                        {settings.invigilatorSignatureLabel}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ padding: '6px', textAlign: 'center', fontSize: '0.55rem', color: '#64748b', background: '#f8fafc', borderRadius: '4px', border: '1px dashed #cbd5e1' }}>
-                    [Signature Boxes Hidden]
-                  </div>
-                )}
-
                 {/* Disclaimer */}
-                <div style={{ textAlign: 'center', fontSize: '0.48rem', fontWeight: 'bold', color: '#dc0045', marginTop: '8px' }}>
+                <div style={{ textAlign: 'center', fontSize: '0.48rem', fontWeight: 'bold', color: '#dc0045', marginTop: '12px' }}>
                   {settings.disclaimerText}
                 </div>
 

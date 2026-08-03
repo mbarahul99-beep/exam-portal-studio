@@ -95,62 +95,69 @@ export function getDynamicOMRQuestionLayout(
   }
   numCols = Math.min(5, Math.max(2, numCols));
 
-  // 2. Calculate rows per column so all columns are balanced
-  const rowsPerCol = Math.ceil(total / numCols);
-
-  // 3. Dynamic yStart & yStep calculation (y = 460 to 1220)
-  const minY = 460;
-  const maxY = 1220;
-  const maxAvailableHeight = maxY - minY; // 760px
-
+  // 2. Dynamic yStep calculation
   let yStep = 20;
-  if (rowsPerCol > 1) {
-    yStep = maxAvailableHeight / (rowsPerCol - 1);
-  }
-
   if (density === 'auto') {
     if (total <= 30) {
-      yStep = Math.min(34, Math.max(24, yStep));
+      yStep = 34;
     } else if (total <= 60) {
-      yStep = Math.min(28, Math.max(20, yStep));
+      yStep = 28;
+    } else if (total <= 120) {
+      yStep = 25;
+    } else if (total <= 180) {
+      yStep = 23;
     } else {
-      yStep = Math.min(21.7, Math.max(15, yStep));
+      yStep = 21;
     }
   } else if (density === 'spacious') {
-    yStep = 24;
+    yStep = 26;
   } else if (density === 'compact') {
-    yStep = 16;
+    yStep = 18;
   } else {
-    yStep = 20;
+    yStep = 22;
   }
 
-  let yStart = minY;
-  const totalGridHeight = (rowsPerCol - 1) * yStep;
-  if (totalGridHeight < maxAvailableHeight) {
-    yStart = minY + (maxAvailableHeight - totalGridHeight) / 2;
-  }
-
-  // 4. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
+  // 3. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
   const frameLeft = 70;
   const frameRight = 930;
   const availWidth = frameRight - frameLeft; // 860px
   const colWidth = availWidth / numCols;
-  const columns: OMRColumnConfig[] = [];
 
+  // 4. Greedy question count distribution simulation
+  // Proportions questions dynamically so that all columns end at roughly the same bottom coordinate,
+  // compensating for the left columns starting at y=450 and right columns starting at y=220.
+  const colCounts = Array(numCols).fill(0);
+  for (let q = 0; q < total; q++) {
+    let minColIdx = 0;
+    let minBottom = Infinity;
+    for (let c = 0; c < numCols; c++) {
+      const colXStart = frameLeft + 12 + c * colWidth;
+      const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+      const currentCount = colCounts[c];
+      const headers = Math.ceil((currentCount + 1) / 5);
+      const bottom = colYStart + (currentCount + 1 + headers) * yStep;
+      if (bottom < minBottom) {
+        minBottom = bottom;
+        minColIdx = c;
+      }
+    }
+    colCounts[minColIdx]++;
+  }
+
+  const columns: OMRColumnConfig[] = [];
+  let currentQ = 1;
   for (let c = 0; c < numCols; c++) {
-    const qStart = c * rowsPerCol + 1;
-    const qEnd = Math.min(total, (c + 1) * rowsPerCol);
-    if (qStart > total) break;
+    const count = colCounts[c];
+    if (count === 0) continue;
+    const qStart = currentQ;
+    const qEnd = currentQ + count - 1;
+    currentQ += count;
 
     const colXStart = frameLeft + 12 + c * colWidth;
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-
-    // Arrange questions by the side of the Roll number bubbles:
-    // Left columns (< 400px) start below Roll number and Booklet Set at y=450
-    // Right columns (>= 400px) start beside Roll number at y=220
-    const colYStart = colXStart < 400 ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
 
     columns.push({
       qStart,
@@ -165,6 +172,9 @@ export function getDynamicOMRQuestionLayout(
       ]
     });
   }
+
+  const yStart = 220;
+  const rowsPerCol = Math.max(...colCounts);
 
   return {
     bubbleRadius: yStep < 18 ? 5.5 : 6.5,

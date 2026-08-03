@@ -68,7 +68,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const getBubbleSize = () => {
     if (bubbleScale === 'large') return '4.2mm';
     if (bubbleScale === 'compact') return '3.0mm';
-    return layout.yStep < 18 ? '3.1mm' : '3.3mm';
+    return layout.yStep <= 20 ? '3.1mm' : '3.3mm';
   };
 
   return (
@@ -353,7 +353,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                         left: toX(col.xLabel),
                         width: toX(col.xOptions[3] + 24 - col.xLabel),
                         top: toY(y),
-                        height: toY(layout.yStep),
+                        transform: 'translate(0, -50%)',
                         display: 'flex',
                         alignItems: 'center',
                         zIndex: 10

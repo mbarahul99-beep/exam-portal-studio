@@ -71,7 +71,19 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       };
 
       try {
-        await html2pdf().from(element).set(opt).save();
+        const pdfBlob = await html2pdf().from(element).set(opt).output('blob');
+        const blobUrl = URL.createObjectURL(pdfBlob);
+
+        // Download locally
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = `${student.name}_${activeAnalysisSub.exam.title}_Report.pdf`.replace(/\s+/g, '_');
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        // Open directly in a new window/tab
+        window.open(blobUrl, '_blank');
       } finally {
         element.classList.remove('is-generating-pdf');
       }
@@ -367,6 +379,48 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   return (
     <div style={{ minHeight: '100vh', width: '100%', background: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
+      {/* Dynamic PDF Generation Progress Modal */}
+      {isDownloadingPdf && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 99999
+        }}>
+          <div style={{
+            background: '#ffffff',
+            padding: '36px 28px',
+            borderRadius: '16px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05)',
+            textAlign: 'center',
+            maxWidth: '380px',
+            width: '90%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            alignItems: 'center'
+          }}>
+            <div className="pdf-loading-spinner" />
+            <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 'bold' }}>
+              Generating PDF Report
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b', lineHeight: '1.5' }}>
+              Rendering scorecard layouts, section score analytics, and detail grids.
+            </p>
+            <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 'bold', background: '#f0fdf4', padding: '4px 12px', borderRadius: '12px' }}>
+              Will open automatically after download
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Student PWA App Download Overlay */}
       {showInstallPromo && !isStandalone && (
         <div style={{
@@ -1072,13 +1126,28 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       {/* Responsive mobile stylesheet overrides */}
       <style>{`
         .print-only {
-          position: absolute !important;
-          left: -9999px !important;
+          position: fixed !important;
+          left: 0 !important;
           top: 0 !important;
           width: 210mm !important;
           height: auto !important;
           overflow: visible !important;
           display: block !important;
+          z-index: -9999 !important;
+        }
+
+        .pdf-loading-spinner {
+          width: 48px;
+          height: 48px;
+          border: 4px solid #e2e8f0;
+          border-top: 4px solid #16a34a;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
 
         /* Result portal buttons styles */

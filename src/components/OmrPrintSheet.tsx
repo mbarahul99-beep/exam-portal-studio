@@ -67,7 +67,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const getBubbleSize = () => {
     if (bubbleScale === 'large') return '4.2mm';
     if (bubbleScale === 'compact') return '3.0mm';
-    return layout.yStep <= 20 ? '3.1mm' : '3.3mm';
+    return layout.yStep <= 20 ? '3.4mm' : '3.6mm';
   };
 
   return (
@@ -330,17 +330,13 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       }}
                     >
                       <span style={{
-                        fontSize: '7.8px',
+                        fontSize: '9.8px',
                         fontWeight: 900,
-                        color: '#ffffff',
-                        backgroundColor: '#dc0045',
-                        padding: '1px 8px',
-                        borderRadius: '4px',
+                        color: '#dc0045',
                         textTransform: 'uppercase',
                         letterSpacing: '0.6px',
                         fontFamily: "'Outfit', sans-serif",
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        whiteSpace: 'nowrap'
                       }}>
                         {item.subjectName}
                       </span>
@@ -385,7 +381,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       style={{
                         left: toX(col.xLabel),
                         top: toY(y),
-                        fontSize: layout.yStep < 18 ? '7.5px' : '8.8px'
+                        fontSize: layout.yStep < 18 ? '8.5px' : '10.2px'
                       }}
                     >
                       {getQuestionLabel(qNum)}
@@ -597,7 +593,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           .q-hdr-opt {
             position: absolute;
             transform: translate(-50%, -50%);
-            font-size: 6.5px;
+            font-size: 8.5px;
             font-weight: 900;
             color: #dc0045 !important;
           }

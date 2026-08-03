@@ -8,6 +8,7 @@ interface StudentReportPrintProps {
     score: number;
     answers: Record<number, string>;
     scannedAt: Date;
+    bookletSet?: string;
   };
 }
 
@@ -88,7 +89,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   for (let q = 1; q <= exam.numQuestions; q++) {
     const secName = getQuestionSection(q, exam);
     const sAns = submission.answers[q];
-    const cAns = exam.answerKey[q];
+    const subSet = submission.bookletSet || 'A';
+    const correctKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
+    const cAns = correctKey[q];
 
     const marking = exam.sectionsMarking?.[secName] || {
       correctMarks: cMarks,
@@ -339,7 +342,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', flex: 1 }}>
                 {colGroup.map((qNum) => {
                   if (qNum > exam.numQuestions) return null;
-                  const correctKey = exam.answerKey[qNum];
+                  const subSet = submission.bookletSet || 'A';
+                  const setKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
+                  const correctKey = setKey[qNum];
                   const studentAns = submission.answers[qNum];
                   const isCorrect = studentAns === correctKey;
                   const isUnanswered = !studentAns;

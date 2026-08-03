@@ -45,7 +45,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [existingSubmissions, setExistingSubmissions] = useState<ExamSubmission[]>([]);
   const [showScannedSheetsFullScreen, setShowScannedSheetsFullScreen] = useState(false);
   const [scannedSheetSearch, setScannedSheetSearch] = useState('');
-  const [viewingOmrModalUrl, setViewingOmrModalUrl] = useState<{ name: string; url?: string; score: number; answers?: Record<number, string>; correctCount?: number; wrongCount?: number } | null>(null);
+  const [viewingOmrModalUrl, setViewingOmrModalUrl] = useState<{ name: string; url?: string; score: number; answers?: Record<number, string>; correctCount?: number; wrongCount?: number; bookletSet?: string } | null>(null);
 
   // Camera Modal States & Refs
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -1359,7 +1359,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                             score: sub.score,
                             answers: sub.answers,
                             correctCount: correctCount,
-                            wrongCount: wrongCount
+                            wrongCount: wrongCount,
+                            bookletSet: sub.bookletSet
                           })}
                           style={{ padding: '8px 14px', borderRadius: '10px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
@@ -1433,7 +1434,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   {Array.from({ length: exam.numQuestions }, (_, i) => {
                     const qNum = i + 1;
                     const studentAns = viewingOmrModalUrl.answers?.[qNum] || '';
-                    const correctAns = exam.answerKey[qNum] || '';
+                    const sheetSet = viewingOmrModalUrl.bookletSet || 'A';
+                    const correctKey = exam.answerKeys?.[sheetSet] || exam.answerKey || {};
+                    const correctAns = correctKey[qNum] || '';
                     
                     // Determine option list
                     const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);

@@ -80,7 +80,9 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
     return questions.map((q, idx) => {
       const qNum = idx + 1;
       const studentAns = submission.answers ? submission.answers[qNum] : '';
-      const correctAns = exam.answerKey ? exam.answerKey[qNum] : '';
+      const subSet = submission.bookletSet || 'A';
+      const setKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
+      const correctAns = setKey[qNum] || '';
       
       let status: 'correct' | 'incorrect' | 'skipped' = 'skipped';
       if (studentAns) {

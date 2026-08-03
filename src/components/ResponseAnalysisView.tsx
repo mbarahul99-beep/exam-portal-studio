@@ -45,7 +45,9 @@ export const ResponseAnalysisView: React.FC<ResponseAnalysisViewProps> = ({ exam
         if (optionCounts[cleanAns] !== undefined) {
           optionCounts[cleanAns]++;
         }
-        if (cleanAns === correctKey) {
+        const subSet = sub.bookletSet || 'A';
+        const correctKeyForSub = exam.answerKeys?.[subSet]?.[qNum] || exam.answerKey?.[qNum] || 'A';
+        if (cleanAns === correctKeyForSub) {
           correctCount++;
         } else {
           incorrectCount++;

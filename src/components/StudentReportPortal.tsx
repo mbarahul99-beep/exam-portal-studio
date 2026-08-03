@@ -276,7 +276,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     for (let q = 1; q <= exam.numQuestions; q++) {
       const secName = getQuestionSection(q, exam);
       const sAns = item.answers[q];
-      const cAns = exam.answerKey[q];
+      const setKey = exam.answerKeys?.[item.bookletSet || 'A'] || exam.answerKey || {};
+      const cAns = setKey[q];
       
       sectionTotal[secName] = (sectionTotal[secName] || 0) + 1;
       if (sAns === cAns) {
@@ -330,7 +331,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     for (let q = 1; q <= activeAnalysisSub.exam.numQuestions; q++) {
       const secName = getQuestionSection(q, activeAnalysisSub.exam);
       const sAns = activeAnalysisSub.answers[q];
-      const cAns = activeAnalysisSub.exam.answerKey[q];
+      const setKey = activeAnalysisSub.exam.answerKeys?.[activeAnalysisSub.bookletSet || 'A'] || activeAnalysisSub.exam.answerKey || {};
+      const cAns = setKey[q];
       
       secTotals[secName] = (secTotals[secName] || 0) + 1;
       
@@ -786,7 +788,9 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     {Array.from({ length: activeAnalysisSub.exam.numQuestions }, (_, i) => {
                       const qNum = i + 1;
                       const sAns = activeAnalysisSub.answers[qNum];
-                      const cAns = activeAnalysisSub.exam.answerKey[qNum];
+                      const subSet = activeAnalysisSub.bookletSet || 'A';
+                      const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
+                      const cAns = setKey[qNum];
                       
                       const isCorrect = sAns === cAns;
                       const isLeft = !sAns;

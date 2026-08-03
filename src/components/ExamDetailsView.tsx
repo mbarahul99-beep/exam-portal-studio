@@ -119,7 +119,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number } | null>(null);
+  const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number; bookletSet?: string } | null>(null);
   const [viewingOnlineSubmission, setViewingOnlineSubmission] = useState<{ studentName: string; submission: ExamSubmission } | null>(null);
   const [activeAnswerKeySet, setActiveAnswerKeySet] = useState<string>('A');
   const [editableKeys, setEditableKeys] = useState<Record<string, Record<number, string>>>(() => {
@@ -455,9 +455,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     let correctCount = 0;
     let wrongCount = 0;
     let unansweredCount = 0;
+    const subSet = sub.bookletSet || 'A';
+    const subKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
     for (let q = 1; q <= exam.numQuestions; q++) {
       const ans = sub.answers ? sub.answers[q] : '';
-      const key = exam.answerKey ? exam.answerKey[q] : '';
+      const key = subKey[q] || '';
       if (!ans) unansweredCount++;
       else if (ans === key) correctCount++;
       else wrongCount++;
@@ -1452,7 +1454,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                                 answers: row.answers, 
                                 score: row.score, 
                                 correctCount: row.correctCount, 
-                                wrongCount: row.wrongCount 
+                                wrongCount: row.wrongCount,
+                                bookletSet: row.bookletSet
                               });
                             }}
                             style={{
@@ -2087,7 +2090,9 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   {Array.from({ length: exam.numQuestions }, (_, i) => {
                     const qNum = i + 1;
                     const studentAns = viewingScannedOmr.answers?.[qNum] || '';
-                    const correctAns = exam.answerKey[qNum] || 'A';
+                    const sheetSet = viewingScannedOmr.bookletSet || 'A';
+                    const correctKey = exam.answerKeys?.[sheetSet] || exam.answerKey || {};
+                    const correctAns = correctKey[qNum] || 'A';
                     
                     // Determine option list
                     const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);

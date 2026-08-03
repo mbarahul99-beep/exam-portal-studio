@@ -25,11 +25,11 @@ export const OMR_CONFIG = {
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
   studentId: {
     xStart: 100, // Center of first digit column
-    xStep: 25,   // Horizontal spacing between digits
-    yStart: 216, // Center of '1' bubble row
-    yStep: 20,   // Vertical spacing between rows 1-9, 0 (10 rows)
+    xStep: 36,   // Horizontal spacing between digits (enlarged)
+    yStart: 206, // Center of '1' bubble row (adjusted)
+    yStep: 25,   // Vertical spacing between rows (enlarged)
     numDigits: 10,
-    bubbleRadius: 7
+    bubbleRadius: 8
   },
 
   // Test Booklet No coordinates (7 digits, 1-9 then 0)
@@ -188,7 +188,7 @@ export function getDynamicOMRQuestionLayout(
   let sumYStart = 0;
   for (let c = 0; c < numCols; c++) {
     const colXStart = frameLeft + 12 + c * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
     sumYStart += colYStart;
   }
   const targetBottom = (sumYStart + approxTotalSlots * yStep) / numCols;
@@ -204,12 +204,17 @@ export function getDynamicOMRQuestionLayout(
       continue;
     }
 
+    if (curCol === 0 && colCounts[0] === 25) {
+      curCol++;
+      tempQStart = q;
+    }
+
     const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
     const colXStart = frameLeft + 12 + curCol * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
     const currentBottom = colYStart + slots.length * yStep;
 
-    if ((currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
+    if (curCol > 0 && (currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
       curCol++;
       tempQStart = q;
     }
@@ -229,7 +234,7 @@ export function getDynamicOMRQuestionLayout(
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
 
     columns.push({
       qStart,

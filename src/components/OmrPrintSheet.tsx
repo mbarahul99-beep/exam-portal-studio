@@ -48,7 +48,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const toY = (y: number) => `${y * 0.21}mm`;
 
   const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
-  const rollNoWidth = rollNoDigits * 25 + 40;
+  const rollNoWidth = rollNoDigits * OMR_CONFIG.studentId.xStep + 30;
 
   const rollCols = Array.from({ length: rollNoDigits });
   const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
@@ -257,7 +257,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                left: toX(70),
                top: toY(150),
                width: toX(rollNoWidth),
-               height: toY(260)
+               height: toY(305)
              }}
         >
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
@@ -272,7 +272,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               className="digit-box-header"
               style={{
                 left: toX(x),
-                top: toY(OMR_CONFIG.studentId.yStart - 30)
+                top: toY(OMR_CONFIG.studentId.yStart - 32)
               }}
             />
           );
@@ -518,8 +518,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
           .digit-box-header {
             position: absolute;
-            width: 5.5mm;
-            height: 5.5mm;
+            width: 6.8mm;
+            height: 6.8mm;
             border: 0.3mm solid #dc0045 !important;
             transform: translate(-50%, -50%);
             background-color: #fff !important;
@@ -543,9 +543,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           .id-bubble {
-            width: 3.6mm;
-            height: 3.6mm;
-            font-size: 6px;
+            width: 4.8mm;
+            height: 4.8mm;
+            font-size: 8px;
+            font-weight: 800;
           }
 
           .code-bubble {

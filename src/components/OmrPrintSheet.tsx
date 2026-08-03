@@ -345,6 +345,46 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
+        {/* COLUMN SUBJECT HEADERS (IN THE BLANK SPACE ABOVE THE FIRST ROW) */}
+        {layout.columns.map((col, colIdx) => {
+          if (!exam || !exam.sections) return null;
+          const sec = exam.sections.find((s: any) => col.qStart >= s.qStart && col.qStart < s.qStart + s.qCount);
+          if (!sec || !sec.subjectName) return null;
+
+          const subjectTitle = sec.subjectName.toUpperCase();
+          const yPos = col.yStart - 18;
+
+          return (
+            <div
+              key={`col-subj-hdr-${colIdx}`}
+              style={{
+                position: 'absolute',
+                left: toX(col.xLabel),
+                width: toX(col.xOptions[3] + 24 - col.xLabel),
+                top: toY(yPos),
+                textAlign: 'left',
+                zIndex: 10
+              }}
+            >
+              <span style={{
+                fontSize: '7.8px',
+                fontWeight: 900,
+                color: '#dc0045',
+                background: '#fff1f2',
+                padding: '1.5px 6px',
+                borderRadius: '4px',
+                border: '0.8px solid #fecdd3',
+                textTransform: 'uppercase',
+                letterSpacing: '0.4px',
+                fontFamily: "'Outfit', sans-serif",
+                whiteSpace: 'nowrap'
+              }}>
+                {subjectTitle}
+              </span>
+            </div>
+          );
+        })}
+
         {/* DYNAMIC QUESTIONS GRID SECTION */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(

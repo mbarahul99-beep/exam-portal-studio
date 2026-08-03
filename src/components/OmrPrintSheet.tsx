@@ -693,12 +693,15 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           @media print {
             @page {
               size: A4 portrait;
-              margin: 0 !important;
+              margin: 0mm !important;
             }
             html, body {
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              overflow: hidden !important;
             }
             .no-print {
               display: none !important;
@@ -706,23 +709,19 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             .omr-print-wrapper {
               padding: 0 !important;
               margin: 0 !important;
-              width: 100% !important;
-              height: auto !important;
+              width: 210mm !important;
+              height: 297mm !important;
             }
             .omr-print-page {
               margin: 0 auto !important;
               box-shadow: none !important;
               border: none !important;
-              border-radius: 0 !important;
               width: 210mm !important;
               height: 297mm !important;
               page-break-before: avoid !important;
               page-break-after: avoid !important;
               page-break-inside: avoid !important;
               transform: none !important;
-              background: #ffffff !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
             }
           }
         `}</style>

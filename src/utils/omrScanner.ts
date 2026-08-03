@@ -511,9 +511,10 @@ export async function scanOMRSheet(
     // 5.5. Scan Booklet Code Set
     let bookletSet = 'A';
     if (examSetsCount > 1) {
+      const bookletShift = (rollNoDigits - 10) * 25;
       const setIntensities: number[] = [];
       for (let idx = 0; idx < examSetsCount; idx++) {
-        const x = 610 + idx * 45;
+        const x = 610 + idx * 45 + bookletShift;
         const y = OMR_CONFIG.studentId.yStart + bestDy;
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
         setIntensities.push(avgGray);

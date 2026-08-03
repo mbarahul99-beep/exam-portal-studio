@@ -48,7 +48,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const toY = (y: number) => `${y * 0.21}mm`;
 
   const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
-  const examSetsCount = exam?.examSetsCount || 4;
   const rollNoWidth = rollNoDigits * 25 + 40;
 
   const rollCols = Array.from({ length: rollNoDigits });
@@ -264,17 +263,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
         </div>
 
-        <div className="bg-border-card" 
-             style={{
-               left: toX(70 + rollNoWidth + 20),
-               top: toY(150),
-               width: toX(examSetsCount * 45 + 40),
-               height: toY(260)
-             }}
-        >
-          <div className="box-title">{omrConfig.bookletCodeBoxTitle}</div>
-        </div>
-
         {/* ROLL NO DIGIT HEADER BOXES */}
         {rollCols.map((_, colIdx) => {
           const x = OMR_CONFIG.studentId.xStart + colIdx * OMR_CONFIG.studentId.xStep;
@@ -308,24 +296,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               </div>
             );
           });
-        })}
-
-        {/* BOOKLET CODE OPTIONS */}
-        {Array.from({ length: examSetsCount }).map((_, idx) => {
-          const bookletSetXStart = 100 + rollNoDigits * 25 + 50;
-          const code = String.fromCharCode(65 + idx);
-          return (
-            <div
-              key={`bk-code-${code}`}
-              className="omr-bubble code-bubble"
-              style={{
-                left: toX(bookletSetXStart + idx * 45),
-                top: toY(OMR_CONFIG.studentId.yStart)
-              }}
-            >
-              {code}
-            </div>
-          );
         })}
 
         {/* DYNAMIC QUESTIONS GRID SECTION */}

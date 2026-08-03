@@ -163,20 +163,20 @@ export function getDynamicOMRQuestionLayout(
     if (total <= 30) {
       yStep = 32;
     } else if (total <= 60) {
-      yStep = 26;
+      yStep = 28;
     } else if (total <= 120) {
-      yStep = 22;
+      yStep = 24.5;
     } else if (total <= 180) {
-      yStep = 18.8;
+      yStep = 22.5;
     } else {
-      yStep = 17.5;
+      yStep = 20.5;
     }
   } else if (density === 'spacious') {
-    yStep = 24;
+    yStep = 25;
   } else if (density === 'compact') {
-    yStep = 17.5;
+    yStep = 18;
   } else {
-    yStep = 20.5;
+    yStep = 21.5;
   }
 
   // 3. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
@@ -197,7 +197,7 @@ export function getDynamicOMRQuestionLayout(
   let sumYStart = 0;
   for (let c = 0; c < numCols; c++) {
     const colXStart = frameLeft + 12 + c * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
     sumYStart += colYStart;
   }
   const targetBottom = (sumYStart + approxTotalSlots * yStep) / numCols;
@@ -215,7 +215,7 @@ export function getDynamicOMRQuestionLayout(
 
     const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
     const colXStart = frameLeft + 12 + curCol * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
     const currentBottom = colYStart + slots.length * yStep;
 
     if ((currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10) {
@@ -238,7 +238,7 @@ export function getDynamicOMRQuestionLayout(
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+    const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
 
     columns.push({
       qStart,
@@ -276,7 +276,7 @@ export async function scanOMRSheet(
   sourceImage: HTMLCanvasElement | HTMLImageElement,
   numQuestions: number,
   rollNoDigits: number = 10,
-  examSetsCount: number = 1,
+  _examSetsCount: number = 1,
   sections: any[] = []
 ): Promise<ScanResult> {
   const cv = window.cv;
@@ -606,34 +606,8 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
-    // 5.5. Scan Booklet Code Set
+    // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
-    if (examSetsCount > 1) {
-      const bookletSetXStart = 100 + rollNoDigits * 25 + 50;
-      const setIntensities: number[] = [];
-      for (let idx = 0; idx < examSetsCount; idx++) {
-        const x = bookletSetXStart + idx * 45;
-        const y = OMR_CONFIG.studentId.yStart + bestDy;
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
-        setIntensities.push(avgGray);
-      }
-      let minVal = 256;
-      let maxVal = -1;
-      let minIdx = 0;
-      for (let idx = 0; idx < examSetsCount; idx++) {
-        const val = setIntensities[idx];
-        if (val < minVal) {
-          minVal = val;
-          minIdx = idx;
-        }
-        if (val > maxVal) {
-          maxVal = val;
-        }
-      }
-      if (maxVal - minVal > 40 && minVal < 155) {
-        bookletSet = String.fromCharCode(65 + minIdx);
-      }
-    }
 
     // 5.8. Dynamic White Level Auto-Calibration
     // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting

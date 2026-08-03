@@ -246,18 +246,7 @@ export const OmrSettingsView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Booklet Code / Set Box Title
-                </label>
-                <input
-                  type="text"
-                  value={settings.bookletCodeBoxTitle}
-                  onChange={(e) => handleChange('bookletCodeBoxTitle', e.target.value)}
-                  placeholder="e.g. BOOKLET CODE"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
-                />
-              </div>
+
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
@@ -591,21 +580,12 @@ export const OmrSettingsView: React.FC = () => {
                 </div>
 
                 {/* Box Headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', margin: '10px 0' }}>
+                <div style={{ margin: '10px 0', maxWidth: '85px' }}>
                   <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
                     <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
                       {settings.rollNoBoxTitle}
                     </div>
                     <div style={{ height: '22px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045' }}>① ② ③</div>
-                  </div>
-
-                  <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
-                    <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
-                      {settings.bookletCodeBoxTitle}
-                    </div>
-                    <div style={{ height: '22px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045', fontWeight: 'bold' }}>
-                      Ⓐ Ⓑ Ⓒ Ⓓ
-                    </div>
                   </div>
                 </div>
 

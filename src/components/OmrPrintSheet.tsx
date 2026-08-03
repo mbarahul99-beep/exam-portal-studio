@@ -75,7 +75,10 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
       return String(qNum).padStart(2, '0');
     }
     const subCode = sec.subjectName.substring(0, 3).toUpperCase();
-    return `${String(qNum).padStart(2, '0')} ${subCode}`;
+    if (qNum === sec.qStart) {
+      return `${String(qNum).padStart(2, '0')} ${subCode}`;
+    }
+    return String(qNum).padStart(2, '0');
   };
 
   // Determine bubble size string based on scale selection
@@ -412,7 +415,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       style={{
                         left: toX(col.xLabel),
                         top: toY(y),
-                        fontSize: layout.yStep < 18 ? '6.2px' : '7.2px'
+                        fontSize: layout.yStep < 18 ? '7.5px' : '8.8px'
                       }}
                     >
                       {getQuestionLabel(qNum)}
@@ -634,6 +637,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             font-weight: 900 !important;
             color: #000000 !important;
             white-space: nowrap;
+            letter-spacing: -0.15px;
+            font-family: 'Outfit', 'Inter', sans-serif;
           }
 
           .sheet-footer-section {

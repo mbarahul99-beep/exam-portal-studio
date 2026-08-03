@@ -171,10 +171,27 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     if (activeView === 'manage-questions') {
       const initData = async () => {
         if (!exam.id) return;
-        // 1. Fetch questions
         let dbQs = await db.questions.where('examId').equals(exam.id).toArray();
         const nonPlaceholders = dbQs.filter(q => !isPlaceholderQuestion(q));
-        setQuestions(nonPlaceholders);
+
+        let qCursor = 1;
+        const sectionsWithRanges = (exam.sections || []).map(sec => {
+          const start = qCursor;
+          const end = qCursor + sec.qCount - 1;
+          qCursor = end + 1;
+          return { ...sec, qStart: start, qEnd: end };
+        });
+
+        const healed = nonPlaceholders.map((qVal, idx) => {
+          const qNum = idx + 1;
+          const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
+          return {
+            ...qVal,
+            subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
+            sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A'
+          };
+        });
+        setQuestions(healed);
 
         // 2. Fetch list of question banks
         const banks = await db.questionBanks.toArray();

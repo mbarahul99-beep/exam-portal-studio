@@ -272,9 +272,19 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       const newQNum = exam.numQuestions + 1;
 
       // 1. Create Question record
+      let targetSubjectName = selectedBank?.subject || 'Subject 1';
+      let targetSectionName = selectedSectionName;
+
+      if (selectedSectionName.includes('|')) {
+        const [subName, secName] = selectedSectionName.split('|');
+        targetSubjectName = subName;
+        targetSectionName = secName;
+      }
+
       await db.questions.add({
         examId: exam.id!,
-        sectionName: selectedSectionName || selectedBank?.subject || 'General',
+        subjectName: targetSubjectName,
+        sectionName: targetSectionName || 'General',
         questionText: selectedBankQ.questionText,
         options: [...selectedBankQ.options],
         correctOptionIdx: selectedBankQ.correctOptionIdx,
@@ -794,7 +804,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                       >
                         <option value="">-- Choose Section --</option>
                         {targetExamSections.map((sec, idx) => (
-                          <option key={idx} value={sec.sectionName}>{sec.subjectName} - {sec.sectionName}</option>
+                          <option key={idx} value={`${sec.subjectName}|${sec.sectionName}`}>{sec.subjectName} - {sec.sectionName}</option>
                         ))}
                       </select>
                     ) : (

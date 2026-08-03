@@ -70,10 +70,26 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         setExam(examObj);
         setSecondsLeft((examObj.durationMins || 180) * 60);
 
-        // Load custom questions if any exist in the database for this exam
         const dbQs = await db.questions.where('examId').equals(examId).toArray();
         if (dbQs.length > 0) {
-          setQuestionsList(dbQs);
+          let qCursor = 1;
+          const sectionsWithRanges = (examObj.sections || []).map(sec => {
+            const start = qCursor;
+            const end = qCursor + sec.qCount - 1;
+            qCursor = end + 1;
+            return { ...sec, qStart: start, qEnd: end };
+          });
+
+          const healedQs = dbQs.map((qVal, idx) => {
+            const qNum = idx + 1;
+            const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
+            return {
+              ...qVal,
+              subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
+              sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A'
+            };
+          });
+          setQuestionsList(healedQs);
         } else {
           // Generate high-fidelity mock questions dynamically aligned with answerKey
           setQuestionsList(generateMockQuestions(examObj.numQuestions, examObj.answerKey, examId));

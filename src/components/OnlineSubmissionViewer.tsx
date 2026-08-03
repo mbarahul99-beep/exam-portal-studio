@@ -31,7 +31,25 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
         const dbQs = await db.questions.where('examId').equals(exam.id!).toArray();
         if (dbQs.length > 0) {
           const sorted = [...dbQs].sort((a, b) => (a.id || 0) - (b.id || 0));
-          setQuestions(sorted);
+          
+          let qCursor = 1;
+          const sectionsWithRanges = (exam.sections || []).map(sec => {
+            const start = qCursor;
+            const end = qCursor + sec.qCount - 1;
+            qCursor = end + 1;
+            return { ...sec, qStart: start, qEnd: end };
+          });
+
+          const healed = sorted.map((qVal, idx) => {
+            const qNum = idx + 1;
+            const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
+            return {
+              ...qVal,
+              subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
+              sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A'
+            };
+          });
+          setQuestions(healed);
         } else {
           // Generate mock questions dynamically aligned with answerKey
           setQuestions(generateMockQuestions(exam.numQuestions, exam.answerKey || {}, exam.id!));

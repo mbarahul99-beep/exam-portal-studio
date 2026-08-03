@@ -216,16 +216,28 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           const qs = await db.questions.where('examId').equals(examId).toArray();
           const nonPlaceholders = qs.filter(q => !isPlaceholderQuestion(q));
           if (nonPlaceholders.length > 0) {
-            const list = nonPlaceholders.map((qVal, idx) => ({
-              qNum: idx + 1,
-              sectionName: qVal.sectionName,
-              subjectName: exam.sections?.find(s => s.sectionName === qVal.sectionName)?.subjectName || 'Subject 1',
-              questionText: qVal.questionText,
-              options: qVal.options,
-              correctOptionIdx: qVal.correctOptionIdx,
-              explanation: qVal.explanation || '',
-              questionImage: qVal.questionImage || ''
-            }));
+            let qCursor = 1;
+            const sectionsWithRanges = (exam.sections || []).map(sec => {
+              const start = qCursor;
+              const end = qCursor + sec.qCount - 1;
+              qCursor = end + 1;
+              return { ...sec, qStart: start, qEnd: end };
+            });
+
+            const list = nonPlaceholders.map((qVal, idx) => {
+              const qNum = idx + 1;
+              const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
+              return {
+                qNum: qNum,
+                sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A',
+                subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
+                questionText: qVal.questionText,
+                options: qVal.options,
+                correctOptionIdx: qVal.correctOptionIdx,
+                explanation: qVal.explanation || '',
+                questionImage: qVal.questionImage || ''
+              };
+            });
             setQuestionsState(list);
           } else {
             setQuestionsState([]);

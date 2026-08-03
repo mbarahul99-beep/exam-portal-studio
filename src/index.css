@@ -3333,3 +3333,213 @@ button {
   }
 }
 
+
+
+/* Export Filter Modal Styles */
+.export-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #f8fafc;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.export-modal-header {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  flex-shrink: 0;
+}
+
+.export-header-text h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.export-header-text p {
+  margin: 4px 0 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.export-header-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.export-header-buttons button {
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.export-header-buttons .btn-outlined {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+}
+.export-header-buttons .btn-outlined:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.export-header-buttons .btn-csv {
+  background: #475569;
+  border: 1px solid #475569;
+  color: #fff;
+}
+.export-header-buttons .btn-csv:hover {
+  background: #334155;
+  border-color: #334155;
+}
+
+.export-header-buttons .btn-excel {
+  background: var(--primary);
+  border: none;
+  color: #fff;
+}
+.export-header-buttons .btn-excel:hover {
+  filter: brightness(0.9);
+}
+
+.export-modal-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.export-sidebar {
+  width: 280px;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.export-sidebar h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.export-sidebar .btn-outlined {
+  justify-content: flex-start;
+  font-size: 0.8rem;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #fff;
+  text-align: left;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+.export-sidebar .btn-outlined:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.export-content {
+  flex: 1;
+  background: #f8fafc;
+  padding: 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Responsive Rules for Mobile viewports */
+@media (max-width: 768px) {
+  .export-modal-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 16px 20px !important;
+    gap: 16px !important;
+  }
+  
+  .export-header-text h2 {
+    font-size: 1.25rem !important;
+    text-align: center !important;
+  }
+
+  .export-header-text p {
+    text-align: center !important;
+  }
+  
+  .export-header-buttons {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  
+  .export-header-buttons button {
+    padding: 12px 10px !important;
+    font-size: 0.8rem !important;
+    justify-content: center !important;
+    width: 100% !important;
+  }
+  
+  .export-header-buttons .btn-outlined {
+    grid-column: span 2 !important; /* Cancel button spans full width on top of the two actions */
+    order: 3 !important;
+  }
+
+  .export-header-buttons .btn-csv {
+    order: 1 !important;
+  }
+
+  .export-header-buttons .btn-excel {
+    order: 2 !important;
+  }
+  
+  .export-modal-body {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scroll-behavior: smooth !important;
+  }
+  
+  .export-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding: 20px !important;
+    overflow-y: visible !important;
+    flex-shrink: 0 !important;
+    gap: 20px !important;
+  }
+  
+  .export-content {
+    padding: 20px !important;
+    overflow-y: visible !important;
+  }
+}

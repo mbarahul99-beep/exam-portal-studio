@@ -2653,60 +2653,37 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
       {/* FILTER MODAL FOR EXCEL EXPORT */}
       {showExportFilterModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          background: '#f8fafc',
-          zIndex: 10000,
-          display: 'flex',
-          flexDirection: 'column',
-          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        }}>
+        <div className="export-modal-overlay">
           
           {/* Top Header Bar */}
-          <div style={{
-            background: '#fff',
-            borderBottom: '1px solid #e2e8f0',
-            padding: '16px 24px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-            flexShrink: 0
-          }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>Export Class Results</h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+          <div className="export-modal-header">
+            <div className="export-header-text">
+              <h2>Export Class Results</h2>
+              <p>
                 Customize your report card spreadsheet. Toggle columns to dynamically include or exclude details.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div className="export-header-buttons">
               <button 
                 type="button"
                 className="btn-outlined" 
                 onClick={() => setShowExportFilterModal(false)}
-                style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', background: '#fff' }}
               >
                 Cancel
               </button>
               
               <button 
                 type="button"
-                className="btn-filled" 
+                className="btn-filled btn-csv" 
                 onClick={() => handleExecuteExport('csv')}
-                style={{ padding: '10px 18px', background: '#475569', borderColor: '#475569', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600, border: '1px solid #475569', borderRadius: '8px', cursor: 'pointer' }}
               >
                 <FileText size={16} /> Export CSV
               </button>
               
               <button 
                 type="button"
-                className="btn-filled" 
+                className="btn-filled btn-excel" 
                 onClick={() => handleExecuteExport('excel')}
-                style={{ padding: '10px 22px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600, border: 'none', borderRadius: '8px', cursor: 'pointer', background: 'var(--primary)', color: '#fff' }}
               >
                 <FileSpreadsheet size={16} /> Export Excel (.xls)
               </button>
@@ -2714,20 +2691,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           </div>
 
           {/* Main Body Area: 2-Column Split */}
-          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          <div className="export-modal-body">
             
             {/* Left Column: Preset Quick Toggles */}
-            <div style={{
-              width: '280px',
-              background: '#fff',
-              borderRight: '1px solid #e2e8f0',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '24px',
-              overflowY: 'auto',
-              flexShrink: 0
-            }}>
+            <div className="export-sidebar">
               <div>
                 <h4 style={{ margin: '0 0 12px 0', fontSize: '0.75rem', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Quick Presets
@@ -2945,15 +2912,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             </div>
 
             {/* Right Column: Detailed Columns Configuration checklist grid */}
-            <div style={{
-              flex: 1,
-              background: '#f8fafc',
-              padding: '32px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '24px'
-            }}>
+            <div className="export-content">
               
               {/* Card 1: Student details */}
               <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>

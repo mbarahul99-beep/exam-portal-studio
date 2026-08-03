@@ -134,6 +134,16 @@ export default function App() {
   const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
 
+  // Preload OMR header logo
+  const omrLogoRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    const img = new Image();
+    img.src = '/omr_logo.png';
+    img.onload = () => {
+      omrLogoRef.current = img;
+    };
+  }, []);
+
   // Dynamic Header Logo Scaling States
   const [logoHeight, setLogoHeight] = useState<number>(42);
   const [logoNameHeight, setLogoNameHeight] = useState<number>(38);
@@ -1046,11 +1056,24 @@ export default function App() {
     ctx.fillRect(30 - 24, 1384 - 24, 48, 48);
     ctx.fillRect(970 - 24, 1384 - 24, 48, 48);
 
-    // Institute Name
-    ctx.fillStyle = '#dc0045';
-    ctx.font = 'bold 26px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(omrConfig.instituteName.toUpperCase(), 500, 56);
+    // Institute Name Logo / Text Header
+    if (omrLogoRef.current) {
+      const aspectRatio = omrLogoRef.current.width / omrLogoRef.current.height;
+      const drawHeight = 36;
+      const drawWidth = drawHeight * aspectRatio;
+      ctx.drawImage(
+        omrLogoRef.current,
+        500 - drawWidth / 2,
+        24,
+        drawWidth,
+        drawHeight
+      );
+    } else {
+      ctx.fillStyle = '#dc0045';
+      ctx.font = 'bold 26px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(omrConfig.instituteName.toUpperCase(), 500, 56);
+    }
 
     // Exam Title
     ctx.fillStyle = '#0f172a';

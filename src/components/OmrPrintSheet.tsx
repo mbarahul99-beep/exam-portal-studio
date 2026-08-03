@@ -214,9 +214,17 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
              }} 
         />
 
-        {/* Institute Name */}
-        <div style={{ position: 'absolute', top: toY(24), left: 0, right: 0, textAlign: 'center', zIndex: 12 }}>
-          <h1 className="omr-institute-title">{omrConfig.instituteName}</h1>
+        {/* Institute Name Logo */}
+        <div style={{ position: 'absolute', top: toY(24), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 12 }}>
+          <img 
+            src="/omr_logo.png" 
+            alt="Institute APEX" 
+            style={{ 
+              height: toY(36),
+              width: 'auto',
+              objectFit: 'contain'
+            }} 
+          />
         </div>
 
         {/* Header section inside the margin frame */}

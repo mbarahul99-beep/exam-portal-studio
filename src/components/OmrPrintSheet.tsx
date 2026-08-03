@@ -699,9 +699,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
-              width: 210mm !important;
-              height: 297mm !important;
-              overflow: hidden !important;
             }
             .no-print {
               display: none !important;

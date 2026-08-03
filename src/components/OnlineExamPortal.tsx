@@ -551,10 +551,10 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
           
           {/* Top Navbar Header */}
-          <header style={{ background: '#fff', borderBottom: '1px solid var(--border-color)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <header className="cbt-header">
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={16} color="#dd6b20" />
+                <Sparkles size={16} color="#dd6b20" style={{ flexShrink: 0 }} />
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{exam.title}</h3>
               </div>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -569,14 +569,14 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                 </span>
               )}
               <button 
-                className="mobile-only btn-outlined" 
+                className="mobile-only btn-outlined palette-toggle-btn" 
                 onClick={() => setShowMobilePalette(true)}
-                style={{ display: 'none', alignItems: 'center', gap: '6px', padding: '8px 12px', cursor: 'pointer' }}
+                style={{ display: 'none', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
                 <Menu size={16} />
                 <span>Palette</span>
               </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: secondsLeft < 300 ? '#fff5f5' : '#f7fafc', border: secondsLeft < 300 ? '1px solid #feb2b2' : '1px solid var(--border-color)', borderRadius: '8px', color: secondsLeft < 300 ? '#e53e3e' : 'var(--text-dark)', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.05rem' }}>
+              <div className="timer-badge" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: secondsLeft < 300 ? '#fff5f5' : '#f7fafc', border: secondsLeft < 300 ? '1px solid #feb2b2' : '1px solid var(--border-color)', borderRadius: '8px', color: secondsLeft < 300 ? '#e53e3e' : 'var(--text-dark)', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.05rem' }}>
                 <Timer size={18} className={secondsLeft < 300 ? 'animate-pulse' : ''} />
                 <span>{formatTime(secondsLeft)}</span>
               </div>
@@ -727,9 +727,9 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
               {/* Bottom Card Controls Navigation bar (Sticky) */}
               <div className="cbt-sticky-bottom-controls">
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="btn-group-left" style={{ display: 'flex', gap: '8px' }}>
                   <button 
-                    className="btn-outlined"
+                    className="btn-cbt-action btn-cbt-clear"
                     onClick={() => {
                       setSelectedAnswers(prev => {
                         const copy = { ...prev };
@@ -737,23 +737,12 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                         return copy;
                       });
                     }}
-                    style={{ fontSize: '0.75rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14} style={{ flexShrink: 0 }} />
                     <span>Clear<span className="hide-mobile"> Response</span></span>
                   </button>
                   <button 
-                    className="btn-outlined" 
-                    style={{ 
-                      fontSize: '0.75rem', 
-                      padding: '8px 12px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      background: flaggedForReview[currentQIdx + 1] ? '#fffaf0' : 'transparent', 
-                      borderColor: flaggedForReview[currentQIdx + 1] ? '#f6ad55' : 'var(--border-color)', 
-                      color: flaggedForReview[currentQIdx + 1] ? '#dd6b20' : 'var(--text-dark)' 
-                    }}
+                    className={`btn-cbt-action btn-cbt-mark ${flaggedForReview[currentQIdx + 1] ? 'marked' : ''}`}
                     onClick={() => {
                       setFlaggedForReview(prev => ({
                         ...prev,
@@ -763,7 +752,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                       if (currentQIdx < totalQCount - 1) setCurrentQIdx(prev => prev + 1);
                     }}
                   >
-                    <Flag size={14} />
+                    <Flag size={14} style={{ flexShrink: 0 }} />
                     <span>
                       {flaggedForReview[currentQIdx + 1] ? 'Unmark' : 'Mark'}
                       <span className="hide-mobile"> for Review</span>
@@ -771,17 +760,16 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="btn-group-right" style={{ display: 'flex', gap: '8px' }}>
                   <button 
-                    className="btn-outlined" 
+                    className="btn-cbt-action btn-cbt-prev" 
                     disabled={currentQIdx === 0}
                     onClick={() => setCurrentQIdx(prev => prev - 1)}
-                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
-                    <ChevronLeft size={16} /> Prev
+                    <ChevronLeft size={16} style={{ flexShrink: 0 }} /> Prev
                   </button>
                   <button 
-                    className="btn-filled" 
+                    className={`btn-cbt-action ${currentQIdx < totalQCount - 1 ? 'btn-cbt-next' : 'btn-cbt-finish'}`} 
                     onClick={() => {
                       if (currentQIdx < totalQCount - 1) {
                         setCurrentQIdx(prev => prev + 1);
@@ -789,10 +777,9 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                         setShowSubmitConfirm(true);
                       }
                     }}
-                    style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
                     {currentQIdx < totalQCount - 1 ? (
-                      <>Next <ChevronRight size={16} /></>
+                      <>Next <ChevronRight size={16} style={{ flexShrink: 0 }} /></>
                     ) : (
                       'Finish'
                     )}
@@ -1025,6 +1012,101 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         .hide-mobile {
           display: inline !important;
         }
+        
+        /* Premium CBT Button Styles */
+        .btn-cbt-action {
+          height: 42px;
+          padding: 0 18px;
+          border-radius: 8px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1px solid #cbd5e0;
+          background: #ffffff;
+          color: #4a5568;
+          box-sizing: border-box;
+          user-select: none;
+        }
+        .btn-cbt-action:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          background: #f1f5f9 !important;
+          border-color: #cbd5e0 !important;
+          color: #94a3b8 !important;
+        }
+        .btn-cbt-clear:hover:not(:disabled) {
+          background: #fef2f2;
+          border-color: #fca5a5;
+          color: #dc2626;
+        }
+        .btn-cbt-mark {
+          border-color: #cbd5e0;
+          background: #ffffff;
+        }
+        .btn-cbt-mark:hover:not(:disabled) {
+          background: #faf5ff;
+          border-color: #d8b4fe;
+          color: #7c3aed;
+        }
+        .btn-cbt-mark.marked {
+          background: #faf5ff;
+          border-color: #c084fc;
+          color: #7c3aed;
+        }
+        .btn-cbt-prev:hover:not(:disabled) {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          color: #1e293b;
+        }
+        .btn-cbt-next {
+          background: var(--primary, #2563eb);
+          border-color: var(--primary, #2563eb);
+          color: #ffffff;
+        }
+        .btn-cbt-next:hover:not(:disabled) {
+          background: #1d4ed8;
+          border-color: #1d4ed8;
+        }
+        .btn-cbt-finish {
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #ffffff;
+        }
+        .btn-cbt-finish:hover:not(:disabled) {
+          background: #15803d;
+          border-color: #15803d;
+        }
+
+        /* CBT Header Styling */
+        .cbt-header {
+          background: #fff;
+          border-bottom: 1px solid var(--border-color);
+          padding: 12px 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-shrink: 0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .palette-toggle-btn {
+          height: 38px;
+          padding: 0 14px !important;
+          font-size: 0.75rem !important;
+          border-radius: 8px !important;
+          background: #f8fafc !important;
+          border: 1px solid #cbd5e0 !important;
+          color: #4a5568 !important;
+          font-weight: 600 !important;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
         @media (max-width: 992px) {
           .cbt-workspace-split {
             flex-direction: row;
@@ -1043,11 +1125,6 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           }
           .cbt-question-scroll-content {
             padding: 16px 16px 24px 16px;
-          }
-          .cbt-sticky-bottom-controls {
-            padding: 12px 16px;
-            background: #ffffff;
-            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
           }
           .cbt-navigation-pane {
             position: absolute !important;
@@ -1075,6 +1152,52 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           }
           .hide-mobile {
             display: none !important;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .cbt-header {
+            padding: 8px 12px !important;
+            gap: 8px !important;
+          }
+          .cbt-header h3 {
+            font-size: 0.85rem !important;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .cbt-header p {
+            font-size: 0.65rem !important;
+          }
+          .cbt-header .timer-badge {
+            padding: 6px 10px !important;
+            font-size: 0.9rem !important;
+          }
+          .cbt-sticky-bottom-controls {
+            display: grid !important;
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 6px !important;
+            padding: 10px 8px !important;
+            background: #ffffff;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+          }
+          .cbt-sticky-bottom-controls .btn-group-left,
+          .cbt-sticky-bottom-controls .btn-group-right {
+            display: contents !important;
+          }
+          .btn-cbt-action {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 8px 2px !important;
+            font-size: 0.72rem !important;
+            height: 38px !important;
+            border-radius: 8px !important;
+            gap: 4px !important;
+          }
+          .btn-cbt-action svg {
+            width: 12px !important;
+            height: 12px !important;
           }
         }
       `}</style>

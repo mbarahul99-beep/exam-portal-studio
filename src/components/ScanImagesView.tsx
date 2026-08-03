@@ -50,7 +50,9 @@ function drawOverlayOnWarpedCanvas(
     const numOptions = is5Option ? 5 : 4;
 
     const qIndex = q - colConf.qStart;
-    const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
+    const numHeaders = Math.floor(qIndex / 5) + 1;
+    const slotIndex = qIndex + numHeaders;
+    const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
 
     const studentAns = answers[q] || '';
     const correctAns = correctKey[q] || '';
@@ -484,10 +486,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     sCtx.drawImage(video, 0, 0, vW, vH);
 
     try {
+      const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
         snapCanvas,
         exam.numQuestions,
-        exam.rollNoDigits ?? 10,
+        scannerRollDigits,
         exam.examSetsCount ?? 1,
         exam.sections ?? []
       );
@@ -497,7 +500,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           const pass2 = await scanOMRSheet(
             cvResult.debugWarpedCanvas,
             exam.numQuestions,
-            exam.rollNoDigits ?? 10,
+            scannerRollDigits,
             exam.examSetsCount ?? 1,
             exam.sections ?? []
           );
@@ -747,10 +750,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
 
+      const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
         img,
         exam.numQuestions,
-        exam.rollNoDigits ?? 10,
+        scannerRollDigits,
         exam.examSetsCount ?? 1,
         exam.sections ?? []
       );
@@ -760,7 +764,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           const pass2 = await scanOMRSheet(
             cvResult.debugWarpedCanvas,
             exam.numQuestions,
-            exam.rollNoDigits ?? 10,
+            scannerRollDigits,
             exam.examSetsCount ?? 1,
             exam.sections ?? []
           );

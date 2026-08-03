@@ -48,11 +48,11 @@ export const OMR_CONFIG = {
     yStart: 460,
     yStep: 20,
     columns: [
-      { qStart: 1, qEnd: 40, xLabel: 90, xOptions: [120, 145, 170, 195] },
-      { qStart: 41, qEnd: 80, xLabel: 260, xOptions: [290, 315, 340, 365] },
-      { qStart: 81, qEnd: 120, xLabel: 430, xOptions: [460, 485, 510, 535] },
-      { qStart: 121, qEnd: 160, xLabel: 600, xOptions: [630, 655, 680, 705] },
-      { qStart: 161, qEnd: 200, xLabel: 770, xOptions: [800, 825, 850, 875] }
+      { qStart: 1, qEnd: 40, xLabel: 90, xOptions: [120, 145, 170, 195], yStart: 460 },
+      { qStart: 41, qEnd: 80, xLabel: 260, xOptions: [290, 315, 340, 365], yStart: 460 },
+      { qStart: 81, qEnd: 120, xLabel: 430, xOptions: [460, 485, 510, 535], yStart: 460 },
+      { qStart: 121, qEnd: 160, xLabel: 600, xOptions: [630, 655, 680, 705], yStart: 460 },
+      { qStart: 161, qEnd: 200, xLabel: 770, xOptions: [800, 825, 850, 875], yStart: 460 }
     ]
   }
 };
@@ -62,6 +62,7 @@ export interface OMRColumnConfig {
   qEnd: number;
   xLabel: number;
   xOptions: number[];
+  yStart: number;
 }
 
 export interface OMRQuestionLayout {
@@ -141,16 +142,21 @@ export function getDynamicOMRQuestionLayout(
     const qEnd = Math.min(total, (c + 1) * rowsPerCol);
     if (qStart > total) break;
 
-    // Shift whole questions area right to balance left/right blank space evenly inside frame
     const colXStart = frameLeft + 12 + c * colWidth;
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
 
+    // Arrange questions by the side of the Roll number bubbles:
+    // Left columns (< 400px) start below Roll number and Booklet Set at y=450
+    // Right columns (>= 400px) start beside Roll number at y=220
+    const colYStart = colXStart < 400 ? 450 : 220;
+
     columns.push({
       qStart,
       qEnd,
       xLabel,
+      yStart: colYStart,
       xOptions: [
         optStart,
         optStart + optStep,
@@ -512,10 +518,10 @@ export async function scanOMRSheet(
     // 5.5. Scan Booklet Code Set
     let bookletSet = 'A';
     if (examSetsCount > 1) {
-      const bookletShift = (rollNoDigits - 10) * 25;
+      const bookletSetXStart = 100 + rollNoDigits * 25 + 50;
       const setIntensities: number[] = [];
       for (let idx = 0; idx < examSetsCount; idx++) {
-        const x = 610 + idx * 45 + bookletShift;
+        const x = bookletSetXStart + idx * 45;
         const y = OMR_CONFIG.studentId.yStart + bestDy;
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
         setIntensities.push(avgGray);
@@ -549,7 +555,9 @@ export async function scanOMRSheet(
       }
       if (!colConf) continue;
       const qIndex = q - colConf.qStart;
-      const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
+      const numHeaders = Math.floor(qIndex / 5) + 1;
+      const slotIndex = qIndex + numHeaders;
+      const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
         const x = colConf.xOptions[o];
@@ -627,7 +635,9 @@ export async function scanOMRSheet(
       const numOptions = is5Option ? 5 : 4;
 
       const qIndex = q - colConf.qStart;
-      const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
+      const numHeaders = Math.floor(qIndex / 5) + 1;
+      const slotIndex = qIndex + numHeaders;
+      const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {

@@ -47,12 +47,11 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const toX = (x: number) => `${x * 0.21}mm`;
   const toY = (y: number) => `${y * 0.21}mm`;
 
-  const rollNoDigits = exam?.rollNoDigits || 10;
+  const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
   const examSetsCount = exam?.examSetsCount || 4;
-  const rollNoWidth = 275 - (10 - rollNoDigits) * 25;
+  const rollNoWidth = rollNoDigits * 25 + 40;
 
   const rollCols = Array.from({ length: rollNoDigits });
-  const bookletCols = Array.from({ length: 7 });
   const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
   const getQuestionOptions = (qNum: number): string[] => {
@@ -214,13 +213,22 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
              }} 
         />
 
-        {/* Institute Name Logo */}
-        <div style={{ position: 'absolute', top: toY(24), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 12 }}>
+        {/* Institute Name and Icon Logo Side-by-Side */}
+        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', zIndex: 12 }}>
           <img 
-            src="/omr_logo.png" 
+            src="/logo_name.png" 
             alt="Institute APEX" 
             style={{ 
-              height: toY(36),
+              height: toY(30),
+              width: 'auto',
+              objectFit: 'contain'
+            }} 
+          />
+          <img 
+            src="/logo.png" 
+            alt="APEX Logo" 
+            style={{ 
+              height: toY(30),
               width: 'auto',
               objectFit: 'contain'
             }} 
@@ -228,9 +236,33 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         </div>
 
         {/* Header section inside the margin frame */}
-        <div className="omr-header-section" style={{ top: toY(78) }}>
-          <div className="omr-exam-title">{examTitle.toUpperCase()}</div>
-          <div className="omr-subtitle">{omrConfig.subtitleText.toUpperCase()} - {totalQuestions} QUESTIONS</div>
+        <div className="omr-header-section" style={{ top: toY(62), display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 11 }}>
+          <div className="omr-subtitle" style={{ fontSize: '8.5px', padding: '1px 12px', marginBottom: '1.5mm' }}>
+            INSTITUTE OF NEET & IIT-JEE COACHING
+          </div>
+          <div className="omr-exam-title" style={{ fontSize: '11px', margin: 0, fontWeight: 900, color: '#0f172a' }}>
+            CLASS: {exam?.className?.toUpperCase() || 'NEET'} &nbsp;|&nbsp; EXAM: {examTitle.toUpperCase()}
+          </div>
+
+          {/* Candidate Name & Father's Name side-by-side in a single row */}
+          <div style={{
+            display: 'flex',
+            width: '100%',
+            justifyContent: 'space-between',
+            gap: '12mm',
+            padding: '0 8mm',
+            boxSizing: 'border-box',
+            marginTop: '3.5mm'
+          }}>
+            <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
+              <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>CANDIDATE NAME:</span>
+              <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
+            </div>
+            <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
+              <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>FATHER'S NAME:</span>
+              <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
+            </div>
+          </div>
         </div>
 
         {/* Decorative Border Cards (Custom Editable Box Titles) */}
@@ -247,20 +279,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
         <div className="bg-border-card" 
              style={{
-               left: toX(70 + rollNoWidth),
+               left: toX(70 + rollNoWidth + 20),
                top: toY(150),
-               width: toX(200),
-               height: toY(260)
-             }}
-        >
-          <div className="box-title">{omrConfig.bookletNoBoxTitle}</div>
-        </div>
-
-        <div className="bg-border-card" 
-             style={{
-               left: toX(70 + rollNoWidth + 200),
-               top: toY(150),
-               width: toX(660 - rollNoWidth),
+               width: toX(examSetsCount * 45 + 40),
                height: toY(260)
              }}
         >
@@ -302,53 +323,16 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           });
         })}
 
-        {/* TEST BOOKLET NO DIGIT HEADER BOXES */}
-        {bookletCols.map((_, colIdx) => {
-          const bookletShift = rollNoWidth - 275;
-          const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep + bookletShift;
-          return (
-            <div 
-              key={`bk-h-${colIdx}`}
-              className="digit-box-header"
-              style={{
-                left: toX(x),
-                top: toY(OMR_CONFIG.bookletNo.yStart - 30)
-              }}
-            />
-          );
-        })}
-
-        {/* TEST BOOKLET NO BUBBLES */}
-        {bookletCols.map((_, colIdx) => {
-          const bookletShift = rollNoWidth - 275;
-          const x = OMR_CONFIG.bookletNo.xStart + colIdx * OMR_CONFIG.bookletNo.xStep + bookletShift;
-          return digits.map((digitVal, rowIdx) => {
-            const y = OMR_CONFIG.bookletNo.yStart + rowIdx * OMR_CONFIG.bookletNo.yStep;
-            return (
-              <div
-                key={`bk-b-${colIdx}-${digitVal}`}
-                className="omr-bubble id-bubble"
-                style={{
-                  left: toX(x),
-                  top: toY(y)
-                }}
-              >
-                {digitVal}
-              </div>
-            );
-          });
-        })}
-
         {/* BOOKLET CODE OPTIONS */}
         {Array.from({ length: examSetsCount }).map((_, idx) => {
-          const bookletShift = rollNoWidth - 275;
+          const bookletSetXStart = 100 + rollNoDigits * 25 + 50;
           const code = String.fromCharCode(65 + idx);
           return (
             <div
               key={`bk-code-${code}`}
               className="omr-bubble code-bubble"
               style={{
-                left: toX(610 + idx * 45 + bookletShift),
+                left: toX(bookletSetXStart + idx * 45),
                 top: toY(OMR_CONFIG.studentId.yStart)
               }}
             >
@@ -356,23 +340,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             </div>
           );
         })}
-
-        {/* CANDIDATE INFO FIELDS */}
-        {(() => {
-          const bookletShift = rollNoWidth - 275;
-          return (
-            <div className="candidate-info-table" style={{ left: toX(575 + bookletShift), top: toY(250), width: toX(335 - bookletShift) }}>
-              <div className="info-row">
-                <span className="info-label">{omrConfig.candidateNameLabel}</span>
-                <div className="info-line" />
-              </div>
-              <div className="info-row">
-                <span className="info-label">{omrConfig.fatherNameLabel}</span>
-                <div className="info-line" />
-              </div>
-            </div>
-          );
-        })()}
 
         {/* DYNAMIC QUESTIONS GRID SECTION */}
         {layout.columns.map((col, colIdx) => {
@@ -383,35 +350,59 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
           if (qNumbers.length === 0) return null;
 
-          const colHas5Option = qNumbers.some(qNum => {
-            const sec = exam?.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
-            return sec && sec.questionType === '5 option';
+          // Calculate total slots for this column
+          // Every group of 5 questions is preceded by a header row
+          const numGroups = Math.ceil(qNumbers.length / 5);
+          const totalSlots = qNumbers.length + numGroups;
+
+          const slots = Array.from({ length: totalSlots }).map((_, slotIdx) => {
+            const isHeader = slotIdx % 6 === 0;
+            if (isHeader) {
+              const groupIdx = slotIdx / 6;
+              const nextQNum = col.qStart + groupIdx * 5;
+              return { isHeader: true, nextQNum, slotIdx };
+            } else {
+              const groupIdx = Math.floor(slotIdx / 6);
+              const qIndexWithinGroup = (slotIdx % 6) - 1;
+              const qNum = col.qStart + groupIdx * 5 + qIndexWithinGroup;
+              return { isHeader: false, qNum, slotIdx };
+            }
           });
 
           return (
             <React.Fragment key={`col-grid-${colIdx}`}>
-              {/* Column Title Header */}
-              <div 
-                className="q-col-header"
-                style={{
-                  top: toY(layout.yStart - 18)
-                }}
-              >
-                <span className="q-hdr-label" style={{ left: toX(col.xLabel) }}>Q.No</span>
-                <span className="q-hdr-opt" style={{ left: toX(col.xOptions[0]) }}>A</span>
-                <span className="q-hdr-opt" style={{ left: toX(col.xOptions[1]) }}>B</span>
-                <span className="q-hdr-opt" style={{ left: toX(col.xOptions[2]) }}>C</span>
-                <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3]) }}>D</span>
-                {colHas5Option && (
-                  <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3] + 25) }}>E</span>
-                )}
-              </div>
+              {slots.map((item) => {
+                const y = col.yStart + item.slotIdx * layout.yStep;
 
-              {/* Questions list */}
-              {qNumbers.map((qNum) => {
-                const qIndex = qNum - col.qStart;
-                const y = layout.yStart + qIndex * layout.yStep;
+                if (item.isHeader) {
+                  const qNumForOptions = item.nextQNum;
+                  if (qNumForOptions === undefined || qNumForOptions > totalQuestions) return null;
+                  const qOptions = getQuestionOptions(qNumForOptions);
+                  const has5Option = qOptions.includes('E');
+                  return (
+                    <div 
+                      key={`hdr-slot-${colIdx}-${item.slotIdx}`}
+                      className="q-col-header"
+                      style={{
+                        top: toY(y)
+                      }}
+                    >
+                      <span className="q-hdr-label" style={{ left: toX(col.xLabel) }}>Q.No</span>
+                      <span className="q-hdr-opt" style={{ left: toX(col.xOptions[0]) }}>A</span>
+                      <span className="q-hdr-opt" style={{ left: toX(col.xOptions[1]) }}>B</span>
+                      <span className="q-hdr-opt" style={{ left: toX(col.xOptions[2]) }}>C</span>
+                      <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3]) }}>D</span>
+                      {has5Option && (
+                        <span className="q-hdr-opt" style={{ left: toX(col.xOptions[3] + 25) }}>E</span>
+                      )}
+                    </div>
+                  );
+                }
+
+                const qNum = item.qNum;
+                if (qNum === undefined || qNum > totalQuestions) return null;
                 const qOptions = getQuestionOptions(qNum);
+
                 return (
                   <React.Fragment key={`q-row-${qNum}`}>
                     {/* Number Label */}
@@ -450,28 +441,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             </React.Fragment>
           );
         })}
-
-        {/* Footer boxes: Student & Invigilator Signatures (Toggleable in OMR Settings) */}
-        {omrConfig.showSignatureBoxes && (
-          <div className="sheet-footer-section" 
-               style={{
-                 left: toX(70),
-                 top: toY(1250),
-                 width: toX(860),
-                 height: toY(70),
-                 display: 'grid',
-                 gridTemplateColumns: '1fr 1fr',
-                 gap: '20px'
-               }}
-          >
-            <div className="footer-box">
-              <div className="footer-box-label">{omrConfig.studentSignatureLabel}</div>
-            </div>
-            <div className="footer-box">
-              <div className="footer-box-label">{omrConfig.invigilatorSignatureLabel}</div>
-            </div>
-          </div>
-        )}
 
         {/* Bottom disclaimer */}
         <div className="bottom-disclaimer" style={{ top: toY(1335), left: 0, right: 0, textAlign: 'center' }}>

@@ -74,6 +74,67 @@ export interface OMRQuestionLayout {
   columns: OMRColumnConfig[];
 }
 
+export interface OMRSlot {
+  type: 'subject-header' | 'option-header' | 'question';
+  slotIdx: number;
+  subjectName?: string;
+  qNum?: number;
+  nextQNum?: number;
+}
+
+export function getColumnSlots(
+  qStart: number,
+  qEnd: number,
+  sections: any[] | undefined,
+  totalQuestions: number
+): OMRSlot[] {
+  const slots: OMRSlot[] = [];
+  let slotIdx = 0;
+  let qNum = qStart;
+
+  while (qNum <= qEnd && qNum <= totalQuestions) {
+    // 1. Check if qNum is the start of a new subject section
+    const sec = sections?.find((s: any) => qNum === s.qStart);
+    if (sec && sec.subjectName && sec.subjectName.toUpperCase() !== 'GENERAL' && sec.subjectName.toLowerCase() !== 'subject') {
+      slots.push({
+        type: 'subject-header',
+        slotIdx: slotIdx++,
+        subjectName: sec.subjectName.toUpperCase()
+      });
+    }
+
+    // 2. We are starting a group of up to 5 questions.
+    // Before the group, we insert an option-header slot
+    slots.push({
+      type: 'option-header',
+      slotIdx: slotIdx++,
+      nextQNum: qNum
+    });
+
+    // 3. Insert up to 5 questions in the current group
+    for (let i = 0; i < 5; i++) {
+      if (qNum > qEnd || qNum > totalQuestions) break;
+
+      // If the current question (not the first in the group) is the start of a new section,
+      // we break the group early to let the next outer loop iteration insert the Subject/Option headers
+      if (i > 0) {
+        const nextSec = sections?.find((s: any) => qNum === s.qStart);
+        if (nextSec && nextSec.subjectName && nextSec.subjectName.toUpperCase() !== 'GENERAL' && nextSec.subjectName.toLowerCase() !== 'subject') {
+          break;
+        }
+      }
+
+      slots.push({
+        type: 'question',
+        slotIdx: slotIdx++,
+        qNum: qNum++
+      });
+    }
+  }
+
+  return slots;
+}
+
 /**
  * Calculates a dynamic question grid layout that adjusts columns, row counts, and vertical spacing (yStep)
  * to perfectly fit between y = 460 and y = 1220 so question bubbles NEVER overlap signature boxes!
@@ -81,7 +142,8 @@ export interface OMRQuestionLayout {
 export function getDynamicOMRQuestionLayout(
   numQuestions: number,
   preferredCols?: number,
-  density: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto'
+  density: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto',
+  sections?: any[]
 ): OMRQuestionLayout {
   const total = Math.min(Math.max(1, numQuestions), 200);
 
@@ -105,16 +167,16 @@ export function getDynamicOMRQuestionLayout(
     } else if (total <= 120) {
       yStep = 25;
     } else if (total <= 180) {
-      yStep = 23;
+      yStep = 22.3;
     } else {
-      yStep = 21;
+      yStep = 20.5;
     }
   } else if (density === 'spacious') {
-    yStep = 26;
+    yStep = 25;
   } else if (density === 'compact') {
     yStep = 18;
   } else {
-    yStep = 22;
+    yStep = 21.5;
   }
 
   // 3. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
@@ -123,25 +185,43 @@ export function getDynamicOMRQuestionLayout(
   const availWidth = frameRight - frameLeft; // 860px
   const colWidth = availWidth / numCols;
 
-  // 4. Greedy question count distribution simulation
-  // Proportions questions dynamically so that all columns end at roughly the same bottom coordinate,
-  // compensating for the left columns starting at y=450 and right columns starting at y=220.
-  const colCounts = Array(numCols).fill(0);
-  for (let q = 0; q < total; q++) {
-    let minColIdx = 0;
-    let minBottom = Infinity;
-    for (let c = 0; c < numCols; c++) {
-      const colXStart = frameLeft + 12 + c * colWidth;
-      const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
-      const currentCount = colCounts[c];
-      const headers = Math.ceil((currentCount + 1) / 5);
-      const bottom = colYStart + (currentCount + 1 + headers) * yStep;
-      if (bottom < minBottom) {
-        minBottom = bottom;
-        minColIdx = c;
-      }
+  // 4. Greedy question count distribution simulation using actual slot allocations
+  let totalSubHdrs = 0;
+  sections?.forEach((s: any) => {
+    if (s.subjectName && s.subjectName.toUpperCase() !== 'GENERAL' && s.subjectName.toLowerCase() !== 'subject') {
+      totalSubHdrs++;
     }
-    colCounts[minColIdx]++;
+  });
+  const approxTotalSlots = total + Math.ceil(total / 5) + totalSubHdrs;
+
+  let sumYStart = 0;
+  for (let c = 0; c < numCols; c++) {
+    const colXStart = frameLeft + 12 + c * colWidth;
+    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+    sumYStart += colYStart;
+  }
+  const targetBottom = (sumYStart + approxTotalSlots * yStep) / numCols;
+
+  const colCounts = Array(numCols).fill(0);
+  let curCol = 0;
+  let tempQStart = 1;
+
+  for (let q = 1; q <= total; q++) {
+    if (curCol === numCols - 1) {
+      colCounts[curCol]++;
+      continue;
+    }
+
+    const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
+    const colXStart = frameLeft + 12 + curCol * colWidth;
+    const colYStart = (numCols > 2 && colXStart < 400) ? 450 : 220;
+    const currentBottom = colYStart + slots.length * yStep;
+
+    if (currentBottom > targetBottom && colCounts[curCol] >= 10) {
+      curCol++;
+      tempQStart = q;
+    }
+    colCounts[curCol]++;
   }
 
   const columns: OMRColumnConfig[] = [];
@@ -557,16 +637,17 @@ export async function scanOMRSheet(
     // 5.8. Dynamic White Level Auto-Calibration
     // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting
     const samples: number[] = [];
-    const qConf = getDynamicOMRQuestionLayout(numQuestions);
+    const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
     for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
       let colConf = null;
       for (const col of qConf.columns) {
         if (q >= col.qStart && q <= col.qEnd) { colConf = col; break; }
       }
       if (!colConf) continue;
-      const qIndex = q - colConf.qStart;
-      const numHeaders = Math.floor(qIndex / 5) + 1;
-      const slotIndex = qIndex + numHeaders;
+      const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+      const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
+      if (!qSlot) continue;
+      const slotIndex = qSlot.slotIdx;
       const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
@@ -644,9 +725,13 @@ export async function scanOMRSheet(
       const is5Option = sec && sec.questionType === '5 option';
       const numOptions = is5Option ? 5 : 4;
 
-      const qIndex = q - colConf.qStart;
-      const numHeaders = Math.floor(qIndex / 5) + 1;
-      const slotIndex = qIndex + numHeaders;
+      const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+      const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
+      if (!qSlot) {
+        answers[q] = '';
+        continue;
+      }
+      const slotIndex = qSlot.slotIdx;
       const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
       
       const intensities: number[] = [];

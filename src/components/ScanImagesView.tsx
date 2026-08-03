@@ -16,7 +16,7 @@ import {
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
-import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout } from '../utils/omrScanner';
+import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
@@ -32,7 +32,7 @@ function drawOverlayOnWarpedCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const qConf = getDynamicOMRQuestionLayout(numQuestions);
+  const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
   const bubbleRadius = qConf.bubbleRadius || 6.5;
 
   for (let q = 1; q <= numQuestions; q++) {
@@ -49,9 +49,10 @@ function drawOverlayOnWarpedCanvas(
     const is5Option = sec && sec.questionType === '5 option';
     const numOptions = is5Option ? 5 : 4;
 
-    const qIndex = q - colConf.qStart;
-    const numHeaders = Math.floor(qIndex / 5) + 1;
-    const slotIndex = qIndex + numHeaders;
+    const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+    const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
+    if (!qSlot) continue;
+    const slotIndex = qSlot.slotIdx;
     const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
 
     const studentAns = answers[q] || '';

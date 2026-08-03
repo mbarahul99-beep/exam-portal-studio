@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { OMR_CONFIG, getDynamicOMRQuestionLayout } from '../utils/omrScanner';
+import { OMR_CONFIG, getDynamicOMRQuestionLayout, getColumnSlots } from '../utils/omrScanner';
 import { DEFAULT_OMR_SETTINGS, type OmrCustomSettings } from './OmrSettingsView';
 import { Printer, Sliders, Columns, Maximize2 } from 'lucide-react';
 import { db } from '../db';
@@ -41,7 +41,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   }, []);
 
   // Calculate dynamic question layout to fit cleanly between y = 460 and y = 1220
-  const layout = getDynamicOMRQuestionLayout(totalQuestions, customCols, density);
+  const layout = getDynamicOMRQuestionLayout(totalQuestions, customCols, density, exam?.sections);
 
   // Conversion: OMR coordinates (1000 x 1414) mapped to A4 millimeters (210 x 297)
   const toX = (x: number) => `${x * 0.21}mm`;
@@ -61,23 +61,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   };
 
   const getQuestionLabel = (qNum: number): string => {
-    if (!exam || !exam.sections || exam.sections.length === 0) {
-      return String(qNum).padStart(2, '0');
-    }
-    const sec = exam.sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
-    if (
-      !sec || 
-      !sec.subjectName || 
-      sec.subjectName.toUpperCase().includes('SUB') || 
-      sec.subjectName.toLowerCase() === 'subject' || 
-      sec.subjectName.toLowerCase() === 'general'
-    ) {
-      return String(qNum).padStart(2, '0');
-    }
-    const subCode = sec.subjectName.substring(0, 3).toUpperCase();
-    if (qNum === sec.qStart) {
-      return `${String(qNum).padStart(2, '0')} ${subCode}`;
-    }
     return String(qNum).padStart(2, '0');
   };
 
@@ -345,46 +328,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* COLUMN SUBJECT HEADERS (IN THE BLANK SPACE ABOVE THE FIRST ROW) */}
-        {layout.columns.map((col, colIdx) => {
-          if (!exam || !exam.sections) return null;
-          const sec = exam.sections.find((s: any) => col.qStart >= s.qStart && col.qStart < s.qStart + s.qCount);
-          if (!sec || !sec.subjectName) return null;
-
-          const subjectTitle = sec.subjectName.toUpperCase();
-          const yPos = col.yStart - 18;
-
-          return (
-            <div
-              key={`col-subj-hdr-${colIdx}`}
-              style={{
-                position: 'absolute',
-                left: toX(col.xLabel),
-                width: toX(col.xOptions[3] + 24 - col.xLabel),
-                top: toY(yPos),
-                textAlign: 'left',
-                zIndex: 10
-              }}
-            >
-              <span style={{
-                fontSize: '7.8px',
-                fontWeight: 900,
-                color: '#dc0045',
-                background: '#fff1f2',
-                padding: '1.5px 6px',
-                borderRadius: '4px',
-                border: '0.8px solid #fecdd3',
-                textTransform: 'uppercase',
-                letterSpacing: '0.4px',
-                fontFamily: "'Outfit', sans-serif",
-                whiteSpace: 'nowrap'
-              }}>
-                {subjectTitle}
-              </span>
-            </div>
-          );
-        })}
-
         {/* DYNAMIC QUESTIONS GRID SECTION */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(
@@ -394,31 +337,48 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
           if (qNumbers.length === 0) return null;
 
-          // Calculate total slots for this column
-          // Every group of 5 questions is preceded by a header row
-          const numGroups = Math.ceil(qNumbers.length / 5);
-          const totalSlots = qNumbers.length + numGroups;
-
-          const slots = Array.from({ length: totalSlots }).map((_, slotIdx) => {
-            const isHeader = slotIdx % 6 === 0;
-            if (isHeader) {
-              const groupIdx = slotIdx / 6;
-              const nextQNum = col.qStart + groupIdx * 5;
-              return { isHeader: true, nextQNum, slotIdx };
-            } else {
-              const groupIdx = Math.floor(slotIdx / 6);
-              const qIndexWithinGroup = (slotIdx % 6) - 1;
-              const qNum = col.qStart + groupIdx * 5 + qIndexWithinGroup;
-              return { isHeader: false, qNum, slotIdx };
-            }
-          });
+          const slots = getColumnSlots(col.qStart, col.qEnd, exam?.sections, totalQuestions);
 
           return (
             <React.Fragment key={`col-grid-${colIdx}`}>
               {slots.map((item) => {
                 const y = col.yStart + item.slotIdx * layout.yStep;
 
-                if (item.isHeader) {
+                if (item.type === 'subject-header') {
+                  return (
+                    <div
+                      key={`subj-slot-${colIdx}-${item.slotIdx}`}
+                      style={{
+                        position: 'absolute',
+                        left: toX(col.xLabel),
+                        width: toX(col.xOptions[3] + 24 - col.xLabel),
+                        top: toY(y),
+                        height: toY(layout.yStep),
+                        display: 'flex',
+                        alignItems: 'center',
+                        zIndex: 10
+                      }}
+                    >
+                      <span style={{
+                        fontSize: '7.8px',
+                        fontWeight: 900,
+                        color: '#ffffff',
+                        backgroundColor: '#dc0045',
+                        padding: '1px 8px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.6px',
+                        fontFamily: "'Outfit', sans-serif",
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                      }}>
+                        {item.subjectName}
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (item.type === 'option-header') {
                   const qNumForOptions = item.nextQNum;
                   if (qNumForOptions === undefined || qNumForOptions > totalQuestions) return null;
                   const qOptions = getQuestionOptions(qNumForOptions);

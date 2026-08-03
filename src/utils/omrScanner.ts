@@ -148,77 +148,100 @@ export function getDynamicOMRQuestionLayout(
   }
   numCols = Math.min(5, Math.max(2, numCols));
 
-  // 2. Dynamic yStep calculation
-  let yStep = 20;
-  if (density === 'auto') {
-    if (total <= 30) {
-      yStep = 32;
-    } else if (total <= 60) {
-      yStep = 28;
-    } else if (total <= 120) {
-      yStep = 24.5;
-    } else if (total <= 180) {
-      yStep = 21.2;
-    } else {
-      yStep = 19.5;
-    }
-  } else if (density === 'spacious') {
-    yStep = 24;
-  } else if (density === 'compact') {
-    yStep = 17.5;
-  } else {
-    yStep = 20.5;
-  }
-
-  // 3. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
+  // 2. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
   const frameLeft = 70;
   const frameRight = 930;
   const availWidth = frameRight - frameLeft; // 860px
   const colWidth = availWidth / numCols;
 
-  // 4. Greedy question count distribution simulation using actual slot allocations
-  let totalSubHdrs = 0;
-  sections?.forEach((s: any) => {
-    if (s.subjectName && s.subjectName.toUpperCase() !== 'GENERAL' && s.subjectName.toLowerCase() !== 'subject') {
-      totalSubHdrs++;
+  // 3. Question distribution
+  const colCounts = Array(numCols).fill(0);
+  if (numCols === 5 && total >= 120) {
+    // Specifically balanced split to keep Column 0 under Roll No short (25 questions)
+    // and push larger counts to Columns 2, 3, 4 to stretch them to the bottom
+    colCounts[0] = 25;
+    const R = total - 25;
+    const C = 4;
+    const base = 5 * Math.floor(R / 20);
+    const rem = R - base * C;
+    const numExtra = rem / 5;
+    for (let c = 1; c <= 4; c++) {
+      colCounts[c] = base + (c > 4 - numExtra ? 5 : 0);
     }
-  });
-  const approxTotalSlots = total + Math.ceil(total / 5) + totalSubHdrs;
+  } else {
+    // Standard greedy allocator loop for other configurations
+    let approxYStep = 21.2;
+    let totalSubHdrs = 0;
+    sections?.forEach((s: any) => {
+      if (s.subjectName && s.subjectName.toUpperCase() !== 'GENERAL' && s.subjectName.toLowerCase() !== 'subject') {
+        totalSubHdrs++;
+      }
+    });
+    const approxTotalSlots = total + Math.ceil(total / 5) + totalSubHdrs;
 
-  let sumYStart = 0;
+    let sumYStart = 0;
+    for (let c = 0; c < numCols; c++) {
+      const colXStart = frameLeft + 12 + c * colWidth;
+      const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+      sumYStart += colYStart;
+    }
+    const targetBottom = (sumYStart + approxTotalSlots * approxYStep) / numCols;
+
+    let curCol = 0;
+    let tempQStart = 1;
+    const maxQPerCol = Math.ceil(total / numCols) + 4;
+
+    for (let q = 1; q <= total; q++) {
+      if (curCol === numCols - 1) {
+        colCounts[curCol]++;
+        continue;
+      }
+
+      if (curCol === 0 && colCounts[0] === 25) {
+        curCol++;
+        tempQStart = q;
+      }
+
+      const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
+      const colXStart = frameLeft + 12 + curCol * colWidth;
+      const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+      const currentBottom = colYStart + slots.length * approxYStep;
+
+      if (curCol > 0 && (currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
+        curCol++;
+        tempQStart = q;
+      }
+      colCounts[curCol]++;
+    }
+  }
+
+  // 4. Dynamic yStep calculation based on maximum column slots to perfectly fit page height (up to y = 1295)
+  let minLimit = 999;
+  let currentQStart = 1;
   for (let c = 0; c < numCols; c++) {
+    const count = colCounts[c];
+    if (count === 0) continue;
+    const slots = getColumnSlots(currentQStart, currentQStart + count - 1, sections, total);
+    currentQStart += count;
+
     const colXStart = frameLeft + 12 + c * colWidth;
     const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
-    sumYStart += colYStart;
+    const availHeight = 1295 - colYStart;
+    const limit = availHeight / slots.length;
+    if (limit < minLimit) {
+      minLimit = limit;
+    }
   }
-  const targetBottom = (sumYStart + approxTotalSlots * yStep) / numCols;
 
-  const colCounts = Array(numCols).fill(0);
-  let curCol = 0;
-  let tempQStart = 1;
-  const maxQPerCol = Math.ceil(total / numCols) + 4;
-
-  for (let q = 1; q <= total; q++) {
-    if (curCol === numCols - 1) {
-      colCounts[curCol]++;
-      continue;
-    }
-
-    if (curCol === 0 && colCounts[0] === 25) {
-      curCol++;
-      tempQStart = q;
-    }
-
-    const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
-    const colXStart = frameLeft + 12 + curCol * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
-    const currentBottom = colYStart + slots.length * yStep;
-
-    if (curCol > 0 && (currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
-      curCol++;
-      tempQStart = q;
-    }
-    colCounts[curCol]++;
+  let yStep = 20;
+  if (density === 'auto') {
+    yStep = Math.min(25.5, Math.max(18.5, minLimit));
+  } else if (density === 'spacious') {
+    yStep = Math.min(25.5, Math.max(20.0, minLimit));
+  } else if (density === 'compact') {
+    yStep = Math.min(20.0, Math.max(16.5, minLimit - 1.5));
+  } else {
+    yStep = Math.min(23.0, Math.max(18.0, minLimit - 0.5));
   }
 
   const columns: OMRColumnConfig[] = [];

@@ -48,7 +48,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   const getQuestionSection = (qIndex: number, exam: Exam): string => {
     if (exam.sections && exam.sections.length > 0) {
       const match = exam.sections.find(s => qIndex >= s.qStart && qIndex < s.qStart + s.qCount);
-      if (match) return match.subjectName || match.sectionName || 'General';
+      if (match) return match.subjectName && match.sectionName ? `${match.subjectName} - ${match.sectionName}` : (match.subjectName || match.sectionName || 'General');
     }
 
     const numQuestions = exam.numQuestions;

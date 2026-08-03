@@ -1292,6 +1292,19 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
  * Aligns perfectly with OMR seeder/test specifications.
  */
 function getQuestionSection(qIndex: number, exam: Exam): string {
+  if (exam.sections && exam.sections.length > 0) {
+    let currentQStart = 1;
+    for (const sec of exam.sections) {
+      const qStart = sec.qStart || currentQStart;
+      const qCount = sec.qCount || 0;
+      const qEnd = qStart + qCount - 1;
+      currentQStart = qEnd + 1;
+      if (qIndex >= qStart && qIndex <= qEnd) {
+        return sec.subjectName && sec.sectionName ? `${sec.subjectName} - ${sec.sectionName}` : (sec.subjectName || sec.sectionName || 'General');
+      }
+    }
+  }
+
   const numQuestions = exam.numQuestions;
   if (numQuestions === 200) {
     if (qIndex <= 50) return 'Physics';

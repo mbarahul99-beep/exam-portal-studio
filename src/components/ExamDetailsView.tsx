@@ -135,6 +135,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
   // Manage Questions States
   const [questions, setQuestions] = useState<any[]>([]);
+  const [selectedSubjectName, setSelectedSubjectName] = useState<string>('');
   const [selectedSectionName, setSelectedSectionName] = useState<string>('');
   const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
   const [editFormText, setEditFormText] = useState('');
@@ -179,11 +180,12 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         const banks = await db.questionBanks.toArray();
         setBanksList(banks);
 
-        // 3. Set default section Name
+        // 3. Set default subject and section Name
         const sections = exam.sections && exam.sections.length > 0 
           ? exam.sections 
           : [];
         if (sections.length > 0) {
+          setSelectedSubjectName(sections[0].subjectName);
           setSelectedSectionName(sections[0].sectionName);
         }
       };
@@ -680,8 +682,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       return;
     }
 
-    const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
-    const sectionConfig = exam.sections?.find((s: any) => s.sectionName === selectedSectionName);
+    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+    const sectionConfig = exam.sections?.find((s: any) => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
     const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
     
     if (sectionQuestions.length >= maxAllowed) {
@@ -691,6 +693,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
     const newQ = {
       examId: exam.id!,
+      subjectName: selectedSubjectName,
       sectionName: selectedSectionName || 'Section A',
       questionText: libQ.questionText,
       options: [...libQ.options],
@@ -710,7 +713,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   };
 
   const handleMoveQuestion = async (qIndexInSection: number, direction: 'up' | 'down') => {
-    const sectionQs = questions.filter(q => q.sectionName === selectedSectionName);
+    const sectionQs = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
     if (direction === 'up' && qIndexInSection === 0) return;
     if (direction === 'down' && qIndexInSection === sectionQs.length - 1) return;
 
@@ -1858,10 +1861,9 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           </div>
 
           {/* Section Selection Bar */}
-          <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT EXAM SECTION</span>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {(exam.sections && exam.sections.length > 0 
+          <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+            {(() => {
+              const sections = exam.sections && exam.sections.length > 0 
                 ? exam.sections 
                 : [{ 
                     subjectName: 'General', 
@@ -1873,47 +1875,93 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                     incorrectMarks: exam.incorrectMarks ?? -1,
                     allowPartialMarks: false,
                     allowOptionalAttempts: false
-                  }]
-              ).map((sec, sIdx) => {
-                const isActive = selectedSectionName === sec.sectionName;
-                const count = questions.filter(q => q.sectionName === sec.sectionName).length;
-                return (
-                  <button
-                    key={`sec-tab-${sIdx}`}
-                    onClick={() => {
-                      setSelectedSectionName(sec.sectionName);
-                      setEditingQuestionId(null);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                      background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
-                      color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                      fontWeight: 'bold',
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <span>{sec.subjectName} - {sec.sectionName}</span>
-                    <span style={{
-                      fontSize: '0.7rem',
-                      background: isActive ? 'var(--primary)' : '#e2e8f0',
-                      color: isActive ? '#fff' : 'var(--text-secondary)',
-                      padding: '2px 6px',
-                      borderRadius: '10px',
-                      fontWeight: 'bold'
-                    }}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                  }];
+              const uniqueSubjects = Array.from(new Set(sections.map(s => s.subjectName)));
+
+              return (
+                <>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>SELECT SUBJECT</span>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {uniqueSubjects.map((sub, sIdx) => {
+                        const isActive = selectedSubjectName === sub;
+                        return (
+                          <button
+                            key={`sub-tab-${sIdx}`}
+                            onClick={() => {
+                              setSelectedSubjectName(sub);
+                              const firstSec = sections.find(s => s.subjectName === sub);
+                              if (firstSec) {
+                                setSelectedSectionName(firstSec.sectionName);
+                              }
+                              setEditingQuestionId(null);
+                            }}
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: '8px',
+                              border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                              background: isActive ? 'var(--primary)' : '#fff',
+                              color: isActive ? '#fff' : 'var(--text-secondary)',
+                              fontWeight: 'bold',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {sub}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>SELECT SECTION</span>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {sections.filter(s => s.subjectName === selectedSubjectName).map((sec, sIdx) => {
+                        const isActive = selectedSectionName === sec.sectionName;
+                        const count = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === sec.sectionName).length;
+                        return (
+                          <button
+                            key={`sec-tab-${sIdx}`}
+                            onClick={() => {
+                              setSelectedSectionName(sec.sectionName);
+                              setEditingQuestionId(null);
+                            }}
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: '8px',
+                              border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                              background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                              color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                              fontWeight: 'bold',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <span>{sec.sectionName}</span>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              background: isActive ? 'var(--primary)' : '#e2e8f0',
+                              color: isActive ? '#fff' : 'var(--text-secondary)',
+                              padding: '2px 6px',
+                              borderRadius: '10px',
+                              fontWeight: 'bold'
+                            }}>
+                              {count} / {sec.qCount}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Option: Review Questions (Current Section Questions) */}
@@ -1926,8 +1974,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
-                    const sectionConfig = exam.sections?.find((s: any) => s.sectionName === selectedSectionName);
+                    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+                    const sectionConfig = exam.sections?.find((s: any) => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
                     const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
                     
                     if (sectionQuestions.length >= maxAllowed) {
@@ -1937,6 +1985,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
                     const newQ = {
                       examId: exam.id!,
+                      subjectName: selectedSubjectName,
                       sectionName: selectedSectionName || 'Section A',
                       questionText: '',
                       options: ['', '', '', ''],
@@ -1964,7 +2013,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   + Add Question
                 </button>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Total in Section: <strong>{questions.filter(q => q.sectionName === selectedSectionName).length}</strong>
+                  Total in Section: <strong>{questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).length}</strong>
                 </span>
               </div>
             </div>
@@ -1972,7 +2021,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             {/* List of current questions in the selected section */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {(() => {
-                const sectionQuestions = questions.filter(q => q.sectionName === selectedSectionName);
+                const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
                 if (sectionQuestions.length === 0) {
                   return (
                     <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

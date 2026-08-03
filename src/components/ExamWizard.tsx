@@ -112,6 +112,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
   // Step 3: Section Details States
   const [sectionsList, setSectionsList] = useState<SectionState[]>([]);
+  const [selectedSubjectName, setSelectedSubjectName] = useState<string>('');
+  const [selectedSectionName, setSelectedSectionName] = useState<string>('');
+
+  React.useEffect(() => {
+    if (sectionsList.length > 0 && (!selectedSubjectName || !selectedSectionName)) {
+      setSelectedSubjectName(sectionsList[0].subjectName);
+      setSelectedSectionName(sectionsList[0].sectionName);
+    }
+  }, [sectionsList]);
 
   // Step 4: Answer Keys (Tabbed by Set, e.g. "A", "B", "C", "D")
   const [activeSetTab, setActiveSetTab] = useState('A');
@@ -267,6 +276,21 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
     if (questionSetupTab !== 'library') return;
     db.questionBanks.toArray().then(setBanksList);
   }, [questionSetupTab]);
+
+  React.useEffect(() => {
+    if (step === 4 && questionSetupTab === 'manual') {
+      const filtered = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+      if (filtered.length > 0) {
+        const currentQ = questionsState[activeQuestionIndex];
+        if (!currentQ || currentQ.subjectName !== selectedSubjectName || currentQ.sectionName !== selectedSectionName) {
+          const globalIdx = questionsState.findIndex(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+          setActiveQuestionIndex(globalIdx !== -1 ? globalIdx : 0);
+        }
+      } else {
+        setActiveQuestionIndex(-1);
+      }
+    }
+  }, [selectedSubjectName, selectedSectionName, questionSetupTab, step, questionsState.length]);
 
 
 
@@ -444,23 +468,38 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         }
 
         // Map sequentially to questionsState
-        setQuestionsState(prev => {
-          const updated = [...prev];
-          for (let idx = 0; idx < updated.length; idx++) {
+        setQuestionsState(() => {
+          const slots: any[] = [];
+          sectionsWithRanges.forEach(sec => {
+            for (let q = sec.qStart; q <= sec.qEnd; q++) {
+              slots.push({
+                qNum: q,
+                sectionName: sec.sectionName,
+                subjectName: sec.subjectName,
+                questionText: '',
+                options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+                correctOptionIdx: 0,
+                explanation: '',
+                questionImage: ''
+              });
+            }
+          });
+
+          for (let idx = 0; idx < slots.length; idx++) {
             const csvQ = parsed[idx];
             if (csvQ) {
-              updated[idx] = {
-                ...updated[idx],
+              slots[idx] = {
+                ...slots[idx],
                 questionText: csvQ.questionText,
-                options: csvQ.options.length === updated[idx].options.length 
-                  ? csvQ.options 
-                  : updated[idx].options.map((orig: string, oIdx: number) => csvQ.options[oIdx] || orig),
-                correctOptionIdx: csvQ.correctOptionIdx < updated[idx].options.length ? csvQ.correctOptionIdx : 0,
+                options: csvQ.options.length === slots[idx].options.length
+                  ? csvQ.options
+                  : slots[idx].options.map((orig: string, oIdx: number) => csvQ.options[oIdx] || orig),
+                correctOptionIdx: csvQ.correctOptionIdx < slots[idx].options.length ? csvQ.correctOptionIdx : 0,
                 explanation: csvQ.explanation
               };
             }
           }
-          return updated;
+          return slots;
         });
 
         setCsvUploadSuccess(`Successfully imported ${Math.min(parsed.length, questionsState.length)} questions!`);
@@ -576,6 +615,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
         const questionRecords = questionsState.map((q) => ({
           examId: finalExamId,
+          subjectName: q.subjectName,
           sectionName: q.sectionName,
           questionText: q.questionText || '',
           options: q.options.map((opt: string) => opt || ''),
@@ -1210,6 +1250,89 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                     </div>
                   </div>
 
+                  {/* Subject & Section Selectors */}
+                  {sectionsList.length > 0 && (
+                    <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>SELECT SUBJECT</span>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {Array.from(new Set(sectionsList.map(s => s.subjectName))).map((sub, sIdx) => {
+                            const isActive = selectedSubjectName === sub;
+                            return (
+                              <button
+                                key={`sub-tab-${sIdx}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSubjectName(sub);
+                                  const firstSec = sectionsList.find(s => s.subjectName === sub);
+                                  if (firstSec) {
+                                    setSelectedSectionName(firstSec.sectionName);
+                                  }
+                                }}
+                                style={{
+                                  padding: '6px 14px',
+                                  borderRadius: '6px',
+                                  border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                                  background: isActive ? 'var(--primary)' : '#fff',
+                                  color: isActive ? '#fff' : 'var(--text-secondary)',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {sub}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>SELECT SECTION</span>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {sectionsList.filter(s => s.subjectName === selectedSubjectName).map((sec, sIdx) => {
+                            const isActive = selectedSectionName === sec.sectionName;
+                            const count = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === sec.sectionName && q.questionText.trim()).length;
+                            return (
+                              <button
+                                key={`sec-tab-${sIdx}`}
+                                type="button"
+                                onClick={() => setSelectedSectionName(sec.sectionName)}
+                                style={{
+                                  padding: '6px 14px',
+                                  borderRadius: '6px',
+                                  border: isActive ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                                  background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                                  color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <span>{sec.sectionName}</span>
+                                <span style={{
+                                  fontSize: '0.65rem',
+                                  background: isActive ? 'var(--primary)' : '#e2e8f0',
+                                  color: isActive ? '#fff' : 'var(--text-secondary)',
+                                  padding: '2px 6px',
+                                  borderRadius: '10px',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {count} / {sec.qCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {questionSetupTab === 'manual' ? (
                     /* Manual entry split layout */
                     <div className="manual-entry-split-layout">
@@ -1219,24 +1342,37 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         <button
                           type="button"
                           onClick={() => {
-                            const maxAllowed = totalQuestions || 15;
-                            if (questionsState.length >= maxAllowed) {
-                              alert(`Cannot add more questions. The exam is limited to ${maxAllowed} questions.`);
+                            const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
+                            const qStart = sectionConfig ? sectionConfig.qStart : 1;
+                            const qEnd = sectionConfig ? sectionConfig.qEnd : 15;
+                            const qCount = sectionConfig ? sectionConfig.qCount : 15;
+
+                            const sectionQs = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+                            if (sectionQs.length >= qCount) {
+                              alert(`Cannot add more questions. This section is limited to ${qCount} questions.`);
                               return;
                             }
+
                             setQuestionsState(prev => {
+                              const existingQNums = new Set(sectionQs.map(q => q.qNum));
+                              let nextQNum = qStart;
+                              while (existingQNums.has(nextQNum) && nextQNum <= qEnd) {
+                                nextQNum++;
+                              }
+
                               const newQ = {
-                                qNum: prev.length + 1,
-                                sectionName: sectionsList[0]?.sectionName || 'Section A',
-                                subjectName: sectionsList[0]?.subjectName || 'Subject 1',
+                                qNum: nextQNum,
+                                sectionName: selectedSectionName,
+                                subjectName: selectedSubjectName,
                                 questionText: '',
-                                options: ['', '', '', ''],
+                                options: sectionConfig?.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
                                 correctOptionIdx: 0,
                                 explanation: '',
                                 questionImage: ''
                               };
-                              const updated = [...prev, newQ];
-                              setActiveQuestionIndex(updated.length - 1);
+                              const updated = [...prev, newQ].sort((a, b) => a.qNum - b.qNum);
+                              const globalIdx = updated.findIndex(q => q.qNum === nextQNum);
+                              setActiveQuestionIndex(globalIdx !== -1 ? globalIdx : 0);
                               return updated;
                             });
                           }}
@@ -1261,13 +1397,14 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         </button>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', flex: 1 }}>
-                          {questionsState.map((q, idx) => {
+                          {questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).map((q) => {
                             const isFilled = q.questionText.trim().length > 0;
-                            const isActive = idx === activeQuestionIndex;
+                            const globalIdx = questionsState.findIndex(qs => qs.qNum === q.qNum);
+                            const isActive = globalIdx === activeQuestionIndex;
                             return (
                               <button
-                                key={`q-list-btn-${idx}`}
-                                onClick={() => setActiveQuestionIndex(idx)}
+                                key={`q-list-btn-${q.qNum}`}
+                                onClick={() => setActiveQuestionIndex(globalIdx)}
                                 className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
                                 style={{
                                   border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
@@ -1294,9 +1431,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       </div>
 
                       {/* Right Editor panel */}
-                      {questionsState.length === 0 ? (
+                      {questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).length === 0 ? (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '40px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed var(--border-color)', minHeight: '300px' }}>
-                          No questions added yet. Click "+ Add Question" on the left to start.
+                          No questions added to this section yet. Click "+ Add Question" on the left to start.
                         </div>
                       ) : questionsState[activeQuestionIndex] && (() => {
                         const q = questionsState[activeQuestionIndex];
@@ -1614,23 +1751,35 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                     type="button"
                                     onClick={() => {
                                       if (isAddedToExam) return;
-                                      const maxAllowed = totalQuestions || 15;
-                                      if (questionsState.length >= maxAllowed) {
-                                        alert(`Cannot add more questions. The exam is limited to ${maxAllowed} questions.`);
+                                      const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
+                                      const qStart = sectionConfig ? sectionConfig.qStart : 1;
+                                      const qEnd = sectionConfig ? sectionConfig.qEnd : 15;
+                                      const qCount = sectionConfig ? sectionConfig.qCount : 15;
+
+                                      const sectionQs = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+                                      if (sectionQs.length >= qCount) {
+                                        alert(`Cannot add more questions. This section is limited to ${qCount} questions.`);
                                         return;
                                       }
+
                                       setQuestionsState(prev => {
+                                        const existingQNums = new Set(sectionQs.map(q => q.qNum));
+                                        let nextQNum = qStart;
+                                        while (existingQNums.has(nextQNum) && nextQNum <= qEnd) {
+                                          nextQNum++;
+                                        }
+
                                         const newQ = {
-                                          qNum: prev.length + 1,
-                                          sectionName: sectionsList[0]?.sectionName || 'Section A',
-                                          subjectName: sectionsList[0]?.subjectName || 'Subject 1',
+                                          qNum: nextQNum,
+                                          sectionName: selectedSectionName,
+                                          subjectName: selectedSubjectName,
                                           questionText: qVal.questionText,
                                           options: [...qVal.options],
                                           correctOptionIdx: qVal.correctOptionIdx,
                                           explanation: qVal.explanation || '',
                                           questionImage: qVal.questionImage || ''
                                         };
-                                        return [...prev, newQ];
+                                        return [...prev, newQ].sort((a, b) => a.qNum - b.qNum);
                                       });
                                     }}
                                     disabled={isAddedToExam}
@@ -1853,7 +2002,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 return addedList.map((q, idx) => (
                   <div key={idx} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', background: '#f8fafc', position: 'relative' }}>
                     <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '4px' }}>
-                      Q {q.qNum} ({q.sectionName})
+                      Q {q.qNum} ({q.subjectName} - {q.sectionName})
                     </div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '6px', color: 'var(--text-dark)' }}>
                       <MathRenderer text={q.questionText} />

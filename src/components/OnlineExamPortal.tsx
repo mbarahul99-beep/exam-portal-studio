@@ -386,8 +386,8 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
     );
   }
 
-  // Group questions by section name for Swapper indicators
-  const sections = Array.from(new Set(questionsList.map(q => q.sectionName)));
+  // Group questions by subject + section name for Swapper indicators
+  const sections = Array.from(new Set(questionsList.map(q => q.subjectName ? `${q.subjectName} - ${q.sectionName}` : q.sectionName)));
   const currentQ = questionsList[currentQIdx];
   const totalQCount = questionsList.length;
 
@@ -553,12 +553,16 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           {sections.length > 0 && (
             <div style={{ background: '#2d3748', borderBottom: '2px solid #1a202c', display: 'flex', overflowX: 'auto', flexShrink: 0 }}>
               {sections.map((sec, idx) => {
-                const isActive = currentQ.sectionName === sec;
+                const currentQKey = currentQ.subjectName ? `${currentQ.subjectName} - ${currentQ.sectionName}` : currentQ.sectionName;
+                const isActive = currentQKey === sec;
                 return (
                   <button 
                     key={idx}
                     onClick={() => {
-                      const targetIdx = questionsList.findIndex(q => q.sectionName === sec);
+                      const targetIdx = questionsList.findIndex(q => {
+                        const qKey = q.subjectName ? `${q.subjectName} - ${q.sectionName}` : q.sectionName;
+                        return qKey === sec;
+                      });
                       if (targetIdx !== -1) setCurrentQIdx(targetIdx);
                     }}
                     style={{

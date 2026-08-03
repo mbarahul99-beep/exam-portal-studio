@@ -143,6 +143,7 @@ const initDatabase = async () => {
       CREATE TABLE IF NOT EXISTS questions (
         id INT AUTO_INCREMENT PRIMARY KEY,
         examId INT NOT NULL,
+        subjectName VARCHAR(255) DEFAULT NULL,
         sectionName VARCHAR(100),
         questionText TEXT,
         options JSON,
@@ -152,6 +153,7 @@ const initDatabase = async () => {
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    try { await conn.query(`ALTER TABLE questions ADD COLUMN subjectName VARCHAR(255) DEFAULT NULL`); } catch {}
 
     // 5. Attendance Table
     await conn.query(`
@@ -910,9 +912,9 @@ app.post('/api/questions', async (req, res) => {
     for (const q of questions) {
       const optionsJson = typeof q.options === 'object' ? JSON.stringify(q.options) : q.options;
       await pool.query(`
-        INSERT INTO questions (examId, sectionName, questionText, options, correctOptionIdx, explanation, questionImage)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [examId, q.sectionName, q.questionText, optionsJson, q.correctOptionIdx || 0, q.explanation || '', q.questionImage || null]);
+        INSERT INTO questions (examId, subjectName, sectionName, questionText, options, correctOptionIdx, explanation, questionImage)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [examId, q.subjectName || null, q.sectionName, q.questionText, optionsJson, q.correctOptionIdx || 0, q.explanation || '', q.questionImage || null]);
     }
     res.json({ success: true });
   } catch (err) {

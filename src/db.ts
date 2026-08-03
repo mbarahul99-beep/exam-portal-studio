@@ -87,6 +87,7 @@ export interface Exam {
 export interface Question {
   id?: number;
   examId: number;
+  subjectName?: string;
   sectionName: string;
   questionText: string;
   options: string[]; // Size 4

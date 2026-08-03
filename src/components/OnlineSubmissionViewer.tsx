@@ -744,7 +744,7 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
                 {/* Header (Section & Marks) */}
                 <div className="active-q-header">
                   <span className="section-badge">
-                    {activeItem.q.sectionName || 'General Test'} • Q.{activeItem.qNum}
+                    {activeItem.q.subjectName ? `${activeItem.q.subjectName} - ${activeItem.q.sectionName}` : (activeItem.q.sectionName || 'General Test')} • Q.{activeItem.qNum}
                   </span>
                   
                   <span className={`marks-earned-badge ${activeItem.status === 'correct' ? 'positive' : activeItem.status === 'incorrect' ? 'negative' : 'zero'}`}>

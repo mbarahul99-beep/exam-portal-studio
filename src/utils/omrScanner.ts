@@ -115,15 +115,6 @@ export function getColumnSlots(
     for (let i = 0; i < 5; i++) {
       if (qNum > qEnd || qNum > totalQuestions) break;
 
-      // If the current question (not the first in the group) is the start of a new section,
-      // we break the group early to let the next outer loop iteration insert the Subject/Option headers
-      if (i > 0) {
-        const nextSec = sections?.find((s: any) => qNum === s.qStart);
-        if (nextSec && nextSec.subjectName && nextSec.subjectName.toUpperCase() !== 'GENERAL' && nextSec.subjectName.toLowerCase() !== 'subject') {
-          break;
-        }
-      }
-
       slots.push({
         type: 'question',
         slotIdx: slotIdx++,
@@ -167,16 +158,16 @@ export function getDynamicOMRQuestionLayout(
     } else if (total <= 120) {
       yStep = 24.5;
     } else if (total <= 180) {
-      yStep = 22.5;
+      yStep = 21.2;
     } else {
-      yStep = 20.5;
+      yStep = 19.5;
     }
   } else if (density === 'spacious') {
-    yStep = 25;
+    yStep = 24;
   } else if (density === 'compact') {
-    yStep = 18;
+    yStep = 17.5;
   } else {
-    yStep = 21.5;
+    yStep = 20.5;
   }
 
   // 3. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
@@ -218,7 +209,7 @@ export function getDynamicOMRQuestionLayout(
     const colYStart = (numCols > 2 && colXStart < 220) ? 450 : 220;
     const currentBottom = colYStart + slots.length * yStep;
 
-    if ((currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10) {
+    if ((currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
       curCol++;
       tempQStart = q;
     }

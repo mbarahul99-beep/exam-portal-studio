@@ -16,9 +16,85 @@ import {
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
-import { scanOMRSheet, findOMRSheetCornersLive } from '../utils/omrScanner';
+import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+
+// Helper function to draw green/red overlays on scanned OMR image bubbles
+function drawOverlayOnWarpedCanvas(
+  canvas: HTMLCanvasElement,
+  numQuestions: number,
+  answers: Record<number, string>,
+  correctKey: Record<number, string>,
+  bestDy: number,
+  sections: any[]
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const qConf = getDynamicOMRQuestionLayout(numQuestions);
+  const bubbleRadius = qConf.bubbleRadius || 6.5;
+
+  for (let q = 1; q <= numQuestions; q++) {
+    let colConf = null;
+    for (const col of qConf.columns) {
+      if (q >= col.qStart && q <= col.qEnd) {
+        colConf = col;
+        break;
+      }
+    }
+    if (!colConf) continue;
+
+    const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
+    const is5Option = sec && sec.questionType === '5 option';
+    const numOptions = is5Option ? 5 : 4;
+
+    const qIndex = q - colConf.qStart;
+    const y = qConf.yStart + qIndex * qConf.yStep + bestDy;
+
+    const studentAns = answers[q] || '';
+    const correctAns = correctKey[q] || '';
+
+    const optionChars = ['A', 'B', 'C', 'D', 'E'];
+
+    for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+      const optChar = optionChars[optIdx];
+      const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
+
+      const isStudentPick = studentAns === optChar;
+      const isCorrectOption = correctAns === optChar;
+
+      if (isStudentPick) {
+        if (studentAns === correctAns) {
+          // Correct choice: Green
+          ctx.beginPath();
+          ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.45)';
+          ctx.fill();
+          ctx.strokeStyle = '#16a34a';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else {
+          // Incorrect choice: Red
+          ctx.beginPath();
+          ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.45)';
+          ctx.fill();
+          ctx.strokeStyle = '#dc2626';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      } else if (isCorrectOption && studentAns !== '') {
+        // Correct answer (when student chose wrong): thin green circle outline
+        ctx.beginPath();
+        ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#16a34a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
 
 interface ScanImagesViewProps {
   exam: Exam;
@@ -429,10 +505,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         } catch {}
       }
 
-      const croppedUrl = cvResult.debugWarpedCanvas 
-        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
-        : snapCanvas.toDataURL('image/jpeg', 0.92);
-
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
         return cleaned === '' ? '0' : cleaned;
@@ -479,9 +551,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }
             });
 
-            const unattemptedCount = sec.qCount - evaluated.length;
-            unansweredCount += unattemptedCount;
-            score += unattemptedCount * secUnansweredMarks;
+            const unansweredForSec = sec.qCount - evaluated.length;
+            unansweredCount += unansweredForSec;
+            score += unansweredForSec * secUnansweredMarks;
           } else {
             qNums.forEach(q => {
               const studentAns = cvResult.answers[q] || '';
@@ -520,6 +592,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           }
         }
       }
+
+      // Draw green/red overlays on the warped canvas before saving
+      if (cvResult.debugWarpedCanvas) {
+        drawOverlayOnWarpedCanvas(
+          cvResult.debugWarpedCanvas,
+          exam.numQuestions,
+          cvResult.answers,
+          correctKey,
+          cvResult.bestDy || 0,
+          exam.sections ?? []
+        );
+      }
+
+      const croppedUrl = cvResult.debugWarpedCanvas 
+        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
+        : snapCanvas.toDataURL('image/jpeg', 0.92);
 
       setIsEditingOverlayRoll(false);
       setOverlayRollInput(cvResult.studentNum || '');
@@ -680,10 +768,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         } catch {}
       }
 
-      const croppedSheetUrl = cvResult.debugWarpedCanvas 
-        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
-        : null;
-
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
         return cleaned === '' ? '0' : cleaned;
@@ -771,6 +855,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           }
         }
       }
+
+      // Draw green/red overlays on the warped canvas before saving
+      if (cvResult.debugWarpedCanvas) {
+        drawOverlayOnWarpedCanvas(
+          cvResult.debugWarpedCanvas,
+          exam.numQuestions,
+          cvResult.answers,
+          correctKey,
+          cvResult.bestDy || 0,
+          exam.sections ?? []
+        );
+      }
+
+      const croppedSheetUrl = cvResult.debugWarpedCanvas 
+        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
+        : null;
 
       const scanResultData = {
         studentId,

@@ -6,6 +6,7 @@ export interface ScanResult {
   answers: Record<number, string>;
   bookletSet?: string;
   debugWarpedCanvas?: HTMLCanvasElement; // For showing the warped, aligned page in UI
+  bestDy?: number;
 }
 
 // Coordinate mapping parameters (matching the generated HTML NEET sheet)
@@ -676,7 +677,8 @@ export async function scanOMRSheet(
       studentNum,
       answers,
       bookletSet,
-      debugWarpedCanvas
+      debugWarpedCanvas,
+      bestDy
     };
 
   } catch (err: any) {

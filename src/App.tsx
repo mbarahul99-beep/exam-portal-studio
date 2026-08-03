@@ -1986,11 +1986,11 @@ export default function App() {
             
             <div className="cv-status">
               {cvLoaded ? (
-                <span className="status-badge success"><Check size={12} /> OpenCV.js Ready</span>
+                <span className="status-badge success"><Check size={12} /> Scanner Ready</span>
               ) : cvError ? (
-                <span className="status-badge error"><AlertTriangle size={12} /> OpenCV Load Failed</span>
+                <span className="status-badge error"><AlertTriangle size={12} /> Scanner Load Failed</span>
               ) : (
-                <span className="status-badge loading"><RefreshCw size={12} className="spin" /> Loading CV Engine...</span>
+                <span className="status-badge loading"><RefreshCw size={12} className="spin" /> Loading Scanner Engine...</span>
               )}
             </div>
           </div>

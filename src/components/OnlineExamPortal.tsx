@@ -8,7 +8,11 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Maximize, 
-  Lock 
+  Lock,
+  Trash2,
+  Flag,
+  Menu,
+  X 
 } from 'lucide-react';
 import { db, type Exam, type Student, type Question } from '../db';
 import confetti from 'canvas-confetti';
@@ -38,12 +42,18 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
   const [examState, setExamState] = useState<'setup' | 'instructions' | 'active' | 'submitted'>('setup');
   const [questionsList, setQuestionsList] = useState<Question[]>([]);
   const [currentQIdx, setCurrentQIdx] = useState(0);
+  const [showMobilePalette, setShowMobilePalette] = useState(false);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({}); // 1-based question number => 'A'|'B'|'C'|'D'
   const [flaggedForReview, setFlaggedForReview] = useState<Record<number, boolean>>({}); // 1-based question number => boolean
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [cheatWarnings, setCheatWarnings] = useState(0);
   const [showExitWarning, setShowExitWarning] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+
+  // Close mobile navigation drawer automatically on question selection
+  useEffect(() => {
+    setShowMobilePalette(false);
+  }, [currentQIdx]);
 
   // Graded results state
   const [gradedResult, setGradedResult] = useState<{
@@ -552,12 +562,20 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               {cheatWarnings > 0 && (
-                <span className="status-badge pending" style={{ background: '#fff5f5', color: '#e53e3e', border: '1px solid #fed7d7', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                <span className="status-badge pending hide-mobile" style={{ background: '#fff5f5', color: '#e53e3e', border: '1px solid #fed7d7', fontSize: '0.75rem', fontWeight: 'bold' }}>
                   ⚠ Blur Alerts: {cheatWarnings}
                 </span>
               )}
+              <button 
+                className="mobile-only btn-outlined" 
+                onClick={() => setShowMobilePalette(true)}
+                style={{ display: 'none', alignItems: 'center', gap: '6px', padding: '8px 12px', cursor: 'pointer' }}
+              >
+                <Menu size={16} />
+                <span>Palette</span>
+              </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: secondsLeft < 300 ? '#fff5f5' : '#f7fafc', border: secondsLeft < 300 ? '1px solid #feb2b2' : '1px solid var(--border-color)', borderRadius: '8px', color: secondsLeft < 300 ? '#e53e3e' : 'var(--text-dark)', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.05rem' }}>
                 <Timer size={18} className={secondsLeft < 300 ? 'animate-pulse' : ''} />
                 <span>{formatTime(secondsLeft)}</span>
@@ -604,11 +622,29 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           {/* Main Content Workspace Split-panels */}
           <div className="cbt-workspace-split">
             
+            {/* Mobile Backdrop for Palette Drawer */}
+            {showMobilePalette && (
+              <div 
+                className="mobile-only cbt-palette-backdrop"
+                onClick={() => setShowMobilePalette(false)}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  background: 'rgba(15, 23, 42, 0.4)',
+                  backdropFilter: 'blur(2px)',
+                  zIndex: 1000
+                }}
+              />
+            )}
+
             {/* Left Panel: Question Display Card */}
             <div className="cbt-question-pane">
               
               {/* Question metadata badge */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #edf2f7', paddingBottom: '16px', marginBottom: '24px' }}>
+              <div className="cbt-question-header">
                 <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-dark)' }}>
                   Question {currentQIdx + 1}
                 </span>
@@ -624,9 +660,9 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                 })()}
               </div>
 
-              {/* Question Text & Media area */}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '1rem', color: '#2d3748', lineHeight: '1.5', fontWeight: 'bold', marginBottom: '24px', whiteSpace: 'pre-line', textAlign: 'left' }}>
+              {/* Question Scrollable Body */}
+              <div className="cbt-question-scroll-content">
+                <div style={{ fontSize: '1.05rem', color: '#2d3748', lineHeight: '1.6', fontWeight: 'bold', marginBottom: '24px', whiteSpace: 'pre-line', textAlign: 'left' }}>
                   <MathRenderer text={currentQ.questionText} />
                 </div>
 
@@ -637,7 +673,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                 )}
 
                 {/* Option Buttons List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '600px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '600px', marginBottom: '12px' }}>
                   {currentQ.options.map((optText, optIdx) => {
                     const letter = OPTIONS[optIdx];
                     const isSelected = selectedAnswers[currentQIdx + 1] === letter;
@@ -689,11 +725,11 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                 </div>
               </div>
 
-              {/* Bottom Card Controls Navigation bar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #edf2f7', paddingTop: '20px', marginTop: '24px' }}>
-                <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Bottom Card Controls Navigation bar (Sticky) */}
+              <div className="cbt-sticky-bottom-controls">
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
-                    className="btn-outlined" 
+                    className="btn-outlined"
                     onClick={() => {
                       setSelectedAnswers(prev => {
                         const copy = { ...prev };
@@ -701,13 +737,23 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                         return copy;
                       });
                     }}
-                    style={{ fontSize: '0.75rem', padding: '8px 16px' }}
+                    style={{ fontSize: '0.75rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    Clear Response
+                    <Trash2 size={14} />
+                    <span>Clear<span className="hide-mobile"> Response</span></span>
                   </button>
                   <button 
                     className="btn-outlined" 
-                    style={{ fontSize: '0.75rem', padding: '8px 16px', background: flaggedForReview[currentQIdx + 1] ? '#fffaf0' : 'transparent', borderColor: flaggedForReview[currentQIdx + 1] ? '#f6ad55' : 'var(--border-color)', color: flaggedForReview[currentQIdx + 1] ? '#dd6b20' : 'var(--text-dark)' }}
+                    style={{ 
+                      fontSize: '0.75rem', 
+                      padding: '8px 12px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      background: flaggedForReview[currentQIdx + 1] ? '#fffaf0' : 'transparent', 
+                      borderColor: flaggedForReview[currentQIdx + 1] ? '#f6ad55' : 'var(--border-color)', 
+                      color: flaggedForReview[currentQIdx + 1] ? '#dd6b20' : 'var(--text-dark)' 
+                    }}
                     onClick={() => {
                       setFlaggedForReview(prev => ({
                         ...prev,
@@ -717,16 +763,20 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                       if (currentQIdx < totalQCount - 1) setCurrentQIdx(prev => prev + 1);
                     }}
                   >
-                    {flaggedForReview[currentQIdx + 1] ? 'Unmark Review' : 'Mark for Review'}
+                    <Flag size={14} />
+                    <span>
+                      {flaggedForReview[currentQIdx + 1] ? 'Unmark' : 'Mark'}
+                      <span className="hide-mobile"> for Review</span>
+                    </span>
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
                     className="btn-outlined" 
                     disabled={currentQIdx === 0}
                     onClick={() => setCurrentQIdx(prev => prev - 1)}
-                    style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
                     <ChevronLeft size={16} /> Prev
                   </button>
@@ -739,12 +789,12 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                         setShowSubmitConfirm(true);
                       }
                     }}
-                    style={{ padding: '8px 24px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
                     {currentQIdx < totalQCount - 1 ? (
                       <>Next <ChevronRight size={16} /></>
                     ) : (
-                      'Finish Test'
+                      'Finish'
                     )}
                   </button>
                 </div>
@@ -752,65 +802,73 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
             </div>
 
             {/* Right Panel: Palette Grid navigation panel */}
-            <div className="cbt-navigation-pane">
-              <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Question Navigation</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
-                  {questionsList.map((_, idx) => {
-                    const qNum = idx + 1;
-                    const isAnswered = !!selectedAnswers[qNum];
-                    const isFlagged = !!flaggedForReview[qNum];
-                    const isCurrent = currentQIdx === idx;
+            <div className={`cbt-navigation-pane ${showMobilePalette ? 'mobile-open' : ''}`}>
+              <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Question Navigation</h4>
+                <button 
+                  className="mobile-only close-palette-btn" 
+                  onClick={() => setShowMobilePalette(false)}
+                  style={{ display: 'none', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                    // Color code
-                    let border = '1px solid #cbd5e0';
-                    let bg = '#fff';
-                    let color = 'var(--text-dark)';
-                    if (isAnswered && isFlagged) {
-                      bg = '#ed8936'; // answered & review (orange)
-                      color = '#fff';
-                      border = 'none';
-                    } else if (isAnswered) {
-                      bg = '#48bb78'; // answered (green)
-                      color = '#fff';
-                      border = 'none';
-                    } else if (isFlagged) {
-                      bg = '#805ad5'; // review only (purple)
-                      color = '#fff';
-                      border = 'none';
-                    }
-                    if (isCurrent) {
-                      border = '2px solid var(--primary)';
-                    }
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', padding: '20px', overflowY: 'auto' }}>
+                {questionsList.map((_, idx) => {
+                  const qNum = idx + 1;
+                  const isAnswered = !!selectedAnswers[qNum];
+                  const isFlagged = !!flaggedForReview[qNum];
+                  const isCurrent = currentQIdx === idx;
 
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrentQIdx(idx)}
-                        style={{
-                          width: '100%',
-                          height: '36px',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          border,
-                          background: bg,
-                          color,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {qNum}
-                      </button>
-                    );
-                  })}
-                </div>
+                  // Color code
+                  let border = '1px solid #cbd5e0';
+                  let bg = '#fff';
+                  let color = 'var(--text-dark)';
+                  if (isAnswered && isFlagged) {
+                    bg = '#ed8936'; // answered & review (orange)
+                    color = '#fff';
+                    border = 'none';
+                  } else if (isAnswered) {
+                    bg = '#48bb78'; // answered (green)
+                    color = '#fff';
+                    border = 'none';
+                  } else if (isFlagged) {
+                    bg = '#805ad5'; // review only (purple)
+                    color = '#fff';
+                    border = 'none';
+                  }
+                  if (isCurrent) {
+                    border = '2px solid var(--primary)';
+                  }
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentQIdx(idx)}
+                      style={{
+                        width: '100%',
+                        height: '36px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        border,
+                        background: bg,
+                        color,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {qNum}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Legends explanation */}
-              <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.75rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: '#48bb78' }} />
@@ -918,6 +976,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           flex: 1;
           display: flex;
           overflow: hidden;
+          position: relative;
         }
         .cbt-question-pane {
           flex: 3;
@@ -925,8 +984,33 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           display: flex;
           flex-direction: column;
           border-right: 1px solid var(--border-color);
+          overflow: hidden;
+          height: 100%;
+        }
+        .cbt-question-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 1px solid #edf2f7;
+          padding: 16px 24px;
+          flex-shrink: 0;
+          background: #fff;
+        }
+        .cbt-question-scroll-content {
+          flex: 1;
           overflow-y: auto;
-          padding: 32px;
+          padding: 24px 32px 32px 32px;
+          display: flex;
+          flex-direction: column;
+        }
+        .cbt-sticky-bottom-controls {
+          flex-shrink: 0;
+          background: #f8fafc;
+          border-top: 1px solid var(--border-color);
+          padding: 16px 32px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
         .cbt-navigation-pane {
           flex: 1;
@@ -935,22 +1019,62 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           flex-direction: column;
           overflow-y: auto;
         }
+        .mobile-only {
+          display: none !important;
+        }
+        .hide-mobile {
+          display: inline !important;
+        }
         @media (max-width: 992px) {
           .cbt-workspace-split {
-            flex-direction: column;
-            overflow-y: auto;
+            flex-direction: row;
+            overflow: hidden;
+            position: relative;
+            flex: 1;
           }
           .cbt-question-pane {
-            flex: none;
+            flex: 1;
             border-right: none;
-            border-bottom: 1px solid var(--border-color);
-            padding: 20px;
-            overflow-y: visible;
+            height: 100%;
+            overflow: hidden;
+          }
+          .cbt-question-header {
+            padding: 12px 16px;
+          }
+          .cbt-question-scroll-content {
+            padding: 16px 16px 24px 16px;
+          }
+          .cbt-sticky-bottom-controls {
+            padding: 12px 16px;
+            background: #ffffff;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
           }
           .cbt-navigation-pane {
-            flex: none;
-            overflow-y: visible;
-            padding-bottom: 40px;
+            position: absolute !important;
+            top: 0;
+            right: -100%;
+            width: 290px;
+            height: 100%;
+            z-index: 1001;
+            box-shadow: -4px 0 15px rgba(0, 0, 0, 0.15);
+            background: #f8fafc !important;
+            transition: right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            flex: none !important;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+          .cbt-navigation-pane.mobile-open {
+            right: 0 !important;
+          }
+          .mobile-only {
+            display: flex !important;
+          }
+          .mobile-only.close-palette-btn {
+            display: flex !important;
+          }
+          .hide-mobile {
+            display: none !important;
           }
         }
       `}</style>

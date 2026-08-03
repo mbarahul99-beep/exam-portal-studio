@@ -102,7 +102,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
   // Step 2: Subject Details States
   const [rollNoDigits, setRollNoDigits] = useState(6);
-  const [examSetsCount, setExamSetsCount] = useState(1);
+  const [examSetsCount, setExamSetsCount] = useState(2);
   const [numSubjects, setNumSubjects] = useState(3);
   const [subjectsList, setSubjectsList] = useState<ExamSubject[]>([
     { name: 'Subject 1', numSections: 1 },
@@ -907,10 +907,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                     <button type="button" className="btn-count-inc" onClick={() => setRollNoDigits(prev => Math.min(15, prev + 1))}>+</button>
                   </div>
                 </div>
-
-
-
-                {/* Subjects */}
+                {/* Exam Sets */}
+                <div className="counter-picker">
+                  <label>EXAM SETS</label>
+                  <div className="counter-controls">
+                    <button type="button" className="btn-count-dec" onClick={() => setExamSetsCount(prev => Math.max(1, prev - 1))}>-</button>
+                    <span className="counter-val">{examSetsCount}</span>
+                    <button type="button" className="btn-count-inc" onClick={() => setExamSetsCount(prev => Math.min(4, prev + 1))}>+</button>
+                  </div>
+                </div>                {/* Subjects */}
                 <div className="counter-picker">
                   <label>SUBJECTS</label>
                   <div className="counter-controls">
@@ -1842,7 +1847,10 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                   <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Mode:</span>
                   <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{examMode === 'online' ? '🌐 Online' : '📄 OMR Bubble Sheet'}</span>
                 </div>
-
+                <div className="summary-field">
+                  <span className="lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Exam Sets:</span>
+                  <span className="val" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>{examMode === 'online' ? '1 Set' : `${examSetsCount} Booklet Sets`}</span>
+                </div>
               </div>
 
               <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>

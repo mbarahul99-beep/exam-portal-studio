@@ -85,7 +85,7 @@ export interface OMRSlot {
 export function getColumnSlots(
   qStart: number,
   qEnd: number,
-  sections: any[] | undefined,
+  _sections: any[] | undefined,
   totalQuestions: number
 ): OMRSlot[] {
   const slots: OMRSlot[] = [];
@@ -93,15 +93,7 @@ export function getColumnSlots(
   let qNum = qStart;
 
   while (qNum <= qEnd && qNum <= totalQuestions) {
-    // 1. Check if qNum is the start of a new subject section
-    const sec = sections?.find((s: any) => qNum === s.qStart);
-    if (sec && sec.subjectName && sec.subjectName.toUpperCase() !== 'GENERAL' && sec.subjectName.toLowerCase() !== 'subject') {
-      slots.push({
-        type: 'subject-header',
-        slotIdx: slotIdx++,
-        subjectName: sec.subjectName.toUpperCase()
-      });
-    }
+
 
     // 2. We are starting a group of up to 5 questions.
     // Before the group, we insert an option-header slot
@@ -157,16 +149,17 @@ export function getDynamicOMRQuestionLayout(
   // 3. Question distribution
   const colCounts = Array(numCols).fill(0);
   if (numCols === 5 && total >= 120) {
-    // Specifically balanced split to keep Column 0 under Roll No short (25 questions)
-    // and push larger counts to Columns 2, 3, 4 to stretch them to the bottom
+    // Balanced split to keep Column 0 and Column 1 short (25 questions each) under Roll No and Booklet Set cards
+    // and push larger counts (40/45) to Columns 2, 3, 4 to stretch them to the bottom
     colCounts[0] = 25;
-    const R = total - 25;
-    const C = 4;
-    const base = 5 * Math.floor(R / 20);
+    colCounts[1] = 25;
+    const R = total - 50;
+    const C = 3;
+    const base = 5 * Math.floor(R / 15);
     const rem = R - base * C;
     const numExtra = rem / 5;
-    for (let c = 1; c <= 4; c++) {
-      colCounts[c] = base + (c > 4 - numExtra ? 5 : 0);
+    for (let c = 2; c <= 4; c++) {
+      colCounts[c] = base + (c - 2 > 2 - numExtra ? 5 : 0);
     }
   } else {
     // Standard greedy allocator loop for other configurations
@@ -182,7 +175,7 @@ export function getDynamicOMRQuestionLayout(
     let sumYStart = 0;
     for (let c = 0; c < numCols; c++) {
       const colXStart = frameLeft + 12 + c * colWidth;
-      const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+      const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
       sumYStart += colYStart;
     }
     const targetBottom = (sumYStart + approxTotalSlots * approxYStep) / numCols;
@@ -204,7 +197,7 @@ export function getDynamicOMRQuestionLayout(
 
       const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
       const colXStart = frameLeft + 12 + curCol * colWidth;
-      const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+      const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
       const currentBottom = colYStart + slots.length * approxYStep;
 
       if (curCol > 0 && (currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
@@ -225,7 +218,7 @@ export function getDynamicOMRQuestionLayout(
     currentQStart += count;
 
     const colXStart = frameLeft + 12 + c * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+    const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
     const availHeight = 1295 - colYStart;
     const limit = availHeight / slots.length;
     if (limit < minLimit) {
@@ -257,7 +250,7 @@ export function getDynamicOMRQuestionLayout(
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = (numCols > 2 && colXStart < 220) ? 485 : 220;
+    const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
 
     columns.push({
       qStart,
@@ -625,8 +618,26 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
-    // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
+    // 5.5. Scan Booklet Code Set (A, B, C, D) just to the right of Roll Number
     let bookletSet = 'A';
+    const bookletSetXStart = 261;
+    const bookletSetY = 206 + bestDy;
+    const setIntensities: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const x = bookletSetXStart + i * 36;
+      const avgGray = calculateBubbleAverageGray(warpedGray, x, bookletSetY, 4.5);
+      setIntensities.push(avgGray);
+    }
+    let minSetVal = 256;
+    let minSetIdx = 0;
+    for (let i = 0; i < 4; i++) {
+      if (setIntensities[i] < minSetVal) {
+        minSetVal = setIntensities[i];
+        minSetIdx = i;
+      }
+    }
+    bookletSet = String.fromCharCode(65 + minSetIdx);
+    console.log("[OMR Scanner] Scanned booklet set:", bookletSet, "intensities:", setIntensities);
 
     // 5.8. Dynamic White Level Auto-Calibration
     // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting

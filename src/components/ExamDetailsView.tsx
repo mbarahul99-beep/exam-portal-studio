@@ -133,6 +133,97 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   });
   const [isSavingKey, setIsSavingKey] = useState(false);
 
+  // Detailed Excel Exporter States
+  const [showExportFilterModal, setShowExportFilterModal] = useState(false);
+  const [filterRollNo, setFilterRollNo] = useState(true);
+  const [filterName, setFilterName] = useState(true);
+  const [filterFatherName, setFilterFatherName] = useState(true);
+  const [filterClass, setFilterClass] = useState(true);
+  const [filterScore, setFilterScore] = useState(true);
+  const [filterMaxMarks, setFilterMaxMarks] = useState(true);
+  const [filterPercentage, setFilterPercentage] = useState(true);
+  const [filterRank, setFilterRank] = useState(true);
+  const [filterDate, setFilterDate] = useState(true);
+  
+  const [selectedSubjects, setSelectedSubjects] = useState<Record<string, boolean>>({});
+  const [selectedSections, setSelectedSections] = useState<Record<string, boolean>>({});
+  const [selectedQuestions, setSelectedQuestions] = useState<Record<number, boolean>>({});
+
+  // Helper to determine question section name
+  const getQuestionSection = (qIndex: number): string => {
+    if (exam.sections && exam.sections.length > 0) {
+      // Find section mapping
+      let qCursor = 1;
+      const sectionsWithRanges = (exam.sections || []).map(sec => {
+        const start = qCursor;
+        const end = qCursor + sec.qCount - 1;
+        qCursor = end + 1;
+        return { ...sec, qStart: start, qEnd: end };
+      });
+      const match = sectionsWithRanges.find(s => qIndex >= s.qStart && qIndex <= s.qEnd);
+      if (match) return match.subjectName && match.sectionName ? `${match.subjectName} - ${match.sectionName}` : (match.subjectName || match.sectionName || 'General');
+    }
+    const numQuestions = exam.numQuestions;
+    if (numQuestions === 200) {
+      if (qIndex <= 50) return 'Physics';
+      if (qIndex <= 100) return 'Chemistry';
+      if (qIndex <= 150) return 'Botany';
+      return 'Zoology';
+    } else if (numQuestions === 180) {
+      if (qIndex <= 45) return 'Physics';
+      if (qIndex <= 90) return 'Chemistry';
+      return 'Biology';
+    } else {
+      const perSec = Math.floor(numQuestions / 3);
+      if (perSec === 0) return 'General';
+      if (qIndex <= perSec) return 'Physics';
+      if (qIndex <= perSec * 2) return 'Chemistry';
+      return 'Biology';
+    }
+  };
+
+  // Helper to determine question subject name
+  const getQuestionSubject = (qIndex: number): string => {
+    const secName = getQuestionSection(qIndex);
+    return secName.split(' - ')[0].trim();
+  };
+
+  // Memoized lists derived from exam structure
+  const subjectsList = useMemo(() => {
+    const subs = new Set<string>();
+    for (let q = 1; q <= exam.numQuestions; q++) {
+      subs.add(getQuestionSubject(q));
+    }
+    return Array.from(subs);
+  }, [exam]);
+
+  const sectionsList = useMemo(() => {
+    const secs = new Set<string>();
+    for (let q = 1; q <= exam.numQuestions; q++) {
+      secs.add(getQuestionSection(q));
+    }
+    return Array.from(secs);
+  }, [exam]);
+
+  const questionsList = useMemo(() => {
+    return Array.from({ length: exam.numQuestions }, (_, i) => i + 1);
+  }, [exam]);
+
+  // Sync checkboxes selection maps when lists change
+  React.useEffect(() => {
+    const subMap: Record<string, boolean> = {};
+    subjectsList.forEach(s => { subMap[s] = true; });
+    setSelectedSubjects(subMap);
+
+    const secMap: Record<string, boolean> = {};
+    sectionsList.forEach(s => { secMap[s] = true; });
+    setSelectedSections(secMap);
+
+    const qMap: Record<number, boolean> = {};
+    questionsList.forEach(q => { qMap[q] = true; });
+    setSelectedQuestions(qMap);
+  }, [subjectsList, sectionsList, questionsList]);
+
   // Manage Questions States
   const [questions, setQuestions] = useState<any[]>([]);
   const [selectedSubjectName, setSelectedSubjectName] = useState<string>('');
@@ -499,42 +590,278 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     }
   };
 
-  const handleDownloadExcelReport = () => {
+    const handleDownloadExcelReport = () => {
     if (examSubs.length === 0) {
       alert("No student submissions available for this exam yet to export.");
       return;
     }
+    setShowExportFilterModal(true);
+  };
 
+  const handleExecuteExport = (format: 'csv' | 'excel') => {
     const totalPossible = exam.numQuestions * (exam.correctMarks ?? 4);
+    const studentMap = new Map(students.map(s => [s.id, s]));
 
-    // Build CSV export content
-    const headers = ["Rank", "Roll Number", "Student Name", "Class", "Score", "Total Marks", "Percentage", "Submission Date"];
-    const rows = rankedRows.map(row => {
-      const pct = totalPossible > 0 ? Math.max(0, Math.round((row.score / totalPossible) * 100)) : 0;
-      const dateStr = new Date(row.scannedAt).toLocaleString().replace(/,/g, '');
-      return [
-        row.rank,
-        `"${row.studentNum || ''}"`,
-        `"${row.studentName.replace(/"/g, '""')}"`,
-        `"${row.className || ''}"`,
-        row.score,
-        totalPossible,
-        `${pct}%`,
-        `"${dateStr}"`
-      ].join(",");
+    // Construct headers list dynamically based on selection filters
+    const headers: string[] = [];
+    if (filterRollNo) headers.push("Roll Number");
+    if (filterName) headers.push("Student Name");
+    if (filterFatherName) headers.push("Father Name");
+    if (filterClass) headers.push("Class");
+    if (filterRank) headers.push("Rank");
+    if (filterScore) headers.push("Score");
+    if (filterMaxMarks) headers.push("Max Marks");
+    if (filterPercentage) headers.push("Percentage");
+    if (filterDate) headers.push("Submission Date");
+
+    subjectsList.forEach(sub => {
+      if (selectedSubjects[sub]) {
+        headers.push(`${sub} Marks`);
+      }
     });
 
-    const csvString = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob(["\ufeff" + csvString], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    const sanitizedTitle = exam.title.replace(/[^a-zA-Z0-9_-]/g, "_");
-    link.download = `${sanitizedTitle}_Report.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    sectionsList.forEach(sec => {
+      if (selectedSections[sec]) {
+        headers.push(`${sec} Marks`);
+      }
+    });
+
+    questionsList.forEach(q => {
+      if (selectedQuestions[q]) {
+        const bookletSet = 'A'; // Base key display for headers
+        const correctKey = exam.answerKeys?.[bookletSet] || exam.answerKey || {};
+        const keyChar = correctKey[q] || '';
+        headers.push(`Q${q} [Key: ${keyChar}]`);
+      }
+    });
+
+    if (format === 'csv') {
+      // Build CSV export content
+      const rows = rankedRows.map(row => {
+        const student = studentMap.get(row.studentId);
+        const rawName = student ? student.name : 'Unknown Student';
+        const cleanName = rawName.split('/')[0].trim();
+        const fatherName = student?.fatherName || (rawName.split('/')[1] ? rawName.split('/')[1].trim() : '-');
+        
+        const bookletSet = row.bookletSet || 'A';
+        const correctKey = exam.answerKeys?.[bookletSet] || exam.answerKey || {};
+
+        const cMarks = exam.correctMarks ?? 4;
+        const iMarks = exam.incorrectMarks ?? -1;
+        const uMarks = exam.unansweredMarks ?? 0;
+
+        // Compute scores
+        const subjectScores: Record<string, number> = {};
+        const sectionScores: Record<string, number> = {};
+        subjectsList.forEach(s => { subjectScores[s] = 0; });
+        sectionsList.forEach(s => { sectionScores[s] = 0; });
+
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          const ans = row.answers ? row.answers[q] : '';
+          const key = correctKey[q];
+          const secName = getQuestionSection(q);
+          const subName = getQuestionSubject(q);
+          const marking = exam.sectionsMarking?.[secName] || {
+            correctMarks: cMarks,
+            incorrectMarks: iMarks,
+            unansweredMarks: uMarks
+          };
+
+          let qScore = 0;
+          if (!ans) qScore = marking.unansweredMarks;
+          else if (ans === key) qScore = marking.correctMarks;
+          else qScore = marking.incorrectMarks;
+
+          subjectScores[subName] += qScore;
+          sectionScores[secName] += qScore;
+        }
+
+        const pct = totalPossible > 0 ? Math.max(0, Math.round((row.score / totalPossible) * 100)) : 0;
+        const dateStr = new Date(row.scannedAt).toLocaleString().replace(/,/g, '');
+
+        const colVals: any[] = [];
+        if (filterRollNo) colVals.push(`"${row.studentNum || ''}"`);
+        if (filterName) colVals.push(`"${cleanName.replace(/"/g, '""')}"`);
+        if (filterFatherName) colVals.push(`"${fatherName.replace(/"/g, '""')}"`);
+        if (filterClass) colVals.push(`"${row.className || ''}"`);
+        if (filterRank) colVals.push(row.rank);
+        if (filterScore) colVals.push(row.score);
+        if (filterMaxMarks) colVals.push(totalPossible);
+        if (filterPercentage) colVals.push(`"${pct}%"`);
+        if (filterDate) colVals.push(`"${dateStr}"`);
+
+        subjectsList.forEach(sub => {
+          if (selectedSubjects[sub]) {
+            colVals.push(subjectScores[sub]);
+          }
+        });
+
+        sectionsList.forEach(sec => {
+          if (selectedSections[sec]) {
+            colVals.push(sectionScores[sec]);
+          }
+        });
+
+        questionsList.forEach(q => {
+          if (selectedQuestions[q]) {
+            const ans = row.answers ? row.answers[q] : '';
+            colVals.push(ans ? `"${ans}"` : '"-"');
+          }
+        });
+
+        return colVals.join(",");
+      });
+
+      const csvString = [headers.join(","), ...rows].join("\n");
+      const blob = new Blob(["\ufeff" + csvString], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const sanitizedTitle = exam.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+      link.download = `${sanitizedTitle}_Report.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      // Build HTML-based XML Excel spreadsheet (.xls)
+      const headersHtml = headers.map(h => `<th style="background-color: #2563eb; color: #ffffff; font-weight: bold; border: 1px solid #cbd5e1; padding: 8px;">${h}</th>`).join("");
+      
+      const rowsHtml = rankedRows.map(row => {
+        const student = studentMap.get(row.studentId);
+        const rawName = student ? student.name : 'Unknown Student';
+        const cleanName = rawName.split('/')[0].trim();
+        const fatherName = student?.fatherName || (rawName.split('/')[1] ? rawName.split('/')[1].trim() : '-');
+        
+        const bookletSet = row.bookletSet || 'A';
+        const correctKey = exam.answerKeys?.[bookletSet] || exam.answerKey || {};
+
+        const cMarks = exam.correctMarks ?? 4;
+        const iMarks = exam.incorrectMarks ?? -1;
+        const uMarks = exam.unansweredMarks ?? 0;
+
+        // Compute scores
+        const subjectScores: Record<string, number> = {};
+        const sectionScores: Record<string, number> = {};
+        subjectsList.forEach(s => { subjectScores[s] = 0; });
+        sectionsList.forEach(s => { sectionScores[s] = 0; });
+
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          const ans = row.answers ? row.answers[q] : '';
+          const key = correctKey[q];
+          const secName = getQuestionSection(q);
+          const subName = getQuestionSubject(q);
+          const marking = exam.sectionsMarking?.[secName] || {
+            correctMarks: cMarks,
+            incorrectMarks: iMarks,
+            unansweredMarks: uMarks
+          };
+
+          let qScore = 0;
+          if (!ans) qScore = marking.unansweredMarks;
+          else if (ans === key) qScore = marking.correctMarks;
+          else qScore = marking.incorrectMarks;
+
+          subjectScores[subName] += qScore;
+          sectionScores[secName] += qScore;
+        }
+
+        const pct = totalPossible > 0 ? Math.max(0, Math.round((row.score / totalPossible) * 100)) : 0;
+        const dateStr = new Date(row.scannedAt).toLocaleString().replace(/,/g, '');
+
+        const cells: string[] = [];
+        if (filterRollNo) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; mso-number-format:'\\@';">${row.studentNum || ''}</td>`);
+        if (filterName) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px;">${cleanName}</td>`);
+        if (filterFatherName) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px;">${fatherName}</td>`);
+        if (filterClass) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px;">${row.className || ''}</td>`);
+        if (filterRank) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${row.rank}</td>`);
+        if (filterScore) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-weight: bold;">${row.score}</td>`);
+        if (filterMaxMarks) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${totalPossible}</td>`);
+        if (filterPercentage) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${pct}%</td>`);
+        if (filterDate) cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px;">${dateStr}</td>`);
+
+        subjectsList.forEach(sub => {
+          if (selectedSubjects[sub]) {
+            cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-weight: bold; background-color: #f1f5f9;">${subjectScores[sub]}</td>`);
+          }
+        });
+
+        sectionsList.forEach(sec => {
+          if (selectedSections[sec]) {
+            cells.push(`<td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; background-color: #f8fafc;">${sectionScores[sec]}</td>`);
+          }
+        });
+
+        questionsList.forEach(q => {
+          if (selectedQuestions[q]) {
+            const ans = row.answers ? row.answers[q] : '';
+            const correctKeyChar = correctKey[q] || '';
+            
+            let cellStyle = 'border: 1px solid #cbd5e1; padding: 6px; text-align: center;';
+            if (ans === correctKeyChar) {
+              cellStyle += ' background-color: #dcfce7; color: #15803d; font-weight: bold;'; // Green for correct
+            } else if (ans && ans !== correctKeyChar) {
+              cellStyle += ' background-color: #fee2e2; color: #b91c1c;'; // Red for wrong
+            } else {
+              cellStyle += ' background-color: #f1f5f9; color: #64748b;'; // Grey for skipped
+            }
+
+            cells.push(`<td style="${cellStyle}">${ans || '-'}</td>`);
+          }
+        });
+
+        return `<tr>${cells.join("")}</tr>`;
+      }).join("");
+
+      const xlsContent = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+        <!--[if gte mso 9]>
+        <xml>
+         <x:ExcelWorkbook>
+          <x:ExcelWorksheets>
+           <x:ExcelWorksheet>
+            <x:Name>Class Results</x:Name>
+            <x:WorksheetOptions>
+             <x:DisplayGridlines/>
+            </x:WorksheetOptions>
+           </x:ExcelWorksheet>
+          </x:ExcelWorksheets>
+         </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          table { border-collapse: collapse; font-family: sans-serif; font-size: 12px; }
+          th { background-color: #2563eb; color: #ffffff; font-weight: bold; border: 1px solid #cbd5e1; padding: 8px; }
+          td { border: 1px solid #cbd5e1; }
+        </style>
+        </head>
+        <body>
+          <table>
+            <thead>
+              <tr>${headersHtml}</tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(["\ufeff" + xlsContent], { type: "application/vnd.ms-excel;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const sanitizedTitle = exam.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+      link.download = `${sanitizedTitle}_Report.xls`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    setShowExportFilterModal(false);
   };
 
   const startWhatsAppBroadcast = async () => {
@@ -2319,6 +2646,490 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FILTER MODAL FOR EXCEL EXPORT */}
+      {showExportFilterModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: '#f8fafc',
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        }}>
+          
+          {/* Top Header Bar */}
+          <div style={{
+            background: '#fff',
+            borderBottom: '1px solid #e2e8f0',
+            padding: '16px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            flexShrink: 0
+          }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>Export Class Results</h2>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                Customize your report card spreadsheet. Toggle columns to dynamically include or exclude details.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                type="button"
+                className="btn-outlined" 
+                onClick={() => setShowExportFilterModal(false)}
+                style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', background: '#fff' }}
+              >
+                Cancel
+              </button>
+              
+              <button 
+                type="button"
+                className="btn-filled" 
+                onClick={() => handleExecuteExport('csv')}
+                style={{ padding: '10px 18px', background: '#475569', borderColor: '#475569', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600, border: '1px solid #475569', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                <FileText size={16} /> Export CSV
+              </button>
+              
+              <button 
+                type="button"
+                className="btn-filled" 
+                onClick={() => handleExecuteExport('excel')}
+                style={{ padding: '10px 22px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600, border: 'none', borderRadius: '8px', cursor: 'pointer', background: 'var(--primary)', color: '#fff' }}
+              >
+                <FileSpreadsheet size={16} /> Export Excel (.xls)
+              </button>
+            </div>
+          </div>
+
+          {/* Main Body Area: 2-Column Split */}
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            
+            {/* Left Column: Preset Quick Toggles */}
+            <div style={{
+              width: '280px',
+              background: '#fff',
+              borderRight: '1px solid #e2e8f0',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px',
+              overflowY: 'auto',
+              flexShrink: 0
+            }}>
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.75rem', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Quick Presets
+                </h4>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button 
+                    type="button"
+                    className="btn-outlined"
+                    onClick={() => {
+                      setFilterRollNo(true);
+                      setFilterName(true);
+                      setFilterFatherName(true);
+                      setFilterClass(true);
+                      setFilterRank(true);
+                      setFilterScore(true);
+                      setFilterMaxMarks(true);
+                      setFilterPercentage(true);
+                      setFilterDate(true);
+                      
+                      const subMap = { ...selectedSubjects };
+                      Object.keys(subMap).forEach(k => { subMap[k] = true; });
+                      setSelectedSubjects(subMap);
+                      
+                      const secMap = { ...selectedSections };
+                      Object.keys(secMap).forEach(k => { secMap[k] = true; });
+                      setSelectedSections(secMap);
+                      
+                      const qMap = { ...selectedQuestions };
+                      questionsList.forEach(q => { qMap[q] = true; });
+                      setSelectedQuestions(qMap);
+                    }}
+                    style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', background: '#fff', textAlign: 'left', width: '100%' }}
+                  >
+                    Select All Columns
+                  </button>
+                  
+                  <button 
+                    type="button"
+                    className="btn-outlined"
+                    onClick={() => {
+                      setFilterRollNo(true);
+                      setFilterName(true);
+                      setFilterFatherName(false);
+                      setFilterClass(false);
+                      setFilterRank(false);
+                      setFilterScore(true);
+                      setFilterMaxMarks(false);
+                      setFilterPercentage(true);
+                      setFilterDate(false);
+                      
+                      const subMap = { ...selectedSubjects };
+                      Object.keys(subMap).forEach(k => { subMap[k] = false; });
+                      setSelectedSubjects(subMap);
+                      
+                      const secMap = { ...selectedSections };
+                      Object.keys(secMap).forEach(k => { secMap[k] = false; });
+                      setSelectedSections(secMap);
+                      
+                      const qMap = { ...selectedQuestions };
+                      questionsList.forEach(q => { qMap[q] = false; });
+                      setSelectedQuestions(qMap);
+                    }}
+                    style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', background: '#fff', textAlign: 'left', width: '100%' }}
+                  >
+                    Minimal (Roll, Name, Total Score)
+                  </button>
+                  
+                  <button 
+                    type="button"
+                    className="btn-outlined"
+                    onClick={() => {
+                      setFilterRollNo(true);
+                      setFilterName(true);
+                      setFilterFatherName(true);
+                      setFilterClass(true);
+                      setFilterRank(true);
+                      setFilterScore(true);
+                      setFilterMaxMarks(true);
+                      setFilterPercentage(true);
+                      setFilterDate(false);
+                      
+                      const subMap = { ...selectedSubjects };
+                      Object.keys(subMap).forEach(k => { subMap[k] = true; });
+                      setSelectedSubjects(subMap);
+                      
+                      const secMap = { ...selectedSections };
+                      Object.keys(secMap).forEach(k => { secMap[k] = false; });
+                      setSelectedSections(secMap);
+                      
+                      const qMap = { ...selectedQuestions };
+                      questionsList.forEach(q => { qMap[q] = false; });
+                      setSelectedQuestions(qMap);
+                    }}
+                    style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', background: '#fff', textAlign: 'left', width: '100%' }}
+                  >
+                    Subject Summaries Only
+                  </button>
+                  
+                  <button 
+                    type="button"
+                    className="btn-outlined"
+                    onClick={() => {
+                      setFilterRollNo(true);
+                      setFilterName(true);
+                      setFilterFatherName(false);
+                      setFilterClass(false);
+                      setFilterRank(false);
+                      setFilterScore(false);
+                      setFilterMaxMarks(false);
+                      setFilterPercentage(false);
+                      setFilterDate(false);
+                      
+                      const subMap = { ...selectedSubjects };
+                      Object.keys(subMap).forEach(k => { subMap[k] = false; });
+                      setSelectedSubjects(subMap);
+                      
+                      const secMap = { ...selectedSections };
+                      Object.keys(secMap).forEach(k => { secMap[k] = false; });
+                      setSelectedSections(secMap);
+                      
+                      const qMap = { ...selectedQuestions };
+                      questionsList.forEach(q => { qMap[q] = true; });
+                      setSelectedQuestions(qMap);
+                    }}
+                    style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', background: '#fff', textAlign: 'left', width: '100%' }}
+                  >
+                    OMR Response Grid Only
+                  </button>
+                </div>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '4px 0' }} />
+
+              {/* Group Toggles */}
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.75rem', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Group Toggles
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={filterRollNo && filterName && filterFatherName && filterClass}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setFilterRollNo(val);
+                        setFilterName(val);
+                        setFilterFatherName(val);
+                        setFilterClass(val);
+                      }}
+                    />
+                    Basic Student Details
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={filterScore && filterMaxMarks && filterPercentage && filterRank && filterDate}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setFilterScore(val);
+                        setFilterMaxMarks(val);
+                        setFilterPercentage(val);
+                        setFilterRank(val);
+                        setFilterDate(val);
+                      }}
+                    />
+                    Totals & Rank Summary
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={subjectsList.length > 0 && subjectsList.every(s => selectedSubjects[s])}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        const copy = { ...selectedSubjects };
+                        subjectsList.forEach(s => { copy[s] = val; });
+                        setSelectedSubjects(copy);
+                      }}
+                    />
+                    All Subject Marks
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={sectionsList.length > 0 && sectionsList.every(s => selectedSections[s])}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        const copy = { ...selectedSections };
+                        sectionsList.forEach(s => { copy[s] = val; });
+                        setSelectedSections(copy);
+                      }}
+                    />
+                    All Section Marks
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={questionsList.length > 0 && questionsList.every(q => selectedQuestions[q])}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        const copy = { ...selectedQuestions };
+                        questionsList.forEach(q => { copy[q] = val; });
+                        setSelectedQuestions(copy);
+                      }}
+                    />
+                    All Question Grid
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Detailed Columns Configuration checklist grid */}
+            <div style={{
+              flex: 1,
+              background: '#f8fafc',
+              padding: '32px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px'
+            }}>
+              
+              {/* Card 1: Student details */}
+              <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Users size={18} color="var(--primary)" />
+                  Basic Student Details
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterRollNo} onChange={(e) => setFilterRollNo(e.target.checked)} />
+                    Roll Number
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterName} onChange={(e) => setFilterName(e.target.checked)} />
+                    Student Name
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterFatherName} onChange={(e) => setFilterFatherName(e.target.checked)} />
+                    Father Name
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterClass} onChange={(e) => setFilterClass(e.target.checked)} />
+                    Class / Grade
+                  </label>
+                </div>
+              </div>
+
+              {/* Card 2: Summary details */}
+              <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Award size={18} color="var(--primary)" />
+                  Performance Totals & Rank Summary
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterScore} onChange={(e) => setFilterScore(e.target.checked)} />
+                    Total Score Obtained
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterMaxMarks} onChange={(e) => setFilterMaxMarks(e.target.checked)} />
+                    Maximum Exam Marks
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterPercentage} onChange={(e) => setFilterPercentage(e.target.checked)} />
+                    Percentage (%)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterRank} onChange={(e) => setFilterRank(e.target.checked)} />
+                    Class Rank
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={filterDate} onChange={(e) => setFilterDate(e.target.checked)} />
+                    Submission Date & Time
+                  </label>
+                </div>
+              </div>
+
+              {/* Card 3: Subjects */}
+              {subjectsList.length > 0 && (
+                <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <BookOpen size={18} color="var(--primary)" />
+                    Subjectwise Scores
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                    {subjectsList.map(sub => (
+                      <label key={`sub-chk-${sub}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={!!selectedSubjects[sub]} 
+                          onChange={(e) => {
+                            setSelectedSubjects(prev => ({ ...prev, [sub]: e.target.checked }));
+                          }}
+                        />
+                        {sub} Marks
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Card 4: Sections */}
+              {sectionsList.length > 0 && (
+                <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Settings size={18} color="var(--primary)" />
+                    Sectionwise Scores
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
+                    {sectionsList.map(sec => (
+                      <label key={`sec-chk-${sec}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={!!selectedSections[sec]} 
+                          onChange={(e) => {
+                            setSelectedSections(prev => ({ ...prev, [sec]: e.target.checked }));
+                          }}
+                        />
+                        {sec} Marks
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Card 5: Question Grid */}
+              <div className="glass-card" style={{ padding: '24px', margin: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HelpCircle size={18} color="var(--primary)" />
+                    OMR Question-by-Question Response Matrix
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      type="button"
+                      className="btn-outlined" 
+                      onClick={() => {
+                        const qMap = { ...selectedQuestions };
+                        questionsList.forEach(q => { qMap[q] = true; });
+                        setSelectedQuestions(qMap);
+                      }}
+                      style={{ fontSize: '0.7rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}
+                    >
+                      Check All
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn-outlined" 
+                      onClick={() => {
+                        const qMap = { ...selectedQuestions };
+                        questionsList.forEach(q => { qMap[q] = false; });
+                        setSelectedQuestions(qMap);
+                      }}
+                      style={{ fontSize: '0.7rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}
+                    >
+                      Uncheck All
+                    </button>
+                  </div>
+                </h3>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(65px, 1fr))', gap: '8px' }}>
+                  {questionsList.map(q => {
+                    const bookletSet = 'A';
+                    const correctKey = exam.answerKeys?.[bookletSet] || exam.answerKey || {};
+                    const keyChar = correctKey[q] || '';
+                    return (
+                      <label 
+                        key={`q-chk-${q}`} 
+                        style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          alignItems: 'center', 
+                          gap: '4px', 
+                          fontSize: '0.75rem', 
+                          color: '#475569', 
+                          cursor: 'pointer',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          padding: '6px 4px',
+                          background: selectedQuestions[q] ? '#f1f5f9' : '#fff'
+                        }}
+                      >
+                        <input 
+                          type="checkbox" 
+                          checked={!!selectedQuestions[q]} 
+                          onChange={(e) => {
+                            setSelectedQuestions(prev => ({ ...prev, [q]: e.target.checked }));
+                          }}
+                        />
+                        <span>Q{q}</span>
+                        <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 'bold' }}>[{keyChar}]</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1476,9 +1476,28 @@ export default function App() {
   useEffect(() => {
     if (useWebcam) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
-        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        let videoDevices = devices.filter(d => d.kind === 'videoinput');
+        
+        // Filter for rear/back cameras if any exist
+        const rearCameras = videoDevices.filter(d => {
+          const label = d.label.toLowerCase();
+          return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('main') || label.includes('world') || label.includes('camera 0');
+        });
+        
+        if (rearCameras.length > 0) {
+          videoDevices = rearCameras;
+        } else {
+          const nonFrontCameras = videoDevices.filter(d => {
+            const label = d.label.toLowerCase();
+            return !label.includes('front') && !label.includes('user') && !label.includes('selfie') && !label.includes('face');
+          });
+          if (nonFrontCameras.length > 0) {
+            videoDevices = nonFrontCameras;
+          }
+        }
+        
         setCameraDevices(videoDevices);
-        if (videoDevices.length > 0 && !selectedCameraId) {
+        if (videoDevices.length > 0 && (!selectedCameraId || !videoDevices.some(d => d.deviceId === selectedCameraId))) {
           setSelectedCameraId(videoDevices[0].deviceId);
         }
       });

@@ -333,9 +333,35 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      let videoInputs = devices.filter(d => d.kind === 'videoinput');
+      
+      // Filter for rear/back cameras if any exist to enforce back-camera usage on mobile
+      const rearCameras = videoInputs.filter(d => {
+        const label = d.label.toLowerCase();
+        return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('main') || label.includes('world') || label.includes('camera 0');
+      });
+      
+      if (rearCameras.length > 0) {
+        videoInputs = rearCameras;
+      } else {
+        const nonFrontCameras = videoInputs.filter(d => {
+          const label = d.label.toLowerCase();
+          return !label.includes('front') && !label.includes('user') && !label.includes('selfie') && !label.includes('face');
+        });
+        if (nonFrontCameras.length > 0) {
+          videoInputs = nonFrontCameras;
+        }
+      }
+      
       setCameraDevices(videoInputs);
-      if (videoInputs.length > 0 && !selectedCameraId) {
+      
+      // Synchronize selectedCameraId with the active stream's device ID to prevent loop resetting
+      const activeTrack = stream.getVideoTracks()[0];
+      const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
+      
+      if (activeDeviceId && videoInputs.some(d => d.deviceId === activeDeviceId)) {
+        setSelectedCameraId(activeDeviceId);
+      } else if (videoInputs.length > 0 && (!selectedCameraId || !videoInputs.some(d => d.deviceId === selectedCameraId))) {
         setSelectedCameraId(videoInputs[0].deviceId);
       }
     } catch (err) {

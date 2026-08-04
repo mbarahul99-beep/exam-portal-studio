@@ -31,6 +31,8 @@ export interface OmrCustomSettings {
   headerCandidateFontSize: number;
   omrLogoHeight: number;
   omrInstitutionFontSize: number;
+  headerInstitutionFontFamily: string;
+  headerGeneralFontFamily: string;
 }
 
 export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
@@ -53,7 +55,9 @@ export const DEFAULT_OMR_SETTINGS: OmrCustomSettings = {
   headerTitleFontSize: 11,
   headerCandidateFontSize: 7.5,
   omrLogoHeight: 42,
-  omrInstitutionFontSize: 18
+  omrInstitutionFontSize: 18,
+  headerInstitutionFontFamily: "'Titan One', sans-serif",
+  headerGeneralFontFamily: "'Outfit', sans-serif"
 };
 
 export const OmrSettingsView: React.FC = () => {
@@ -403,6 +407,41 @@ export const OmrSettingsView: React.FC = () => {
                   style={{ width: '100%', accentColor: '#dc0045', cursor: 'pointer' }}
                 />
               </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  OMR Sheet Institution Name Font Family
+                </label>
+                <select
+                  value={settings.headerInstitutionFontFamily || "'Titan One', sans-serif"}
+                  onChange={(e) => handleChange('headerInstitutionFontFamily', e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', cursor: 'pointer', background: '#fff' }}
+                >
+                  <option value="'Titan One', sans-serif">Titan One (Bold Blocky)</option>
+                  <option value="'Outfit', sans-serif">Outfit (Modern Clean)</option>
+                  <option value="'Poppins', sans-serif">Poppins (Sleek Geometric)</option>
+                  <option value="'Montserrat', sans-serif">Montserrat (Geometric Sans)</option>
+                  <option value="'Merriweather', serif">Merriweather (Premium Serif)</option>
+                  <option value="'Playfair Display', serif">Playfair Display (Elegant Serif)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  OMR Sheet General Header Font Family (Subtitle & Info)
+                </label>
+                <select
+                  value={settings.headerGeneralFontFamily || "'Outfit', sans-serif"}
+                  onChange={(e) => handleChange('headerGeneralFontFamily', e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', cursor: 'pointer', background: '#fff' }}
+                >
+                  <option value="'Outfit', sans-serif">Outfit (Modern Clean)</option>
+                  <option value="'Inter', sans-serif">Inter (Tech Standard)</option>
+                  <option value="'Poppins', sans-serif">Poppins (Geometric Round)</option>
+                  <option value="'Roboto', sans-serif">Roboto (Clean Neutral)</option>
+                  <option value="'Open Sans', sans-serif">Open Sans (Highly Readable)</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -566,33 +605,42 @@ export const OmrSettingsView: React.FC = () => {
                     color: '#dc0045',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
-                    fontFamily: "'Titan One', sans-serif"
+                    fontFamily: settings.headerInstitutionFontFamily || "'Titan One', sans-serif"
                   }}>
                     {settings.instituteName || 'INSTITUTE APEX'}
                   </span>
                 </div>
 
-                <div style={{ textAlign: 'center', margin: '0 0 6px 0' }}>
+                <div style={{ textAlign: 'center', margin: '0 0 6px 0', fontFamily: settings.headerGeneralFontFamily || "'Outfit', sans-serif" }}>
                   <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0f172a' }}>NEET 11TH JULY 1</div>
                   <span style={{ background: '#dc0045', color: '#fff', fontSize: '0.52rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
                     {settings.subtitleText.toUpperCase() || 'OMR ANSWER SHEET'}
                   </span>
                 </div>
 
-                {/* Box Headers */}
-                <div style={{ margin: '10px 0', maxWidth: '85px' }}>
-                  <div style={{ border: '1px solid #dc0045', borderRadius: '4px' }}>
-                    <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.55rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
-                      {settings.rollNoBoxTitle}
+                {/* Box Headers and Candidate Details side-by-side */}
+                <div style={{ display: 'flex', gap: '8px', margin: '10px 0', alignItems: 'stretch' }}>
+                  {/* Roll No Card Preview */}
+                  <div style={{ width: '85px', fontFamily: settings.headerGeneralFontFamily || "'Outfit', sans-serif" }}>
+                    <div style={{ border: '1px solid #dc0045', borderRadius: '4px', height: '100%' }}>
+                      <div style={{ background: '#dc0045', color: '#fff', fontSize: '0.50rem', fontWeight: 'bold', padding: '2px', textAlign: 'center' }}>
+                        {settings.rollNoBoxTitle}
+                      </div>
+                      <div style={{ padding: '4px', textAlign: 'center', fontSize: '0.48rem', color: '#dc0045', lineHeight: 1.2 }}>① ② ③</div>
                     </div>
-                    <div style={{ height: '22px', padding: '4px', textAlign: 'center', fontSize: '0.55rem', color: '#dc0045' }}>① ② ③</div>
                   </div>
-                </div>
 
-                {/* Candidate Info Lines */}
-                <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', margin: '6px 0', fontSize: '0.55rem', color: '#dc0045', fontWeight: 'bold' }}>
-                  <div>{settings.candidateNameLabel}: _____________________</div>
-                  <div style={{ marginTop: '3px' }}>{settings.fatherNameLabel}: _____________________</div>
+                  {/* Candidate Details Card Preview */}
+                  <div style={{ flex: 1, border: '1px solid #dc0045', borderRadius: '4px', padding: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px', fontSize: '0.45rem', color: '#dc0045', fontWeight: 'bold', fontFamily: settings.headerGeneralFontFamily || "'Outfit', sans-serif" }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ whiteSpace: 'nowrap' }}>NAME:</span>
+                      <div style={{ flex: 1, borderBottom: '0.5px dashed #dc0045', height: '6px' }} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ whiteSpace: 'nowrap' }}>FATHER'S NAME:</span>
+                      <div style={{ flex: 1, borderBottom: '0.5px dashed #dc0045', height: '6px' }} />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Sample Question Grid */}

@@ -213,7 +213,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             fontSize: `${omrConfig.omrInstitutionFontSize || 18}px`,
             fontWeight: 900,
             color: '#dc0045',
-            fontFamily: "'Titan One', sans-serif",
+            fontFamily: omrConfig.headerInstitutionFontFamily || "'Titan One', sans-serif",
             textTransform: 'uppercase',
             letterSpacing: '0.5px'
           }}>
@@ -223,31 +223,22 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
         {/* Header section inside the margin frame */}
         <div className="omr-header-section" style={{ top: toY(62), display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 11 }}>
-          <div className="omr-subtitle" style={{ fontSize: `${omrConfig.headerSubtitleFontSize || 8.5}px`, padding: '1px 12px', marginBottom: '1.5mm' }}>
+          <div className="omr-subtitle" style={{ 
+            fontSize: `${omrConfig.headerSubtitleFontSize || 8.5}px`, 
+            padding: '1px 12px', 
+            marginBottom: '1.5mm',
+            fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
+          }}>
             INSTITUTE OF NEET & IIT-JEE COACHING
           </div>
-          <div className="omr-exam-title" style={{ fontSize: `${omrConfig.headerTitleFontSize || 11}px`, margin: 0, fontWeight: 900, color: '#0f172a' }}>
-            CLASS: {exam?.className?.toUpperCase() || 'NEET'} &nbsp;|&nbsp; EXAM: {examTitle.toUpperCase()}
-          </div>
-
-          {/* Candidate Name & Father's Name side-by-side in a single row */}
-          <div style={{
-            display: 'flex',
-            width: '100%',
-            justifyContent: 'space-between',
-            gap: '12mm',
-            padding: '0 8mm',
-            boxSizing: 'border-box',
-            marginTop: '3.5mm'
+          <div className="omr-exam-title" style={{ 
+            fontSize: `${omrConfig.headerTitleFontSize || 11}px`, 
+            margin: 0, 
+            fontWeight: 900, 
+            color: '#0f172a',
+            fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
           }}>
-            <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
-              <span style={{ fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`, fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>CANDIDATE NAME:</span>
-              <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
-            </div>
-            <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '2mm' }}>
-              <span style={{ fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`, fontWeight: 'bold', color: '#dc0045', whiteSpace: 'nowrap' }}>FATHER'S NAME:</span>
-              <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '11px' }} />
-            </div>
+            CLASS: {exam?.className?.toUpperCase() || 'NEET'} &nbsp;|&nbsp; EXAM: {examTitle.toUpperCase()}
           </div>
         </div>
 
@@ -297,6 +288,50 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             );
           });
         })}
+
+        {/* CANDIDATE DETAILS CARD (STACKED VERTICALLY TO THE RIGHT OF ROLL NUMBER CARD) */}
+        <div className="bg-border-card"
+             style={{
+               left: toX(230),
+               top: toY(115),
+               width: toX(700),
+               height: toY(225),
+               display: 'flex',
+               flexDirection: 'column',
+               justifyContent: 'center',
+               gap: '12px',
+               padding: '0 20px',
+               boxSizing: 'border-box'
+             }}
+        >
+          {/* Candidate Name Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`,
+              fontWeight: 'bold',
+              color: '#dc0045',
+              whiteSpace: 'nowrap',
+              fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
+            }}>
+              {omrConfig.candidateNameLabel || 'CANDIDATE NAME'}:
+            </span>
+            <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '14px' }} />
+          </div>
+
+          {/* Father's Name Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`,
+              fontWeight: 'bold',
+              color: '#dc0045',
+              whiteSpace: 'nowrap',
+              fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
+            }}>
+              {omrConfig.fatherNameLabel || "FATHER'S NAME"}:
+            </span>
+            <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '14px' }} />
+          </div>
+        </div>
 
         {/* DYNAMIC QUESTIONS GRID SECTION */}
         {layout.columns.map((col, colIdx) => {

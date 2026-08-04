@@ -26,8 +26,8 @@ export const OMR_CONFIG = {
   studentId: {
     xStart: 100, // Center of first digit column
     xStep: 36,   // Horizontal spacing between digits (enlarged)
-    yStart: 145, // Center of '1' bubble row (adjusted)
-    yStep: 22,   // Vertical spacing between rows (enlarged to prevent touching)
+    yStart: 205, // Center of '1' bubble row (adjusted to y = 205)
+    yStep: 20,   // Vertical spacing between rows (enlarged to prevent touching)
     numDigits: 10,
     bubbleRadius: 8
   },
@@ -164,7 +164,7 @@ export function getDynamicOMRQuestionLayout(
     const slots = getColumnSlots(currentQStart, currentQStart + count - 1, sections, total);
     currentQStart += count;
 
-    const colYStart = 390;
+    const colYStart = 410;
     const availHeight = 1295 - colYStart;
     const limit = availHeight / slots.length;
     if (limit < minLimit) {
@@ -196,7 +196,7 @@ export function getDynamicOMRQuestionLayout(
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = 390;
+    const colYStart = 410;
 
     columns.push({
       qStart,
@@ -212,7 +212,7 @@ export function getDynamicOMRQuestionLayout(
     });
   }
 
-  const yStart = 390;
+  const yStart = 410;
   const rowsPerCol = Math.max(...colCounts);
 
   return {

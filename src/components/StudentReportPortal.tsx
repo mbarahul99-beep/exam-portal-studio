@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X } from 'lucide-react';
+import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
@@ -171,6 +171,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const submissions = useLiveQuery(() => db.submissions.where('studentId').equals(numStudentId).toArray(), [numStudentId]) || [];
   const exams = useLiveQuery(() => db.exams.toArray()) || [];
   const allSubmissions = useLiveQuery(() => db.submissions.toArray()) || [];
+  const allQuestions = useLiveQuery(() => db.questions.toArray()) || [];
 
   // Match exam, calculate rank, and class average for each submission
   const examMap = new Map(exams.map(e => [e.id, e]));
@@ -317,6 +318,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   }
 
   // Calculate stats for the selected exam analysis modal
+  // Calculate stats for the selected exam analysis modal
   let analysisDetails = null;
   if (activeAnalysisSub) {
     const maxScore = activeAnalysisSub.exam.numQuestions * (activeAnalysisSub.exam.correctMarks || 4);
@@ -328,20 +330,83 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     const secIncorrects: Record<string, number> = {};
     const secUnanswereds: Record<string, number> = {};
 
+    // Calculate subject-wise breakdown (Physics, Chemistry, Maths, etc.)
+    const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number }> = {};
+    
+    // Calculate difficulty-wise breakdown
+    const diffStats: Record<'Easy' | 'Moderate' | 'Difficult', { correct: number; wrong: number; skipped: number; total: number; questions: number[] }> = {
+      Easy: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
+      Moderate: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
+      Difficult: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] }
+    };
+
+    let totalNegativeMarks = 0;
+    const examQuestions = allQuestions.filter(q => q.examId === activeAnalysisSub.exam.id);
+
     for (let q = 1; q <= activeAnalysisSub.exam.numQuestions; q++) {
       const secName = getQuestionSection(q, activeAnalysisSub.exam);
+      const cleanSubject = secName.split(' - ')[0] || secName;
       const sAns = activeAnalysisSub.answers[q];
       const setKey = activeAnalysisSub.exam.answerKeys?.[activeAnalysisSub.bookletSet || 'A'] || activeAnalysisSub.exam.answerKey || {};
       const cAns = setKey[q];
       
+      const isCorrect = sAns === cAns;
+      const isLeft = !sAns;
+      
+      const secRules = activeAnalysisSub.exam.sectionsMarking?.[secName] || {
+        correctMarks: activeAnalysisSub.exam.correctMarks || 4,
+        incorrectMarks: activeAnalysisSub.exam.incorrectMarks || -1
+      };
+      
       secTotals[secName] = (secTotals[secName] || 0) + 1;
       
-      if (!sAns) {
+      if (isLeft) {
         secUnanswereds[secName] = (secUnanswereds[secName] || 0) + 1;
-      } else if (sAns === cAns) {
+      } else if (isCorrect) {
         secCorrects[secName] = (secCorrects[secName] || 0) + 1;
       } else {
         secIncorrects[secName] = (secIncorrects[secName] || 0) + 1;
+      }
+
+      // Subject stats
+      if (!subjectStats[cleanSubject]) {
+        subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0 };
+      }
+      subjectStats[cleanSubject].total += 1;
+      if (isLeft) {
+        subjectStats[cleanSubject].unattempted += 1;
+      } else {
+        subjectStats[cleanSubject].attempted += 1;
+        if (isCorrect) {
+          subjectStats[cleanSubject].correct += 1;
+        } else {
+          const negVal = Math.abs(secRules.incorrectMarks);
+          subjectStats[cleanSubject].negativeMarks += negVal;
+          totalNegativeMarks += negVal;
+        }
+      }
+
+      // Difficulty level
+      let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+      if (activeAnalysisSub.attemptType === 'Online') {
+        const qObj = examQuestions[q - 1];
+        if (qObj && qObj.difficulty) {
+          qDiff = qObj.difficulty;
+        }
+      } else {
+        if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[q]) {
+          qDiff = activeAnalysisSub.exam.difficulties[q];
+        }
+      }
+
+      diffStats[qDiff].total += 1;
+      diffStats[qDiff].questions.push(q);
+      if (isLeft) {
+        diffStats[qDiff].skipped += 1;
+      } else if (isCorrect) {
+        diffStats[qDiff].correct += 1;
+      } else {
+        diffStats[qDiff].wrong += 1;
       }
     }
 
@@ -371,10 +436,29 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       };
     });
 
+    let easyNegativeMarks = 0;
+    diffStats.Easy.questions.forEach(q => {
+      const sAns = activeAnalysisSub.answers[q];
+      const subSet = activeAnalysisSub.bookletSet || 'A';
+      const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
+      const cAns = setKey[q];
+      if (sAns && sAns !== cAns) {
+        const secName = getQuestionSection(q, activeAnalysisSub.exam);
+        const secRules = activeAnalysisSub.exam.sectionsMarking?.[secName] || {
+          incorrectMarks: activeAnalysisSub.exam.incorrectMarks || -1
+        };
+        easyNegativeMarks += Math.abs(secRules.incorrectMarks);
+      }
+    });
+
     analysisDetails = {
       maxScore,
       accuracy,
-      sectionRows: sectionAnalysisRows
+      sectionRows: sectionAnalysisRows,
+      subjectStats,
+      diffStats,
+      totalNegativeMarks,
+      easyNegativeMarks
     };
   }
 
@@ -666,6 +750,266 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                 </h3>
               </div>
 
+            </div>
+
+            {/* SUBJECT-WISE PERFORMANCE ANALYSIS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Activity size={18} style={{ color: '#2563eb' }} /> Subject-wise Performance Diagnostics
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                {Object.entries(analysisDetails.subjectStats).map(([subName, stats]) => {
+                  const accuracy = stats.attempted > 0 ? Math.round((stats.correct / stats.attempted) * 100) : 0;
+                  // Color styling based on subject name
+                  let themeColor = '#2563eb'; // blue
+                  let lightBg = '#eff6ff';
+                  if (subName.toLowerCase().includes('chem')) {
+                    themeColor = '#ea580c'; // orange
+                    lightBg = '#fff7ed';
+                  } else if (subName.toLowerCase().includes('biol') || subName.toLowerCase().includes('bot') || subName.toLowerCase().includes('zoo')) {
+                    themeColor = '#16a34a'; // green
+                    lightBg = '#f0fdf4';
+                  }
+                  
+                  return (
+                    <div key={subName} style={{ background: '#fff', border: `1px solid #e2e8f0`, borderTop: `4px solid ${themeColor}`, borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>{subName}</h4>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Attempted</span>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{stats.attempted} <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 'normal' }}>/ {stats.total}</span></div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Correct</span>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16a34a' }}>{stats.correct}</div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Skipped</span>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#475569' }}>{stats.unattempted}</div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Negative Marks</span>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ef4444' }}>-{stats.negativeMarks}</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ background: lightBg, padding: '10px', borderRadius: '8px', textAlign: 'center', marginTop: 'auto' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block', fontWeight: 'bold', textTransform: 'uppercase' }}>Accuracy Rate</span>
+                        <span style={{ fontSize: '1.2rem', fontWeight: 900, color: themeColor }}>{accuracy}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Negative Marks dashboard card */}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Negative Marks Lost Breakdown</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', alignItems: 'stretch' }}>
+                  {Object.entries(analysisDetails.subjectStats).map(([subName, stats]) => (
+                    <div key={`portal-neg-${subName}`} style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#475569' }}>{subName}</span>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ef4444', marginTop: '4px' }}>-{stats.negativeMarks}</div>
+                    </div>
+                  ))}
+                  <div style={{ padding: '12px', background: '#ef4444', color: '#fff', borderRadius: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 4px 6px -1px rgba(239,68,68,0.2)' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: 'rgba(255,255,255,0.85)' }}>Total Negative</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900 }}>-{analysisDetails.totalNegativeMarks}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* DIFFICULTY LEVEL DIAGNOSTICS & ROI ANALYSIS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Award size={18} style={{ color: '#2563eb' }} /> Difficulty-level Diagnostics & ROI Analysis
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                
+                {/* 1. Stacked Bar Chart Card */}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                  <h4 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Questions Distribution by Difficulty</h4>
+                  
+                  {/* The Chart Axes Area */}
+                  <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-end', height: '200px', width: '100%', maxWidth: '320px', borderBottom: '2px solid #cbd5e1', paddingBottom: '8px', boxSizing: 'border-box' }}>
+                    
+                    {/* Easy Bar */}
+                    {(() => {
+                      const stats = analysisDetails.diffStats.Easy;
+                      const tot = stats.total || 1;
+                      const correctPct = (stats.correct / tot) * 100;
+                      const wrongPct = (stats.wrong / tot) * 100;
+                      const skippedPct = (stats.skipped / tot) * 100;
+                      return (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
+                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
+                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Easy</span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Moderate Bar */}
+                    {(() => {
+                      const stats = analysisDetails.diffStats.Moderate;
+                      const tot = stats.total || 1;
+                      const correctPct = (stats.correct / tot) * 100;
+                      const wrongPct = (stats.wrong / tot) * 100;
+                      const skippedPct = (stats.skipped / tot) * 100;
+                      return (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
+                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
+                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Moderate</span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Difficult Bar */}
+                    {(() => {
+                      const stats = analysisDetails.diffStats.Difficult;
+                      const tot = stats.total || 1;
+                      const correctPct = (stats.correct / tot) * 100;
+                      const wrongPct = (stats.wrong / tot) * 100;
+                      const skippedPct = (stats.skipped / tot) * 100;
+                      return (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
+                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
+                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Difficult</span>
+                        </div>
+                      );
+                    })()}
+
+                  </div>
+
+                  {/* Legend */}
+                  <div style={{ display: 'flex', gap: '16px', marginTop: '20px', fontSize: '0.75rem', color: '#64748b' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '12px', height: '12px', background: '#2563eb', borderRadius: '3px' }} /> Correct
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '3px' }} /> Incorrect
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '12px', height: '12px', background: '#cbd5e1', borderRadius: '3px' }} /> Skipped
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. Details Table and Questions list Card */}
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Difficulty Metrics Summary</h4>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #cbd5e1', color: '#475569' }}>
+                        <th style={{ padding: '6px 4px', fontWeight: 'bold' }}>Level</th>
+                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Correct</th>
+                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Wrong</th>
+                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Skipped</th>
+                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
+                        const stats = analysisDetails.diffStats[level];
+                        return (
+                          <tr key={level} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '8px 4px', fontWeight: 'bold', color: '#1e293b' }}>{level}</td>
+                            <td style={{ padding: '8px 4px', color: '#16a34a', fontWeight: 'bold', textAlign: 'center' }}>{stats.correct}</td>
+                            <td style={{ padding: '8px 4px', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>{stats.wrong}</td>
+                            <td style={{ padding: '8px 4px', color: '#64748b', textAlign: 'center' }}>{stats.skipped}</td>
+                            <td style={{ padding: '8px 4px', color: '#0f172a', fontWeight: 'bold', textAlign: 'center' }}>{stats.total}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* Inline list of color-coded questions per difficulty */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+                    {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
+                      const stats = analysisDetails.diffStats[level];
+                      if (stats.questions.length === 0) return null;
+                      return (
+                        <div key={`inline-list-${level}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#64748b' }}>{level} Questions:</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {stats.questions.map(qNum => {
+                              const sAns = activeAnalysisSub.answers[qNum];
+                              const subSet = activeAnalysisSub.bookletSet || 'A';
+                              const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
+                              const cAns = setKey[qNum];
+                              
+                              const isCorrect = sAns === cAns;
+                              const isLeft = !sAns;
+                              
+                              let bg = '#f8fafc';
+                              let color = '#64748b';
+                              let border = '1px solid #e2e8f0';
+
+                              if (isCorrect) {
+                                bg = '#f0fdf4';
+                                color = '#15803d';
+                                border = '1px solid #bcf0da';
+                              } else if (!isLeft) {
+                                bg = '#fdf2f2';
+                                color = '#b91c1c';
+                                border = '1px solid #fbd5d5';
+                              }
+
+                              return (
+                                <span 
+                                  key={`badge-${qNum}`} 
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: 'bold',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: bg,
+                                    color: color,
+                                    border: border
+                                  }}
+                                  title={`Q.${qNum} | Student Answer: ${sAns || 'Left'} | Correct: ${cAns}`}
+                                >
+                                  {qNum}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* 3. ROI Insights Alert Box */}
+              {analysisDetails.diffStats.Easy.wrong > 0 && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'flex-start', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                  <Lightbulb size={20} color="#d97706" style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <div>
+                    <h5 style={{ margin: '0 0 4px 0', fontSize: '0.88rem', fontWeight: 800, color: '#b45309' }}>ROI Optimization Insight</h5>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#d97706', lineHeight: '1.4', fontWeight: 600 }}>
+                      You got <strong style={{ color: '#92400e', fontSize: '0.85rem' }}>{analysisDetails.diffStats.Easy.wrong} Easy Questions incorrect</strong> (costing you <strong style={{ color: '#92400e', fontSize: '0.85rem' }}>-{analysisDetails.easyNegativeMarks} marks</strong> in negative scoring). Easy questions represent the highest return-on-investment (ROI) of your time during exams. Double-check your calculations on simple questions to avoid throwing away these free marks!
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Split layout: Section-wise table (left) & Question grid (right) */}

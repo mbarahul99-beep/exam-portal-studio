@@ -133,6 +133,43 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   });
   const [isSavingKey, setIsSavingKey] = useState(false);
 
+  const [showDifficultyModal, setShowDifficultyModal] = useState(false);
+  const [editableDifficulties, setEditableDifficulties] = useState<Record<number, 'Easy' | 'Moderate' | 'Difficult'>>({});
+  const [isSavingDifficulty, setIsSavingDifficulty] = useState(false);
+
+  React.useEffect(() => {
+    if (showDifficultyModal) {
+      const initialDiffs: Record<number, 'Easy' | 'Moderate' | 'Difficult'> = {};
+      for (let q = 1; q <= exam.numQuestions; q++) {
+        initialDiffs[q] = exam.difficulties?.[q] || 'Easy';
+      }
+      setEditableDifficulties(initialDiffs);
+    }
+  }, [showDifficultyModal, exam.difficulties, exam.numQuestions]);
+
+  const handleSaveDifficulties = async () => {
+    setIsSavingDifficulty(true);
+    try {
+      await db.exams.update(exam.id!, {
+        difficulties: editableDifficulties
+      });
+      const updatedExam = await db.exams.get(exam.id!);
+      if (updatedExam) {
+        try {
+          await syncExamToCloud(updatedExam);
+        } catch (err) {
+          console.warn("MySQL exam sync warning:", err);
+        }
+      }
+      alert(`Successfully saved updated Difficulty Levels for Q1 to Q${exam.numQuestions}!`);
+      setShowDifficultyModal(false);
+    } catch (err: any) {
+      alert(`Failed to save difficulty levels: ${err.message}`);
+    } finally {
+      setIsSavingDifficulty(false);
+    }
+  };
+
   // Detailed Excel Exporter States
   const [showExportFilterModal, setShowExportFilterModal] = useState(false);
   const [filterRollNo, setFilterRollNo] = useState(true);
@@ -233,6 +270,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [editFormOptions, setEditFormOptions] = useState<string[]>(['', '', '', '']);
   const [editFormCorrectIdx, setEditFormCorrectIdx] = useState<number>(0);
   const [editFormExplanation, setEditFormExplanation] = useState('');
+  const [editFormDifficulty, setEditFormDifficulty] = useState<'Easy' | 'Moderate' | 'Difficult'>('Easy');
 
   // Library/Question Bank States
   const [banksList, setBanksList] = useState<any[]>([]);
@@ -1085,6 +1123,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     setEditFormOptions([...q.options]);
     setEditFormCorrectIdx(q.correctOptionIdx);
     setEditFormExplanation(q.explanation || '');
+    setEditFormDifficulty(q.difficulty || 'Easy');
   };
 
   const saveEditedQuestion = async (qId: number) => {
@@ -1095,7 +1134,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           questionText: editFormText,
           options: [...editFormOptions],
           correctOptionIdx: editFormCorrectIdx,
-          explanation: editFormExplanation
+          explanation: editFormExplanation,
+          difficulty: editFormDifficulty
         };
       }
       return q;
@@ -1212,6 +1252,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <Key size={22} color="#1058ca" />
                 </div>
                 <span className="action-label">Answer Key</span>
+              </button>
+
+              <button className="circular-action-card" onClick={() => setShowDifficultyModal(true)}>
+                <div className="circle-icon-box">
+                  <Award size={22} color="#1058ca" />
+                </div>
+                <span className="action-label">Difficulty Levels</span>
               </button>
 
               <button className="circular-action-card" onClick={() => setIsScanningMode(true)}>
@@ -2007,6 +2054,244 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
         </div>
       )}
 
+      {/* DIFFICULTY LEVELS UPDATE FULL-SCREEN VIEW */}
+      {showDifficultyModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 99999,
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          {/* Top Header */}
+          <div style={{
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid #f3f4f6',
+            background: '#ffffff'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <button
+                onClick={() => setShowDifficultyModal(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+              >
+                <ArrowLeft size={22} color="#0f172a" />
+              </button>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                Difficulty Levels (Offline OMR)
+              </h2>
+            </div>
+
+            {/* Quick Fill All dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => {
+                  const menu = document.getElementById('diff-quick-menu');
+                  if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
+              >
+                <MoreVertical size={20} color="#0f172a" />
+              </button>
+
+              <div
+                id="diff-quick-menu"
+                style={{
+                  display: 'none',
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  background: '#ffffff',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  padding: '8px 0',
+                  zIndex: 100,
+                  minWidth: '180px'
+                }}
+              >
+                <div style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>QUICK FILL ALL:</div>
+                {(['Easy', 'Moderate', 'Difficult'] as const).map(diff => (
+                  <button
+                    key={`menu-diff-${diff}`}
+                    onClick={() => {
+                      setEditableDifficulties(prev => {
+                        const next = { ...prev };
+                        for (let q = 1; q <= exam.numQuestions; q++) {
+                          next[q] = diff;
+                        }
+                        return next;
+                      });
+                      const menu = document.getElementById('diff-quick-menu');
+                      if (menu) menu.style.display = 'none';
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 16px',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '0.88rem',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Set All to {diff}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Questions Grid/List */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '0 20px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ maxWidth: '640px', margin: '0 auto', padding: '10px 0 30px' }}>
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '0.85rem', color: '#64748b' }}>
+                💡 Assigning difficulty levels lets you analyze student performance breakdowns (Easy, Moderate, Difficult) in report cards.
+              </div>
+
+              {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
+                const currentDiff = editableDifficulties[q] || 'Easy';
+                return (
+                  <div
+                    key={`diff-row-${q}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 4px',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    {/* Question Number */}
+                    <span style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b', width: '50px' }}>
+                      Q {q}
+                    </span>
+
+                    {/* Difficulty Pill buttons */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {(['Easy', 'Moderate', 'Difficult'] as const).map((level) => {
+                        const isActive = currentDiff === level;
+                        let activeBg = '#22c55e';
+                        let activeColor = '#ffffff';
+                        let activeBorder = '1px solid #22c55e';
+                        
+                        if (level === 'Moderate') {
+                          activeBg = '#eab308';
+                          activeBorder = '1px solid #eab308';
+                        } else if (level === 'Difficult') {
+                          activeBg = '#ef4444';
+                          activeBorder = '1px solid #ef4444';
+                        }
+
+                        return (
+                          <button
+                            key={`diff-q-${q}-level-${level}`}
+                            onClick={() => {
+                              setEditableDifficulties(prev => ({
+                                ...prev,
+                                [q]: level
+                              }));
+                            }}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              border: isActive ? activeBorder : '1px solid #e2e8f0',
+                              background: isActive ? activeBg : '#ffffff',
+                              color: isActive ? activeColor : '#64748b',
+                              fontWeight: 700,
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {level}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bottom Sticky Footer */}
+          <div style={{
+            padding: '12px 20px 20px',
+            borderTop: '1px solid #f3f4f6',
+            background: '#ffffff',
+            display: 'flex',
+            gap: '12px',
+            maxWidth: '640px',
+            width: '100%',
+            margin: '0 auto',
+            boxSizing: 'border-box'
+          }}>
+            {/* Reset Button */}
+            <button
+              onClick={() => {
+                setEditableDifficulties(prev => {
+                  const next = { ...prev };
+                  for (let q = 1; q <= exam.numQuestions; q++) {
+                    next[q] = 'Easy';
+                  }
+                  return next;
+                });
+              }}
+              style={{
+                flex: 1,
+                background: '#ffffff',
+                border: '1.5px solid #2563eb',
+                borderRadius: '10px',
+                padding: '12px',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                color: '#2563eb',
+                cursor: 'pointer'
+              }}
+            >
+              Reset to Easy
+            </button>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveDifficulties}
+              disabled={isSavingDifficulty}
+              style={{
+                flex: 1,
+                background: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '12px',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
+              }}
+            >
+              {isSavingDifficulty ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* PUBLISH EXAM RESULTS MODAL */}
       {showPublishModal && (
         <PublishResultsModal
@@ -2339,7 +2624,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                       questionText: '',
                       options: ['', '', '', ''],
                       correctOptionIdx: 0,
-                      explanation: ''
+                      explanation: '',
+                      difficulty: 'Easy' as const
                     };
                     const updated = [...questions, newQ];
                     await saveQuestionsToDbAndSync(updated);
@@ -2415,7 +2701,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                           ))}
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>CORRECT OPTION</span>
                             <select
@@ -2426,6 +2712,19 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                               {editFormOptions.map((_, oIdx) => (
                                 <option key={oIdx} value={oIdx}>Option {['A', 'B', 'C', 'D', 'E'][oIdx]}</option>
                               ))}
+                            </select>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>DIFFICULTY</span>
+                            <select
+                              value={editFormDifficulty}
+                              onChange={e => setEditFormDifficulty(e.target.value as any)}
+                              style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', background: '#fff' }}
+                            >
+                              <option value="Easy">Easy</option>
+                              <option value="Moderate">Moderate</option>
+                              <option value="Difficult">Difficult</option>
                             </select>
                           </div>
 
@@ -2468,6 +2767,19 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary)' }}>Q {sIdx + 1}</span>
                           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>(Exam Question {overallQNum})</span>
+                          {q.difficulty && (
+                            <span style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 'bold',
+                              background: q.difficulty === 'Easy' ? '#f0fdf4' : q.difficulty === 'Moderate' ? '#fef9c3' : '#fef2f2',
+                              color: q.difficulty === 'Easy' ? '#15803d' : q.difficulty === 'Moderate' ? '#a16207' : '#b91c1c',
+                              padding: '1px 6px',
+                              borderRadius: '10px',
+                              border: `1px solid ${q.difficulty === 'Easy' ? '#bbf7d0' : q.difficulty === 'Moderate' ? '#fef08a' : '#fecaca'}`
+                            }}>
+                              {q.difficulty}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
                           <MathRenderer text={q.questionText} />

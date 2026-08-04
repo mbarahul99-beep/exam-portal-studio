@@ -1,5 +1,6 @@
 import React from 'react';
-import { type Exam, type Student } from '../db';
+import { db, type Exam, type Student } from '../db';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 interface StudentReportPrintProps {
   exam: Exam;
@@ -13,6 +14,7 @@ interface StudentReportPrintProps {
 }
 
 export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: rawExam, student, submission }) => {
+  const examQuestions = useLiveQuery(() => db.questions.where('examId').equals(rawExam.id!).toArray(), [rawExam.id]) || [];
   const exam = { ...rawExam };
   const totalQsFromSections = exam.sections && Array.isArray(exam.sections)
     ? exam.sections.reduce((acc: number, sec: any) => acc + (Number(sec.qCount) || 0), 0)
@@ -133,8 +135,89 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   const sectionStats = Object.values(sectionStatsMap);
   const percentage = totalPossible > 0 ? Math.max(0, Math.round((submission.score / totalPossible) * 100)) : 0;
 
+  // Subject-wise and difficulty-wise stats for printed report
+  const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number }> = {};
+  const diffStats: Record<'Easy' | 'Moderate' | 'Difficult', { correct: number; wrong: number; skipped: number; total: number; questions: number[] }> = {
+    Easy: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
+    Moderate: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
+    Difficult: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] }
+  };
+  let totalNegativeMarks = 0;
+
+  for (let q = 1; q <= exam.numQuestions; q++) {
+    const secName = getQuestionSection(q, exam);
+    const cleanSubject = secName.split(' - ')[0] || secName;
+    const sAns = submission.answers[q];
+    const subSet = submission.bookletSet || 'A';
+    const correctKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
+    const cAns = correctKey[q];
+    
+    const isCorrect = sAns === cAns;
+    const isLeft = !sAns;
+    
+    const secRules = exam.sectionsMarking?.[secName] || {
+      correctMarks: cMarks,
+      incorrectMarks: iMarks
+    };
+
+    if (!subjectStats[cleanSubject]) {
+      subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0 };
+    }
+    subjectStats[cleanSubject].total += 1;
+    if (isLeft) {
+      subjectStats[cleanSubject].unattempted += 1;
+    } else {
+      subjectStats[cleanSubject].attempted += 1;
+      if (isCorrect) {
+        subjectStats[cleanSubject].correct += 1;
+      } else {
+        const negVal = Math.abs(secRules.incorrectMarks);
+        subjectStats[cleanSubject].negativeMarks += negVal;
+        totalNegativeMarks += negVal;
+      }
+    }
+
+    // Difficulty level
+    let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+    if (rawExam.startsAt) { // online exam
+      const qObj = examQuestions[q - 1];
+      if (qObj && qObj.difficulty) {
+        qDiff = qObj.difficulty;
+      }
+    } else {
+      if (exam.difficulties && exam.difficulties[q]) {
+        qDiff = exam.difficulties[q];
+      }
+    }
+
+    diffStats[qDiff].total += 1;
+    diffStats[qDiff].questions.push(q);
+    if (isLeft) {
+      diffStats[qDiff].skipped += 1;
+    } else if (isCorrect) {
+      diffStats[qDiff].correct += 1;
+    } else {
+      diffStats[qDiff].wrong += 1;
+    }
+  }
+
+  let easyNegativeMarks = 0;
+  diffStats.Easy.questions.forEach(q => {
+    const sAns = submission.answers[q];
+    const subSet = submission.bookletSet || 'A';
+    const setKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
+    const cAns = setKey[q];
+    if (sAns && sAns !== cAns) {
+      const secName = getQuestionSection(q, exam);
+      const secRules = exam.sectionsMarking?.[secName] || {
+        incorrectMarks: iMarks
+      };
+      easyNegativeMarks += Math.abs(secRules.incorrectMarks);
+    }
+  });
+
   // Decide if we need exactly 2 pages
-  const isTwoPages = exam.numQuestions > 60;
+  const isTwoPages = exam.numQuestions > 35;
 
   // Dynamically calculate and balance columns to fit questions cleanly on page
   const totalQuestions = exam.numQuestions;
@@ -285,6 +368,119 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     </section>
   );
 
+  const renderPrintSubjectBreakdown = () => (
+    <section className="report-section print-subject-stats-section" style={{ marginTop: '14px' }}>
+      <h2>Subject-wise Performance Breakdown</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginTop: '8px' }}>
+        {Object.entries(subjectStats).map(([subName, stats]) => {
+          const accuracy = stats.attempted > 0 ? Math.round((stats.correct / stats.attempted) * 100) : 0;
+          return (
+            <div key={`print-sub-${subName}`} style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#f8fafc', boxSizing: 'border-box' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>{subName}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px', fontSize: '0.72rem' }}>
+                <span style={{ color: '#475569' }}>Attempted:</span>
+                <strong style={{ textAlign: 'right' }}>{stats.attempted} / {stats.total}</strong>
+                <span style={{ color: '#16a34a' }}>Correct:</span>
+                <strong style={{ color: '#16a34a', textAlign: 'right' }}>{stats.correct}</strong>
+                <span style={{ color: '#ef4444' }}>Negative:</span>
+                <strong style={{ color: '#ef4444', textAlign: 'right' }}>-{stats.negativeMarks}</strong>
+                <span style={{ color: '#475569' }}>Accuracy:</span>
+                <strong style={{ color: '#2563eb', textAlign: 'right' }}>{accuracy}%</strong>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ border: '1px solid #fee2e2', background: '#fef2f2', borderRadius: '8px', padding: '10px 14px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444' }}>Negative Marks Lost:</span>
+        <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+          {Object.entries(subjectStats).map(([subName, stats]) => (
+            <span key={`print-neg-sub-${subName}`} style={{ color: '#475569' }}>
+              {subName}: <strong style={{ color: '#ef4444' }}>-{stats.negativeMarks}</strong>
+            </span>
+          ))}
+          <span style={{ borderLeft: '1px solid #fca5a5', paddingLeft: '12px', color: '#b91c1c' }}>
+            Total: <strong>-{totalNegativeMarks}</strong>
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderPrintDifficultyDiagnostics = () => (
+    <section className="report-section print-difficulty-section" style={{ marginTop: '14px' }}>
+      <h2>Difficulty-level Performance & ROI Analysis</h2>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '14px', marginTop: '8px', alignItems: 'stretch' }}>
+        
+        {/* Left: Mini Stacked Bar Chart */}
+        <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px', background: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-end', height: '110px', paddingBottom: '4px', boxSizing: 'border-box' }}>
+            {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
+              const stats = diffStats[level];
+              const tot = stats.total || 1;
+              const correctPct = (stats.correct / tot) * 100;
+              const wrongPct = (stats.wrong / tot) * 100;
+              const skippedPct = (stats.skipped / tot) * 100;
+              return (
+                <div key={`print-bar-${level}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '22px', height: '90px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse' }}>
+                    {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} />}
+                    {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} />}
+                    {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} />}
+                  </div>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#475569' }}>{level[0]}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '0.58rem', color: '#64748b', marginTop: '6px', justifyContent: 'center' }}>
+            <span>🔵 Correct</span>
+            <span>🔴 Wrong</span>
+            <span>⚪ Skip</span>
+          </div>
+        </div>
+
+        {/* Right: Summary Metrics Table */}
+        <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '6px', boxSizing: 'border-box' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#475569' }}>
+                <th style={{ padding: '2px 4px', fontWeight: 'bold' }}>Difficulty Level</th>
+                <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Correct</th>
+                <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Wrong</th>
+                <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Skipped</th>
+                <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
+                const stats = diffStats[level];
+                return (
+                  <tr key={`print-row-${level}`} style={{ borderBottom: '1px dashed #edf2f7' }}>
+                    <td style={{ padding: '4px 4px', fontWeight: 'bold', color: '#1e293b' }}>{level}</td>
+                    <td style={{ padding: '4px 4px', color: '#16a34a', fontWeight: 'bold', textAlign: 'center' }}>{stats.correct}</td>
+                    <td style={{ padding: '4px 4px', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>{stats.wrong}</td>
+                    <td style={{ padding: '4px 4px', color: '#64748b', textAlign: 'center' }}>{stats.skipped}</td>
+                    <td style={{ padding: '4px 4px', color: '#0f172a', fontWeight: 'bold', textAlign: 'center' }}>{stats.total}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* ROI alert notice inside details */}
+          {diffStats.Easy.wrong > 0 && (
+            <div style={{ border: '1px solid #fef3c7', background: '#fffbeb', borderRadius: '6px', padding: '6px 10px', fontSize: '0.68rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+              <span>⚠️ <strong>ROI Tip:</strong> Avoid calculations mistakes on simple questions. You got <strong>{diffStats.Easy.wrong} Easy questions incorrect</strong> (-{easyNegativeMarks} marks lost).</span>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </section>
+  );
+
   const renderResponsesGridRange = (startQNum: number, endQNum: number, title?: string, availableHeight: number = 600) => {
     const rangeTotal = endQNum - startQNum + 1;
     const columnsCount = 4;
@@ -421,6 +617,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
               </div>
             </header>
             {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`, 840)}
+            {renderPrintSubjectBreakdown()}
+            {renderPrintDifficultyDiagnostics()}
             <div style={{ flex: 1 }} /> {/* Push footer to bottom */}
             {renderFooter()}
           </div>
@@ -432,6 +630,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           {renderMetaGrid()}
           {renderScoreSummary()}
           {renderSectionStats()}
+          {renderPrintSubjectBreakdown()}
+          {renderPrintDifficultyDiagnostics()}
           {renderResponsesGridRange(1, totalQuestions, "Question Response Details", 520)}
           {renderFooter()}
         </div>

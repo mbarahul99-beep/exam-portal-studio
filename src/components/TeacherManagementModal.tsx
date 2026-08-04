@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserPlus, Trash2, Edit2, Key, Check, Shield, Search, MoreVertical, Phone, Mail, Plus, ArrowLeft } from 'lucide-react';
+import { X, UserPlus, Trash2, Edit2, Check, Shield, Search, MoreVertical, Phone, Plus, ArrowLeft } from 'lucide-react';
 import { db, type Teacher } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
@@ -12,7 +12,6 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
   const teachers = useLiveQuery(() => db.teachers.toArray()) || [];
 
   const [showForm, setShowForm] = useState(false);
-  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -25,7 +24,6 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
 
   const handleOpenAdd = () => {
     setEditingTeacherId(null);
-    setUserId('');
     setPassword('');
     setName('');
     setPhone('');
@@ -35,7 +33,6 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
 
   const handleEdit = (t: Teacher) => {
     setEditingTeacherId(t.id!);
-    setUserId(t.userId);
     setPassword(t.password);
     setName(t.name);
     setPhone(t.phone || '');
@@ -46,36 +43,40 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId.trim() || !password.trim() || !name.trim()) {
-      alert("User ID, Password, and Full Name are required.");
+    if (!name.trim() || !email.trim()) {
+      alert("Teacher Name and Email (Google Account) are required.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Check if User ID is unique when adding new teacher
-      const exists = await db.teachers.where('userId').equals(userId.trim()).first();
+      const cleanEmail = email.trim().toLowerCase();
+      const generatedUserId = cleanEmail; // Unique Google email serves as User ID
+      const defaultPassword = password.trim() || 'GoogleAuthBypass'; // Auto-assign default password or preserve edited one
+
+      // Check if this Email/User ID is unique when adding new teacher
+      const exists = await db.teachers.where('userId').equals(generatedUserId).first();
       if (exists && exists.id !== editingTeacherId) {
-        alert(`Teacher User ID "${userId}" is already taken.`);
+        alert(`A teacher with email "${cleanEmail}" is already registered.`);
         setIsSubmitting(false);
         return;
       }
 
       if (editingTeacherId) {
         await db.teachers.update(editingTeacherId, {
-          userId: userId.trim(),
-          password: password.trim(),
+          userId: generatedUserId,
+          password: defaultPassword,
           name: name.trim(),
           phone: phone.trim() || undefined,
-          email: email.trim() || undefined
+          email: cleanEmail
         });
       } else {
         await db.teachers.add({
-          userId: userId.trim(),
-          password: password.trim(),
+          userId: generatedUserId,
+          password: defaultPassword,
           name: name.trim(),
           phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
+          email: cleanEmail,
           createdAt: new Date()
         });
       }
@@ -86,11 +87,11 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: userId.trim(),
-            password: password.trim(),
+            userId: generatedUserId,
+            password: defaultPassword,
             name: name.trim(),
             phone: phone.trim(),
-            email: email.trim()
+            email: cleanEmail
           })
         });
         await pullCloudUpdatesToIndexedDB();
@@ -99,7 +100,6 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
       }
 
       setEditingTeacherId(null);
-      setUserId('');
       setPassword('');
       setName('');
       setPhone('');
@@ -276,34 +276,10 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
             <div style={{ background: '#f1f5f9', borderRadius: '12px', padding: '20px', border: '1px solid #cbd5e1' }}>
               <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <UserPlus size={18} color="#2563eb" />
-                {editingTeacherId ? 'Edit Teacher Credentials' : 'Register New Teacher'}
+                {editingTeacherId ? 'Edit Teacher Details' : 'Register New Teacher'}
               </h4>
 
               <form onSubmit={handleSubmit} className="teacher-form-grid">
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>USER ID *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
-                    placeholder="e.g. teacher_sharma"
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>PASSWORD *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter login password"
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                  />
-                </div>
-
                 <div>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>FULL NAME *</label>
                   <input 
@@ -317,23 +293,24 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                 </div>
 
                 <div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>EMAIL (FOR GOOGLE SIGN-IN) *</label>
+                  <input 
+                    type="email" 
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. sharma@gmail.com"
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>PHONE NO (OPTIONAL)</label>
                   <input 
                     type="tel" 
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="e.g. 9876543210"
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>EMAIL ID (OPTIONAL)</label>
-                  <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. sharma@apex.in"
                     style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -358,7 +335,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                       gap: '6px'
                     }}
                   >
-                    <Check size={18} /> {editingTeacherId ? 'Update Credentials' : 'Save Teacher'}
+                    <Check size={18} /> {editingTeacherId ? 'Save Changes' : 'Save Teacher'}
                   </button>
 
                   <button 
@@ -419,9 +396,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569', fontWeight: 700 }}>
                           <th style={{ padding: '12px 16px' }}>Teacher Name</th>
-                          <th style={{ padding: '12px 16px' }}>User ID</th>
-                          <th style={{ padding: '12px 16px' }}>Password</th>
-                          <th style={{ padding: '12px 16px' }}>Contact</th>
+                          <th style={{ padding: '12px 16px' }}>Google Sign-In Email</th>
+                          <th style={{ padding: '12px 16px' }}>Phone</th>
                           <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                         </tr>
                       </thead>
@@ -430,27 +406,17 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                           <tr key={`t-row-${t.id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0f172a' }}>{t.name}</td>
                             <td style={{ padding: '12px 16px' }}>
-                              <code style={{ background: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                                {t.userId}
-                              </code>
-                            </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569' }}>
-                                <Key size={14} color="#64748b" /> {t.password}
+                              <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                                {t.email || t.userId}
                               </span>
                             </td>
                             <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.85rem' }}>
-                              {t.phone || t.email ? (
-                                <div>
-                                  {t.phone && <div>📞 {t.phone}</div>}
-                                  {t.email && <div style={{ wordBreak: 'break-all' }}>✉️ {t.email}</div>}
-                                </div>
-                              ) : '-'}
+                              {t.phone || '-'}
                             </td>
                             <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button 
                                 onClick={() => handleEdit(t)}
-                                title="Edit Credentials"
+                                title="Edit Teacher Details"
                                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#2563eb', marginRight: '12px' }}
                               >
                                 <Edit2 size={16} />
@@ -519,19 +485,14 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                                 {t.name}
                               </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <code style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>
-                                  ID: {t.userId}
-                                </code>
-                                <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Key size={12} color="#64748b" /> {t.password}
-                                </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '0.8rem', color: '#475569' }}>
+                                <span style={{ color: '#2563eb', fontWeight: 700 }}>Google Sign-In:</span>
+                                <span style={{ fontWeight: 600, color: '#0f172a' }}>{t.email || t.userId}</span>
                               </div>
 
-                              {(t.phone || t.email) && (
-                                <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                  {t.phone && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {t.phone}</span>}
-                                  {t.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', wordBreak: 'break-all', whiteSpace: 'normal', minWidth: 0 }}><Mail size={12} style={{ flexShrink: 0 }} /> <span style={{ wordBreak: 'break-all' }}>{t.email}</span></span>}
+                              {t.phone && (
+                                <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                  <Phone size={12} /> {t.phone}
                                 </div>
                               )}
                             </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Trash2, Edit2, Key, Check, Shield, Search, MoreVertical, Phone, FileSpreadsheet } from 'lucide-react';
+import { X, Trash2, Edit2, Check, Shield, Search, MoreVertical, Phone, FileSpreadsheet } from 'lucide-react';
 import { db, type Teacher } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
@@ -11,7 +11,6 @@ export const TeacherManagementView: React.FC = () => {
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null);
 
   // Drawer Form States
-  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -23,7 +22,6 @@ export const TeacherManagementView: React.FC = () => {
 
   const handleOpenAddDrawer = () => {
     setEditingTeacherId(null);
-    setUserId('');
     setPassword('');
     setName('');
     setPhone('');
@@ -33,7 +31,6 @@ export const TeacherManagementView: React.FC = () => {
 
   const handleEdit = (t: Teacher) => {
     setEditingTeacherId(t.id!);
-    setUserId(t.userId);
     setPassword(t.password);
     setName(t.name);
     setPhone(t.phone || '');
@@ -44,36 +41,40 @@ export const TeacherManagementView: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId.trim() || !password.trim() || !name.trim()) {
-      alert("User ID, Password, and Full Name are required.");
+    if (!name.trim() || !email.trim()) {
+      alert("Teacher Name and Email (Google Account) are required.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Check if User ID is unique when adding new teacher
-      const exists = await db.teachers.where('userId').equals(userId.trim()).first();
+      const cleanEmail = email.trim().toLowerCase();
+      const generatedUserId = cleanEmail; // Unique Google email serves as User ID
+      const defaultPassword = password.trim() || 'GoogleAuthBypass'; // Auto-assign default password or preserve edited one
+
+      // Check if this Email/User ID is unique when adding new teacher
+      const exists = await db.teachers.where('userId').equals(generatedUserId).first();
       if (exists && exists.id !== editingTeacherId) {
-        alert(`Teacher User ID "${userId}" is already taken.`);
+        alert(`A teacher with email "${cleanEmail}" is already registered.`);
         setIsSubmitting(false);
         return;
       }
 
       if (editingTeacherId) {
         await db.teachers.update(editingTeacherId, {
-          userId: userId.trim(),
-          password: password.trim(),
+          userId: generatedUserId,
+          password: defaultPassword,
           name: name.trim(),
           phone: phone.trim() || undefined,
-          email: email.trim() || undefined
+          email: cleanEmail
         });
       } else {
         await db.teachers.add({
-          userId: userId.trim(),
-          password: password.trim(),
+          userId: generatedUserId,
+          password: defaultPassword,
           name: name.trim(),
           phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
+          email: cleanEmail,
           createdAt: new Date()
         });
       }
@@ -84,11 +85,11 @@ export const TeacherManagementView: React.FC = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: userId.trim(),
-            password: password.trim(),
+            userId: generatedUserId,
+            password: defaultPassword,
             name: name.trim(),
             phone: phone.trim(),
-            email: email.trim()
+            email: cleanEmail
           })
         });
         await pullCloudUpdatesToIndexedDB();
@@ -97,7 +98,6 @@ export const TeacherManagementView: React.FC = () => {
       }
 
       setEditingTeacherId(null);
-      setUserId('');
       setPassword('');
       setName('');
       setPhone('');
@@ -276,16 +276,8 @@ export const TeacherManagementView: React.FC = () => {
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', color: '#475569', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <code style={{ background: '#f1f5f9', color: '#0284c7', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', fontWeight: 700 }}>
-                            {t.userId}
-                          </code>
-                        </div>
-
-                        <div style={{ width: '1px', height: '12px', background: '#cbd5e1' }} />
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Key size={14} color="#64748b" />
-                          <span>{t.password}</span>
+                          <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 700 }}>Google Sign-In:</span>
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{t.email || t.userId}</span>
                         </div>
 
                         {t.phone && (
@@ -419,10 +411,10 @@ export const TeacherManagementView: React.FC = () => {
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                  {editingTeacherId ? 'Edit Teacher Credentials' : 'Add New Teacher'}
+                  {editingTeacherId ? 'Edit Teacher Details' : 'Add New Teacher'}
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                  Assign User ID & Password for portal login
+                  Register teacher details for Google Sign-In portal access
                 </span>
               </div>
 
@@ -437,30 +429,6 @@ export const TeacherManagementView: React.FC = () => {
             {/* Drawer Form Body */}
             <form onSubmit={handleSubmit} style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>USER ID *</label>
-                <input 
-                  type="text" 
-                  required
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
-                  placeholder="e.g. teacher_sharma"
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>PORTAL PASSWORD *</label>
-                <input 
-                  type="text" 
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter login password"
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>TEACHER FULL NAME *</label>
                 <input 
                   type="text" 
@@ -473,23 +441,24 @@ export const TeacherManagementView: React.FC = () => {
               </div>
 
               <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>EMAIL ADDRESS (FOR GOOGLE SIGN-IN) *</label>
+                <input 
+                  type="email" 
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. sharma@gmail.com"
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>MOBILE PHONE NUMBER (OPTIONAL)</label>
                 <input 
                   type="tel" 
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="e.g. 9876543210"
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>EMAIL ADDRESS (OPTIONAL)</label>
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. sharma@apex.in"
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
@@ -508,7 +477,7 @@ export const TeacherManagementView: React.FC = () => {
                   disabled={isSubmitting}
                   style={{ flex: 2, padding: '12px', borderRadius: '8px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                 >
-                  <Check size={18} /> {editingTeacherId ? 'Update Credentials' : 'Save Teacher'}
+                  <Check size={18} /> {editingTeacherId ? 'Save Changes' : 'Save Teacher'}
                 </button>
               </div>
             </form>

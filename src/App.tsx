@@ -21,6 +21,7 @@ import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView, DEFAULT_OMR_SETTINGS } from './components/OmrSettingsView';
+import { BrandingSettingsView } from './components/BrandingSettingsView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
 import { 
   Sliders,
@@ -100,7 +101,7 @@ class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, t
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'general-settings'>(
     () => {
       const stored = localStorage.getItem('appex_active_tab');
       return (stored && stored !== 'student-portal-setup') ? (stored as any) : 'dashboard';
@@ -1963,6 +1964,15 @@ export default function App() {
             >
               <Sliders size={18} /> OMR Settings
             </button>
+            <button 
+              className={`nav-item ${activeTab === 'general-settings' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('general-settings');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Settings size={18} /> General Settings
+            </button>
 
 
 
@@ -3567,6 +3577,10 @@ export default function App() {
 
           {activeTab === 'omr-settings' && (
             <OmrSettingsView />
+          )}
+
+          {activeTab === 'general-settings' && (
+            <BrandingSettingsView />
           )}
         </main>
 

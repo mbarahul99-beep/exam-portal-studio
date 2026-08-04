@@ -217,30 +217,47 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
   // Load custom logo settings
   const storedJson = localStorage.getItem('omr_custom_settings');
-  let printLogoHeight = 42;
-  let printLogoNameHeight = 26;
+  let printLogoHeight = 126;
+  let printLogoNameHeight = 78;
+  let pdfTitleFontSize = 13;
+  let pdfAddressFontSize = 10;
+  let pdfContactFontSize = 10;
+
   if (storedJson) {
     try {
       const parsed = JSON.parse(storedJson);
-      if (parsed.logoHeight) printLogoHeight = parsed.logoHeight;
-      if (parsed.logoNameHeight) printLogoNameHeight = parsed.logoNameHeight;
+      if (parsed.pdfLogoHeight) {
+        printLogoHeight = parsed.pdfLogoHeight;
+      } else if (parsed.logoHeight) {
+        printLogoHeight = parsed.logoHeight * 3;
+      }
+      
+      if (parsed.pdfLogoNameHeight) {
+        printLogoNameHeight = parsed.pdfLogoNameHeight;
+      } else if (parsed.logoNameHeight) {
+        printLogoNameHeight = parsed.logoNameHeight * 3;
+      }
+
+      if (parsed.pdfTitleFontSize) pdfTitleFontSize = parsed.pdfTitleFontSize;
+      if (parsed.pdfAddressFontSize) pdfAddressFontSize = parsed.pdfAddressFontSize;
+      if (parsed.pdfContactFontSize) pdfContactFontSize = parsed.pdfContactFontSize;
     } catch (e) {}
   }
 
   const renderHeader = () => (
     <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
       <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '8px' }}>
-        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight * 3}px`, width: 'auto', objectFit: 'contain' }} />
-        <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight * 3}px`, width: 'auto', objectFit: 'contain' }} />
+        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+        <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
       </div>
       <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif' }}>
-        <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+        <div style={{ fontSize: `${pdfTitleFontSize}px`, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
           Institute of Medical Entrance Exams (NEET) & IIT-JEE Coaching
         </div>
-        <div style={{ fontSize: '10px', fontWeight: 600, color: '#475569', marginBottom: '2px' }}>
+        <div style={{ fontSize: `${pdfAddressFontSize}px`, fontWeight: 600, color: '#475569', marginBottom: '2px' }}>
           #1257, Urban State, Near HUDA Ground, Jind- 126102 (Haryana)
         </div>
-        <div style={{ fontSize: '10px', fontWeight: 600, color: '#475569' }}>
+        <div style={{ fontSize: `${pdfContactFontSize}px`, fontWeight: 600, color: '#475569' }}>
           Call : 9467752374, Email: instituteapexjind@gmail.com
         </div>
       </div>

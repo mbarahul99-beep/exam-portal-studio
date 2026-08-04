@@ -73,16 +73,6 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     }
   };
 
-  // Compute breakdown stats per section
-  const sectionStatsMap: Record<string, {
-    name: string;
-    correct: number;
-    wrong: number;
-    left: number;
-    score: number;
-    totalPossible: number;
-  }> = {};
-
   let totalPossible = 0;
   let correct = 0;
   let wrong = 0;
@@ -103,40 +93,19 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
     totalPossible += marking.correctMarks;
 
-    if (!sectionStatsMap[secName]) {
-      sectionStatsMap[secName] = {
-        name: secName,
-        correct: 0,
-        wrong: 0,
-        left: 0,
-        score: 0,
-        totalPossible: 0
-      };
-    }
-
-    const stat = sectionStatsMap[secName];
-    stat.totalPossible += marking.correctMarks;
-
     if (!sAns) {
       left++;
-      stat.left++;
-      stat.score += marking.unansweredMarks;
     } else if (sAns === cAns) {
       correct++;
-      stat.correct++;
-      stat.score += marking.correctMarks;
     } else {
       wrong++;
-      stat.wrong++;
-      stat.score += marking.incorrectMarks;
     }
   }
 
-  const sectionStats = Object.values(sectionStatsMap);
   const percentage = totalPossible > 0 ? Math.max(0, Math.round((submission.score / totalPossible) * 100)) : 0;
 
   // Subject-wise and difficulty-wise stats for printed report
-  const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number }> = {};
+  const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number; score: number; totalPossible: number }> = {};
   const diffStats: Record<'Easy' | 'Moderate' | 'Difficult', { correct: number; wrong: number; skipped: number; total: number; questions: number[] }> = {
     Easy: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
     Moderate: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] },
@@ -155,25 +124,30 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     const isCorrect = sAns === cAns;
     const isLeft = !sAns;
     
-    const secRules = exam.sectionsMarking?.[secName] || {
+    const secRules: any = exam.sectionsMarking?.[secName] || {
       correctMarks: cMarks,
-      incorrectMarks: iMarks
+      incorrectMarks: iMarks,
+      unansweredMarks: uMarks
     };
 
     if (!subjectStats[cleanSubject]) {
-      subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0 };
+      subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0, score: 0, totalPossible: 0 };
     }
     subjectStats[cleanSubject].total += 1;
+    subjectStats[cleanSubject].totalPossible += secRules.correctMarks;
     if (isLeft) {
       subjectStats[cleanSubject].unattempted += 1;
+      subjectStats[cleanSubject].score += secRules.unansweredMarks || 0;
     } else {
       subjectStats[cleanSubject].attempted += 1;
       if (isCorrect) {
         subjectStats[cleanSubject].correct += 1;
+        subjectStats[cleanSubject].score += secRules.correctMarks;
       } else {
         const negVal = Math.abs(secRules.incorrectMarks);
         subjectStats[cleanSubject].negativeMarks += negVal;
         totalNegativeMarks += negVal;
+        subjectStats[cleanSubject].score += secRules.incorrectMarks;
       }
     }
 
@@ -254,14 +228,21 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   }
 
   const renderHeader = () => (
-    <header className="report-header">
-      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
-        <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
+    <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
+      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '8px' }}>
+        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight * 3}px`, width: 'auto', objectFit: 'contain' }} />
+        <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight * 3}px`, width: 'auto', objectFit: 'contain' }} />
       </div>
-      <div className="header-titles">
-        <h1>EXAM PERFORMANCE REPORT</h1>
-        <div className="subtitle">Official Graded Student Response Card</div>
+      <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif' }}>
+        <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+          Institute of Medical Entrance Exams (NEET) & IIT-JEE Coaching
+        </div>
+        <div style={{ fontSize: '10px', fontWeight: 600, color: '#475569', marginBottom: '2px' }}>
+          #1257, Urban State, Near HUDA Ground, Jind- 126102 (Haryana)
+        </div>
+        <div style={{ fontSize: '10px', fontWeight: 600, color: '#475569' }}>
+          Call : 9467752374, Email: instituteapexjind@gmail.com
+        </div>
       </div>
     </header>
   );
@@ -312,61 +293,23 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         <div className="sub-score-card correct">
           <span className="lbl">Correct Answers</span>
           <span className="val">{correct}</span>
-          <span className="pts">+{correct * cMarks} Points</span>
+          <span className="pts">+{correct * cMarks} Marks</span>
         </div>
         <div className="sub-score-card wrong">
           <span className="lbl">Incorrect Answers</span>
           <span className="val">{wrong}</span>
-          <span className="pts">{wrong * iMarks} Points</span>
+          <span className="pts">{wrong * iMarks} Marks</span>
         </div>
         <div className="sub-score-card left">
           <span className="lbl">Left / Unanswered</span>
           <span className="val">{left}</span>
-          <span className="pts">+{left * uMarks} Points</span>
+          <span className="pts">+{left * uMarks} Marks</span>
         </div>
       </div>
     </section>
   );
 
-  const renderSectionStats = () => (
-    <section className="report-section section-stats-section">
-      <h2>Subject / Section Performance Breakdown</h2>
-      <table className="section-stats-table">
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Subject / Section</th>
-            <th>Correct</th>
-            <th>Incorrect</th>
-            <th>Left</th>
-            <th>Marks Obtained</th>
-            <th>Section Accuracy</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sectionStats.map((sec, idx) => {
-            const secAccuracy = sec.totalPossible > 0 ? Math.max(0, Math.round((sec.score / sec.totalPossible) * 100)) : 0;
-            return (
-              <tr key={idx}>
-                <td style={{ textAlign: 'left', fontWeight: 'bold' }}>{sec.name}</td>
-                <td style={{ color: '#15803d', fontWeight: 'bold' }}>{sec.correct}</td>
-                <td style={{ color: '#b91c1c', fontWeight: 'bold' }}>{sec.wrong}</td>
-                <td style={{ color: '#475569' }}>{sec.left}</td>
-                <td><strong>{sec.score}</strong> / {sec.totalPossible}</td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                    <span style={{ minWidth: '32px', fontWeight: 'bold', textAlign: 'right' }}>{secAccuracy}%</span>
-                    <div style={{ width: '60px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${secAccuracy}%`, height: '100%', background: '#2b6cb0', borderRadius: '3px' }} />
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </section>
-  );
+
 
   const renderPrintSubjectBreakdown = () => (
     <section className="report-section print-subject-stats-section" style={{ marginTop: '14px' }}>
@@ -386,6 +329,10 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 <strong style={{ color: '#ef4444', textAlign: 'right' }}>-{stats.negativeMarks}</strong>
                 <span style={{ color: '#475569' }}>Accuracy:</span>
                 <strong style={{ color: '#2563eb', textAlign: 'right' }}>{accuracy}%</strong>
+                <span style={{ color: '#475569' }}>Scored Marks:</span>
+                <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.score} / {stats.totalPossible}</strong>
+                <span style={{ color: '#475569' }}>Percentage:</span>
+                <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.totalPossible > 0 ? Math.round((stats.score / stats.totalPossible) * 100) : 0}%</strong>
               </div>
             </div>
           );
@@ -597,10 +544,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           {/* PAGE 1 */}
           <div className="page-container page-one">
             {renderHeader()}
+            <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
             {renderMetaGrid()}
             {renderScoreSummary()}
-            <div style={{ marginTop: '10px' }} />
-            {renderSectionStats()}
             <div style={{ marginTop: '10px' }} />
             {renderResponsesGridRange(1, pageOneCount, `Question Response Details (Part 1: Q01 - Q${String(pageOneCount).padStart(2, '0')})`, 540)}
           </div>
@@ -642,9 +588,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         /* SINGLE PAGE */
         <div className="page-container">
           {renderHeader()}
+          <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
           {renderMetaGrid()}
           {renderScoreSummary()}
-          {renderSectionStats()}
           {renderPrintSubjectBreakdown()}
           {renderPrintDifficultyDiagnostics()}
           {renderResponsesGridRange(1, totalQuestions, "Question Response Details", 520)}
@@ -715,11 +661,13 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .report-header {
           display: flex;
-          justify-content: space-between;
+          flex-direction: column;
           align-items: center;
+          justify-content: center;
           border-bottom: 2px solid #2b6cb0;
-          padding-bottom: 6px;
+          padding-bottom: 12px;
           margin-bottom: 10px;
+          width: 100%;
         }
 
         .logo-brand {

@@ -332,7 +332,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     const secUnanswereds: Record<string, number> = {};
 
     // Calculate subject-wise breakdown (Physics, Chemistry, Maths, etc.)
-    const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number }> = {};
+    const subjectStats: Record<string, { attempted: number; correct: number; unattempted: number; negativeMarks: number; total: number; score: number; totalPossible: number }> = {};
     
     // Calculate difficulty-wise breakdown
     const diffStats: Record<'Easy' | 'Moderate' | 'Difficult', { correct: number; wrong: number; skipped: number; total: number; questions: number[] }> = {
@@ -354,9 +354,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       const isCorrect = sAns === cAns;
       const isLeft = !sAns;
       
-      const secRules = activeAnalysisSub.exam.sectionsMarking?.[secName] || {
+      const secRules: any = activeAnalysisSub.exam.sectionsMarking?.[secName] || {
         correctMarks: activeAnalysisSub.exam.correctMarks || 4,
-        incorrectMarks: activeAnalysisSub.exam.incorrectMarks || -1
+        incorrectMarks: activeAnalysisSub.exam.incorrectMarks || -1,
+        unansweredMarks: activeAnalysisSub.exam.unansweredMarks || 0
       };
       
       secTotals[secName] = (secTotals[secName] || 0) + 1;
@@ -371,19 +372,23 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
       // Subject stats
       if (!subjectStats[cleanSubject]) {
-        subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0 };
+        subjectStats[cleanSubject] = { attempted: 0, correct: 0, unattempted: 0, negativeMarks: 0, total: 0, score: 0, totalPossible: 0 };
       }
       subjectStats[cleanSubject].total += 1;
+      subjectStats[cleanSubject].totalPossible += secRules.correctMarks;
       if (isLeft) {
         subjectStats[cleanSubject].unattempted += 1;
+        subjectStats[cleanSubject].score += secRules.unansweredMarks || 0;
       } else {
         subjectStats[cleanSubject].attempted += 1;
         if (isCorrect) {
           subjectStats[cleanSubject].correct += 1;
+          subjectStats[cleanSubject].score += secRules.correctMarks;
         } else {
           const negVal = Math.abs(secRules.incorrectMarks);
           subjectStats[cleanSubject].negativeMarks += negVal;
           totalNegativeMarks += negVal;
+          subjectStats[cleanSubject].score += secRules.incorrectMarks;
         }
       }
 
@@ -796,9 +801,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         </div>
                       </div>
                       
-                      <div style={{ background: lightBg, padding: '10px', borderRadius: '8px', textAlign: 'center', marginTop: 'auto' }}>
-                        <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block', fontWeight: 'bold', textTransform: 'uppercase' }}>Accuracy Rate</span>
-                        <span style={{ fontSize: '1.2rem', fontWeight: 900, color: themeColor }}>{accuracy}%</span>
+                      <div style={{ background: lightBg, padding: '10px', borderRadius: '8px', textAlign: 'center', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.62rem', color: '#64748b', display: 'block', fontWeight: 'bold', textTransform: 'uppercase' }}>Accuracy Rate</span>
+                          <span style={{ fontSize: '1.1rem', fontWeight: 900, color: themeColor }}>{accuracy}%</span>
+                        </div>
+                        <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '4px', marginTop: '4px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.72rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.58rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Marks</span>
+                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{stats.score} / {stats.totalPossible}</div>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.58rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Percentage</span>
+                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{stats.totalPossible > 0 ? Math.round((stats.score / stats.totalPossible) * 100) : 0}%</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1367,7 +1384,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cumulative Score</span>
                   <h3 style={{ margin: '8px 0 4px 0', fontSize: '1.6rem', fontWeight: 900, color: '#475569' }}>{totalScoreSum} <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 'normal' }}>/ {totalPossibleSum}</span></h3>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Total points achieved</span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Total marks achieved</span>
                 </div>
                 <div style={{ background: '#f1f5f9', color: '#475569', padding: '12px', borderRadius: '12px' }}>
                   <Activity size={24} />

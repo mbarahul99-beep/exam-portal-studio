@@ -246,11 +246,11 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
   const renderHeader = () => (
     <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
-      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginBottom: '2px' }}>
-        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginBottom: `-${printLogoHeight * 0.08}px` }}>
+        <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain', marginRight: `-${printLogoHeight * 0.15}px` }} />
         <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
       </div>
-      <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif' }}>
+      <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif', marginTop: '0px' }}>
         <div style={{ fontSize: `${pdfTitleFontSize}px`, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
           Institute of Medical Entrance Exams (NEET) & IIT-JEE Coaching
         </div>
@@ -694,13 +694,11 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         }
 
         .print-logo-img {
-          height: 42px;
           width: auto;
           object-fit: contain;
         }
 
         .print-logo-name-img {
-          height: 26px;
           width: auto;
           object-fit: contain;
         }

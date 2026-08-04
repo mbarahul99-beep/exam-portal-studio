@@ -472,7 +472,7 @@ export const OmrSettingsView: React.FC = () => {
                   <img 
                     src="/logo.png" 
                     alt="Logo" 
-                    style={{ height: `${(settings.omrLogoHeight || 42) * 0.4}px`, width: 'auto', objectFit: 'contain' }} 
+                    style={{ height: `${(settings.omrLogoHeight || 42) * 0.4}px`, width: 'auto', objectFit: 'contain', marginRight: `-${(settings.omrLogoHeight || 42) * 0.4 * 0.15}px` }} 
                   />
                   <span style={{
                     fontSize: `${(settings.omrInstitutionFontSize || 18) * 0.55}px`,

@@ -605,9 +605,17 @@ export async function pullCloudUpdatesToIndexedDB() {
           const existing = await db.settings.where('key').equals(key).first();
           if (!existing) {
             await db.settings.add({ key, value: val });
+            if (key === 'omr_custom_settings') {
+              localStorage.setItem('omr_custom_settings', val);
+              window.dispatchEvent(new Event('omr_settings_updated'));
+            }
           } else {
             if (existing.value !== val) {
               await db.settings.update(existing.id!, { value: val });
+              if (key === 'omr_custom_settings') {
+                localStorage.setItem('omr_custom_settings', val);
+                window.dispatchEvent(new Event('omr_settings_updated'));
+              }
             }
           }
         } catch (err) {

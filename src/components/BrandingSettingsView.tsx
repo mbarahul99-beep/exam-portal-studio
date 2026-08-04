@@ -91,6 +91,17 @@ export const BrandingSettingsView: React.FC = () => {
         await db.settings.add({ key: 'omr_custom_settings', value: jsonStr });
       }
 
+      // Sync settings to cloud MySQL database
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ omr_custom_settings: jsonStr })
+        });
+      } catch (cloudErr) {
+        console.warn("Failed to sync branding settings to cloud:", cloudErr);
+      }
+
       setSavedSuccess(true);
       window.dispatchEvent(new Event('omr_settings_updated'));
       setTimeout(() => setSavedSuccess(false), 3000);

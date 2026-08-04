@@ -412,7 +412,7 @@ export const BrandingSettingsView: React.FC = () => {
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', display: 'block', marginBottom: '12px' }}>⚡ Live PDF Report Header Preview</span>
             
             <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px', background: '#ffffff', color: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginBottom: `-${settings.pdfLogoHeight * 0.35 * 0.08}px` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginBottom: `-${settings.pdfLogoHeight * 0.35 * 0.35}px` }}>
                 <img src="/logo.png" alt="Logo" style={{ height: `${settings.pdfLogoHeight * 0.35}px`, width: 'auto', objectFit: 'contain', marginRight: `-${settings.pdfLogoHeight * 0.35 * 0.15}px` }} />
                 <img src="/logo_name.png" alt="Logo Name" style={{ height: `${settings.pdfLogoNameHeight * 0.35}px`, width: 'auto', objectFit: 'contain' }} />
               </div>

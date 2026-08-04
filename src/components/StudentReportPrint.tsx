@@ -246,7 +246,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
   const renderHeader = () => (
     <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
-      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginBottom: `-${printLogoHeight * 0.08}px` }}>
+      <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginBottom: `-${printLogoHeight * 0.35}px` }}>
         <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain', marginRight: `-${printLogoHeight * 0.15}px` }} />
         <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
       </div>

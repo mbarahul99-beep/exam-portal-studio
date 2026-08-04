@@ -246,9 +246,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70),
-               top: toY(115),
+               top: toY(95),
                width: toX(rollNoWidth),
-               height: toY(225)
+               height: toY(275)
              }}
         >
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
@@ -293,9 +293,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card"
              style={{
                left: toX(230),
-               top: toY(115),
+               top: toY(95),
                width: toX(700),
-               height: toY(225),
+               height: toY(275),
                display: 'flex',
                flexDirection: 'column',
                justifyContent: 'center',
@@ -574,8 +574,8 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           .id-bubble {
-            width: 4.8mm;
-            height: 4.8mm;
+            width: 4.2mm;
+            height: 4.2mm;
             font-size: 8px;
             font-weight: 800;
           }

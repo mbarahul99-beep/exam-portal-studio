@@ -1862,7 +1862,7 @@ export default function App() {
         >
           <Menu size={24} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
           <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
         </div>
@@ -1872,7 +1872,7 @@ export default function App() {
         
         {/* Sidebar Panel */}
         <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
-          <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px', background: '#fff', borderBottom: '1px solid var(--border-color)' }}>
+          <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '16px 20px', background: '#fff', borderBottom: '1px solid var(--border-color)' }}>
             <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
             <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
           </div>

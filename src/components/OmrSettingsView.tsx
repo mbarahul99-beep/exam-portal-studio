@@ -468,7 +468,7 @@ export const OmrSettingsView: React.FC = () => {
                 <div style={{ position: 'absolute', bottom: '4px', right: '4px', width: '8px', height: '8px', background: '#000' }} />
 
                 {/* Institute Logos & Text Preview */}
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '2px', margin: '4px 0' }}>
                   <img 
                     src="/logo.png" 
                     alt="Logo" 

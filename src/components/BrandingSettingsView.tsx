@@ -117,12 +117,56 @@ export const BrandingSettingsView: React.FC = () => {
       setSettings(DEFAULT_GENERAL_SETTINGS);
     }
   };
-
   return (
-    <div className="branding-settings-portal animate-fade-in" style={{ padding: '24px', paddingBottom: '40px', maxWidth: '1000px', margin: '0 auto' }}>
+    <div className="branding-settings-portal animate-fade-in" style={{ padding: '16px', paddingBottom: '40px', maxWidth: '1000px', margin: '0 auto' }}>
+      <style>{`
+        .branding-settings-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        @media (min-width: 768px) {
+          .branding-settings-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+        .settings-header-banner {
+          background: #ffffff;
+          padding: 16px 20px;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        @media (max-width: 640px) {
+          .settings-header-banner {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: center;
+          }
+          .settings-header-banner > div:first-child > div {
+            justify-content: center;
+          }
+          .settings-header-buttons {
+            width: 100%;
+            justify-content: center;
+            display: flex;
+            gap: 10px;
+          }
+          .settings-header-buttons > button {
+            flex: 1;
+            justify-content: center;
+          }
+        }
+      `}</style>
       
       {/* Header Banner */}
-      <div style={{ background: '#ffffff', padding: '16px 20px', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div className="settings-header-banner">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={22} color="#dc0045" />
@@ -135,7 +179,7 @@ export const BrandingSettingsView: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="settings-header-buttons" style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"
             onClick={handleReset}
@@ -181,7 +225,7 @@ export const BrandingSettingsView: React.FC = () => {
         </div>
       </div>
 
-      <form onSubmit={handleSave} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+      <form onSubmit={handleSave} className="branding-settings-grid">
         
         {/* Left Column: Branding Settings */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -422,7 +466,7 @@ export const BrandingSettingsView: React.FC = () => {
           <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.04)' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', display: 'block', marginBottom: '12px' }}>⚡ Live PDF Report Header Preview</span>
             
-            <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px', background: '#ffffff', color: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '12px', background: '#ffffff', color: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', overflowX: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginBottom: `-${settings.pdfLogoHeight * 0.35 * 0.35}px` }}>
                 <img src="/logo.png" alt="Logo" style={{ height: `${settings.pdfLogoHeight * 0.35}px`, width: 'auto', objectFit: 'contain', marginRight: `-${settings.pdfLogoHeight * 0.35 * 0.15}px` }} />
                 <img src="/logo_name.png" alt="Logo Name" style={{ height: `${settings.pdfLogoNameHeight * 0.35}px`, width: 'auto', objectFit: 'contain' }} />

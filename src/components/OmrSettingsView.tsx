@@ -137,10 +137,45 @@ export const OmrSettingsView: React.FC = () => {
   };
 
   return (
-    <div className="omr-settings-portal animate-fade-in" style={{ paddingBottom: '40px' }}>
+    <div className="omr-settings-portal animate-fade-in" style={{ padding: '8px', paddingBottom: '40px' }}>
+      <style>{`
+        .omr-settings-header-banner {
+          background: #ffffff;
+          padding: 16px 20px;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        @media (max-width: 640px) {
+          .omr-settings-header-banner {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: center;
+          }
+          .omr-settings-header-banner > div:first-child > div {
+            justify-content: center;
+          }
+          .omr-settings-buttons {
+            width: 100%;
+            justify-content: center;
+            display: flex;
+            gap: 10px;
+          }
+          .omr-settings-buttons > button {
+            flex: 1;
+            justify-content: center;
+          }
+        }
+      `}</style>
       
       {/* Header Banner */}
-      <div style={{ background: '#ffffff', padding: '16px 20px', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div className="omr-settings-header-banner">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={22} color="#dc0045" />
@@ -153,7 +188,7 @@ export const OmrSettingsView: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="omr-settings-buttons" style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"
             onClick={handleReset}
@@ -194,7 +229,7 @@ export const OmrSettingsView: React.FC = () => {
             }}
           >
             {savedSuccess ? <CheckCircle size={16} /> : <Save size={16} />}
-            {savedSuccess ? 'Saved!' : 'Save OMR Settings'}
+            {savedSuccess ? 'Saved!' : 'Save Configurations'}
           </button>
         </div>
       </div>

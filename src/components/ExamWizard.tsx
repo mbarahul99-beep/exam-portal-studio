@@ -91,7 +91,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
   // Word AI Parser States
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
-  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-1.5-flash');
+  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-3.6-flash');
   const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
   const [wordParseError, setWordParseError] = useState<string | null>(null);
   const [wordParseStatus, setWordParseStatus] = useState<string>('');
@@ -2005,8 +2005,9 @@ Verify:
                             onChange={(e) => setGeminiModel(e.target.value)}
                             style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
                           >
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Stable / Recommended)</option>
-                            <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast / Deprecated for some projects)</option>
+                            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Recommended / New Stable)</option>
+                            <option value="gemini-3.5-flash">Gemini 3.5 Flash (Stable)</option>
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Legacy / Restricted to older keys)</option>
                             <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
                           </select>
                         </div>

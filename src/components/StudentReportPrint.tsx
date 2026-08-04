@@ -245,19 +245,19 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
   }
 
   const renderHeader = () => (
-    <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
+    <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #000000', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
       <div className="logo-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginBottom: `-${printLogoHeight * 0.35}px` }}>
         <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain', marginRight: `-${printLogoHeight * 0.15}px` }} />
         <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
       </div>
-      <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif', marginTop: '0px' }}>
-        <div style={{ fontSize: `${pdfTitleFontSize}px`, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+      <div style={{ textAlign: 'center', color: '#000000', fontFamily: 'sans-serif', marginTop: '0px' }}>
+        <div style={{ fontSize: `${pdfTitleFontSize}px`, fontWeight: 800, color: '#000000', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
           Institute of Medical Entrance Exams (NEET) & IIT-JEE Coaching
         </div>
-        <div style={{ fontSize: `${pdfAddressFontSize}px`, fontWeight: 600, color: '#475569', marginBottom: '2px' }}>
+        <div style={{ fontSize: `${pdfAddressFontSize}px`, fontWeight: 600, color: '#000000', marginBottom: '2px' }}>
           #1257, Urban State, Near HUDA Ground, Jind- 126102 (Haryana)
         </div>
-        <div style={{ fontSize: `${pdfContactFontSize}px`, fontWeight: 600, color: '#475569' }}>
+        <div style={{ fontSize: `${pdfContactFontSize}px`, fontWeight: 600, color: '#000000' }}>
           Call : 9467752374, Email: instituteapexjind@gmail.com
         </div>
       </div>
@@ -336,20 +336,20 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           const accuracy = stats.attempted > 0 ? Math.round((stats.correct / stats.attempted) * 100) : 0;
           return (
             <div key={`print-sub-${subName}`} style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#f8fafc', boxSizing: 'border-box' }}>
-              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>{subName}</div>
+              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#000000', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>{subName}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px', fontSize: '0.72rem' }}>
-                <span style={{ color: '#475569' }}>Attempted:</span>
+                <span style={{ color: '#000000' }}>Attempted:</span>
                 <strong style={{ textAlign: 'right' }}>{stats.attempted} / {stats.total}</strong>
                 <span style={{ color: '#16a34a' }}>Correct:</span>
                 <strong style={{ color: '#16a34a', textAlign: 'right' }}>{stats.correct}</strong>
                 <span style={{ color: '#ef4444' }}>Negative:</span>
                 <strong style={{ color: '#ef4444', textAlign: 'right' }}>-{stats.negativeMarks}</strong>
-                <span style={{ color: '#475569' }}>Accuracy:</span>
+                <span style={{ color: '#000000' }}>Accuracy:</span>
                 <strong style={{ color: '#2563eb', textAlign: 'right' }}>{accuracy}%</strong>
-                <span style={{ color: '#475569' }}>Scored Marks:</span>
-                <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.score} / {stats.totalPossible}</strong>
-                <span style={{ color: '#475569' }}>Percentage:</span>
-                <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.totalPossible > 0 ? Math.round((stats.score / stats.totalPossible) * 100) : 0}%</strong>
+                <span style={{ color: '#000000' }}>Scored Marks:</span>
+                <strong style={{ color: '#000000', textAlign: 'right' }}>{stats.score} / {stats.totalPossible}</strong>
+                <span style={{ color: '#000000' }}>Percentage:</span>
+                <strong style={{ color: '#000000', textAlign: 'right' }}>{stats.totalPossible > 0 ? Math.round((stats.score / stats.totalPossible) * 100) : 0}%</strong>
               </div>
             </div>
           );
@@ -359,7 +359,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444' }}>Negative Marks Lost:</span>
         <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem', fontWeight: 'bold' }}>
           {Object.entries(subjectStats).map(([subName, stats]) => (
-            <span key={`print-neg-sub-${subName}`} style={{ color: '#475569' }}>
+            <span key={`print-neg-sub-${subName}`} style={{ color: '#000000' }}>
               {subName}: <strong style={{ color: '#ef4444' }}>-{stats.negativeMarks}</strong>
             </span>
           ))}
@@ -393,12 +393,12 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                     {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} />}
                     {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} />}
                   </div>
-                  <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#475569' }}>{level[0]}</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#000000' }}>{level[0]}</span>
                 </div>
               );
             })}
           </div>
-          <div style={{ display: 'flex', gap: '8px', fontSize: '0.58rem', color: '#64748b', marginTop: '6px', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '0.58rem', color: '#000000', marginTop: '6px', justifyContent: 'center' }}>
             <span>🔵 Correct</span>
             <span>🔴 Wrong</span>
             <span>⚪ Skip</span>
@@ -409,7 +409,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '6px', boxSizing: 'border-box' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', textAlign: 'left' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#475569' }}>
+              <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#000000' }}>
                 <th style={{ padding: '2px 4px', fontWeight: 'bold' }}>Difficulty Level</th>
                 <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Correct</th>
                 <th style={{ padding: '2px 4px', fontWeight: 'bold', textAlign: 'center' }}>Wrong</th>
@@ -422,10 +422,10 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 const stats = diffStats[level];
                 return (
                   <tr key={`print-row-${level}`} style={{ borderBottom: '1px dashed #edf2f7' }}>
-                    <td style={{ padding: '4px 4px', fontWeight: 'bold', color: '#1e293b' }}>{level}</td>
+                    <td style={{ padding: '4px 4px', fontWeight: 'bold', color: '#000000' }}>{level}</td>
                     <td style={{ padding: '4px 4px', color: '#16a34a', fontWeight: 'bold', textAlign: 'center' }}>{stats.correct}</td>
                     <td style={{ padding: '4px 4px', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>{stats.wrong}</td>
-                    <td style={{ padding: '4px 4px', color: '#64748b', textAlign: 'center' }}>{stats.skipped}</td>
+                    <td style={{ padding: '4px 4px', color: '#000000', textAlign: 'center' }}>{stats.skipped}</td>
                     <td style={{ padding: '4px 4px', color: '#0f172a', fontWeight: 'bold', textAlign: 'center' }}>{stats.total}</td>
                   </tr>
                 );
@@ -486,7 +486,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           {rangeCols.map((colGroup, colIdx) => (
             <div key={`rep-col-${colIdx}`} className="resp-col" style={{ border: '1px solid #edf2f7', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
               <div className="col-header-row" style={{
-                background: '#2b6cb0',
+                background: '#000000',
                 color: '#ffffff',
                 display: 'grid',
                 gridTemplateColumns: '1.2fr 1fr 1fr',
@@ -523,7 +523,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                         alignItems: 'center'
                       }}
                     >
-                      <span className="q-lbl font-mono" style={{ color: '#64748b', textAlign: 'left' }}>Q{String(qNum).padStart(2, '0')}</span>
+                      <span className="q-lbl font-mono" style={{ color: '#000000', textAlign: 'left' }}>Q{String(qNum).padStart(2, '0')}</span>
                       <span className="key-lbl font-mono">{correctKey}</span>
                       <span className="stud-lbl font-mono">{studentAns || '-'}</span>
                     </div>
@@ -561,7 +561,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           {/* PAGE 1 */}
           <div className="page-container page-one">
             {renderHeader()}
-            <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
+            <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#000000', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
             {renderMetaGrid()}
             {renderScoreSummary()}
             <div style={{ marginTop: '10px' }} />
@@ -605,7 +605,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         /* SINGLE PAGE */
         <div className="page-container">
           {renderHeader()}
-          <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
+          <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#000000', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
           {renderMetaGrid()}
           {renderScoreSummary()}
           {renderPrintSubjectBreakdown()}
@@ -619,6 +619,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         body {
           background: #f1f5f9 !important;
           color: #000000 !important;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
           margin: 0;
           padding: 0;
@@ -656,7 +659,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border-bottom: 2px solid #2b6cb0;
+          border-bottom: 2px solid #000000;
           padding-bottom: 4px;
           margin-bottom: 12px;
           font-size: 8.5px;
@@ -681,7 +684,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          border-bottom: 2px solid #2b6cb0;
+          border-bottom: 2px solid #000000;
           padding-bottom: 12px;
           margin-bottom: 10px;
           width: 100%;
@@ -718,7 +721,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .header-titles .subtitle {
           font-size: 9px;
-          color: #718096;
+          color: #000000;
           text-transform: uppercase;
           letter-spacing: 0.8px;
           margin-top: 1px;
@@ -766,20 +769,20 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         }
 
         .score-card {
-          border: 1.5px solid #2b6cb0;
+          border: 1.5px solid #000000;
           border-radius: 8px;
           padding: 8px 12px;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: #ebf8ff;
+          background: #f8fafc;
         }
 
         .score-card .lbl {
           font-size: 8.5px;
           font-weight: bold;
-          color: #2b6cb0;
+          color: #000000;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
@@ -787,7 +790,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         .score-card .big-val {
           font-size: 24px;
           font-weight: 800;
-          color: #2b6cb0;
+          color: #000000;
           margin: 2px 0;
         }
 
@@ -809,7 +812,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .pct-bar {
           height: 100%;
-          background: #2b6cb0;
+          background: #000000;
           border-radius: 3px;
         }
 
@@ -846,7 +849,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         }
 
         .sub-score-card.left {
-          border-left: 4px solid #64748b;
+          border-left: 4px solid #000000;
           background: #f8fafc;
         }
 
@@ -928,7 +931,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
         }
 
         .col-header-row {
-          background: #2b6cb0;
+          background: #000000;
           color: #ffffff;
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
@@ -960,7 +963,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
         .resp-row.unanswered {
           background: #ffffff;
-          color: #94a3b8;
+          color: #000000;
         }
 
         .resp-row .q-lbl {

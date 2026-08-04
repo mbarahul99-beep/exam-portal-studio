@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'lucide-react';
+import * as mammoth from 'mammoth';
 import { db } from '../db';
 import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 import { MathRenderer } from './MathRenderer';
@@ -84,9 +85,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   // Online Questions Composer States
   const [questionsState, setQuestionsState] = useState<any[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library'>('manual');
+  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library' | 'word'>('manual');
   const [showAddedQuestionsModal, setShowAddedQuestionsModal] = useState(false);
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
+
+  // Word AI Parser States
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
+  const [wordParseError, setWordParseError] = useState<string | null>(null);
+  const [wordParseStatus, setWordParseStatus] = useState<string>('');
+  const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
+  const [selectedParsedIndexes, setSelectedParsedIndexes] = useState<Record<number, boolean>>({});
 
   // Library filters
   const [selectedLibBankId, setSelectedLibBankId] = useState<string>('All');
@@ -520,6 +529,207 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleWordFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!geminiApiKey.trim()) {
+      setWordParseError("Please enter your Gemini API Key first.");
+      return;
+    }
+
+    // Save key locally
+    localStorage.setItem('gemini_api_key', geminiApiKey.trim());
+
+    setIsParsingWord(true);
+    setWordParseError(null);
+    setWordParseStatus("Reading document content...");
+    setParsedQuestions([]);
+    setSelectedParsedIndexes({});
+
+    try {
+      const reader = new FileReader();
+      
+      const fileLoaded = new Promise<ArrayBuffer>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+      });
+      reader.readAsArrayBuffer(file);
+      const arrayBuffer = await fileLoaded;
+
+      setWordParseStatus("Extracting images and text formatting...");
+      
+      const options = {
+        convertImage: mammoth.images.imgElement((image) => {
+          return image.read("base64").then((imageBuffer) => {
+            return {
+              src: `data:${image.contentType};base64,${imageBuffer}`
+            };
+          });
+        })
+      };
+
+      const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
+      const htmlContent = result.value;
+
+      if (!htmlContent.trim()) {
+        throw new Error("No text or content could be parsed from the Word document.");
+      }
+
+      setWordParseStatus("Analyzing with Gemini AI (generating structured questions)...");
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey.trim()}`;
+      
+      const systemPrompt = `You are a professional examiner. Extract all Multiple Choice Questions (MCQs) from the provided HTML document. 
+Return ONLY a valid JSON array of objects representing the questions. Do not include any markdown styling, \`\`\`json blocks, or explanation text.
+The JSON structure MUST follow this format strictly:
+[
+  {
+    "questionText": "string containing question. If it contains formula, preserve LaTeX notation. If it contains a diagram like <img src=\\\"data:image/...\\\" />, keep the exact image tag intact inside the text.",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctOptionIdx": number (0 for A, 1 for B, 2 for C, 3 for D)
+  }
+]
+
+Verify:
+- Every question must have exactly 4 options (unless it is a 5-option format, then 5 options).
+- Find the correct answer key in the text (often marked as "Answer: A" or similar) and translate it to the 0-based index. If no answer is mentioned, default to 0.
+- Do NOT alter the base64 src inside the img tag. Preserve the full img tag exactly where it was located in the question.`;
+
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: systemPrompt },
+                { text: `Here is the HTML document containing the questions:\n\n${htmlContent}` }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const resData = await response.json();
+      const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!rawText) {
+        throw new Error("Gemini API returned an empty response. Verify your API key or the input text.");
+      }
+
+      // Clean raw text if markdown block is returned
+      let cleanedJson = rawText.trim();
+      if (cleanedJson.startsWith("```")) {
+        cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+      }
+
+      const parsed = JSON.parse(cleanedJson);
+      if (!Array.isArray(parsed)) {
+        throw new Error("API response is not a valid JSON array of questions.");
+      }
+
+      setParsedQuestions(parsed);
+      
+      // Auto-select all by default
+      const initialIndexes: Record<number, boolean> = {};
+      parsed.forEach((_, idx) => {
+        initialIndexes[idx] = true;
+      });
+      setSelectedParsedIndexes(initialIndexes);
+      setWordParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
+    } catch (err: any) {
+      console.error(err);
+      setWordParseError(err.message || "Failed to upload or parse MS Word file.");
+    } finally {
+      setIsParsingWord(false);
+    }
+  };
+
+  const handleImportSelectedQuestions = () => {
+    // Find current subject and section limits
+    const sectionConfig = sectionsList.find(s => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
+    if (!sectionConfig) return;
+
+    const maxCount = sectionConfig.qCount;
+    const currentSectionQuestions = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+    const existingCount = currentSectionQuestions.filter(q => q.questionText.trim()).length;
+
+    // Filter only selected parsed questions
+    const toImport = parsedQuestions.filter((_, idx) => selectedParsedIndexes[idx]);
+    if (toImport.length === 0) {
+      alert("No questions selected for import.");
+      return;
+    }
+
+    if (existingCount + toImport.length > maxCount) {
+      if (!window.confirm(`⚠️ Warning: You are trying to import ${toImport.length} questions, but this section has a limit of ${maxCount} total questions. (Currently filled: ${existingCount}/${maxCount}). Do you want to proceed and clip the imports to fit the limit?`)) {
+        return;
+      }
+    }
+
+    setQuestionsState(prev => {
+      const updated = [...prev];
+      let importCount = 0;
+
+      // Find indices in the global questionsState corresponding to the active subject and section
+      const sectionIndices = updated
+        .map((q, idx) => ({ q, idx }))
+        .filter(item => item.q.subjectName === selectedSubjectName && item.q.sectionName === selectedSectionName);
+
+      for (let i = 0; i < sectionIndices.length; i++) {
+        // Find the first unfilled slot in this section
+        const targetIdx = sectionIndices[i].idx;
+        if (!updated[targetIdx].questionText.trim()) {
+          if (importCount >= toImport.length) break;
+
+          const importedQ = toImport[importCount];
+          updated[targetIdx].questionText = importedQ.questionText;
+          
+          // Make sure options matches the expected count
+          const nextOpts = [...updated[targetIdx].options];
+          for (let o = 0; o < nextOpts.length; o++) {
+            nextOpts[o] = importedQ.options[o] || '';
+          }
+          updated[targetIdx].options = nextOpts;
+          updated[targetIdx].correctOptionIdx = typeof importedQ.correctOptionIdx === 'number' ? importedQ.correctOptionIdx : 0;
+          updated[targetIdx].explanation = importedQ.explanation || '';
+          
+          // Handle images if any are inside the question text
+          const imgMatch = importedQ.questionText.match(/<img[^>]+src="([^">]+)"/);
+          if (imgMatch && imgMatch[1]) {
+            updated[targetIdx].questionImage = imgMatch[1];
+            // Remove the raw img tag from text so it renders cleanly via our existing UI questionImage rendering
+            updated[targetIdx].questionText = importedQ.questionText.replace(/<img[^>]+>/g, '').trim();
+          }
+
+          importCount++;
+        }
+      }
+
+      alert(`Successfully imported ${importCount} questions into section ${selectedSectionName}!`);
+      return updated;
+    });
+
+    // Reset Word Import View
+    setParsedQuestions([]);
+    setSelectedParsedIndexes({});
+    setWordParseStatus('');
+    // Go to manual view to see imported results
+    setQuestionSetupTab('manual');
   };
 
   const handleSubmit = async () => {
@@ -1223,6 +1433,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                       >
                         Question Bank
                       </button>
+                      <button 
+                        className={`btn-seed ${questionSetupTab === 'word' ? 'active-tab' : ''}`} 
+                        onClick={() => setQuestionSetupTab('word')}
+                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'word' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'word' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      >
+                        Import MS Word (AI)
+                      </button>
                     </div>
 
                     <div className="qsetup-stats-group">
@@ -1666,6 +1883,161 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#48bb78', fontWeight: 'bold', background: 'rgba(72,187,120,0.1)', padding: '6px 12px', borderRadius: '6px', border: '1px solid rgba(72,187,120,0.2)' }}>
                           <Check size={16} />
                           {csvUploadSuccess}
+                        </div>
+                      )}
+                    </div>
+                  ) : questionSetupTab === 'word' ? (
+                    /* MS Word AI Parser Panel */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, padding: '16px', boxSizing: 'border-box' }}>
+                      {/* Configuration block */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ background: '#eff6ff', padding: '6px', borderRadius: '8px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            🔑
+                          </span>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>Gemini API Key Configuration</h4>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              Required for AI question paper extraction. Obtain a free key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Google AI Studio</a>.
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="password"
+                          value={geminiApiKey}
+                          onChange={(e) => setGeminiApiKey(e.target.value)}
+                          placeholder="Paste your AI Studio API Key here..."
+                          style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
+                        />
+                      </div>
+
+                      {/* Upload zone */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '30px', boxSizing: 'border-box' }}>
+                        <div style={{ background: 'rgba(37,99,235,0.08)', padding: '18px', borderRadius: '50%', color: '#2563eb' }}>
+                          <FileText size={40} />
+                        </div>
+                        
+                        <div style={{ textAlign: 'center' }}>
+                          <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import Word (.docx) Question Paper</h4>
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
+                            Upload a MS Word document containing text, math formatting, and embedded diagrams. Gemini AI will structure the paper into online exam questions.
+                          </p>
+                        </div>
+
+                        <label style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '11px 22px',
+                          borderRadius: '8px',
+                          background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
+                          fontSize: '0.88rem',
+                          boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
+                        }}>
+                          <Upload size={16} /> Choose Word File
+                          {geminiApiKey.trim() && (
+                            <input 
+                              type="file" 
+                              accept=".docx" 
+                              style={{ display: 'none' }} 
+                              onChange={handleWordFileUpload}
+                              disabled={isParsingWord}
+                            />
+                          )}
+                        </label>
+
+                        {isParsingWord && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                            <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <span>{wordParseStatus}</span>
+                          </div>
+                        )}
+
+                        {wordParseError && (
+                          <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
+                            ⚠️ {wordParseError}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Preview zone */}
+                      {parsedQuestions.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                              Parsed Questions List ({parsedQuestions.length} Found)
+                            </h4>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              Select the questions to import into section <strong>{selectedSectionName}</strong>.
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
+                            {parsedQuestions.map((q, idx) => {
+                              // Extract diagram image data if embedded
+                              const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
+                              const hasDiagram = !!imgMatch;
+                              const cleanText = q.questionText.replace(/<img[^>]+>/g, '').trim();
+
+                              return (
+                                <div key={idx} style={{ display: 'flex', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!selectedParsedIndexes[idx]}
+                                    onChange={(e) => setSelectedParsedIndexes(prev => ({ ...prev, [idx]: e.target.checked }))}
+                                    style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
+                                  />
+                                  <div style={{ flex: 1, fontSize: '0.85rem' }}>
+                                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Question {idx + 1}</div>
+                                    <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
+                                      <MathRenderer text={cleanText} />
+                                    </div>
+                                    
+                                    {hasDiagram && imgMatch && (
+                                      <div style={{ marginTop: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                                        <img src={imgMatch[1]} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                                      </div>
+                                    )}
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
+                                      {q.options.map((opt: string, oIdx: number) => (
+                                        <div key={oIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '4px', background: q.correctOptionIdx === oIdx ? '#dcfce7' : '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                          <span style={{ fontWeight: 800 }}>{String.fromCharCode(65 + oIdx)}.</span>
+                                          <span>{opt}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleImportSelectedQuestions}
+                            style={{
+                              padding: '12px 24px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'linear-gradient(135deg, #10b981, #059669)',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              fontSize: '0.88rem',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
+                              textAlign: 'center',
+                              alignSelf: 'flex-end',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
+                          </button>
                         </div>
                       )}
                     </div>

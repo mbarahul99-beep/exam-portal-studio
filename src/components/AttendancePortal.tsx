@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db';
+import { syncAttendanceToCloud } from '../utils/cloudSync';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -161,21 +162,34 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   );
 
   // Set individual attendance status in DB
-  const handleSetStatus = async (studentId: number, className: string, status: 'Present' | 'Absent') => {
+  const handleSetStatus = async (
+    studentId: number, 
+    className: string, 
+    status: 'Present' | 'Absent',
+    attendanceMethod: 'Manual' | 'QR' | 'Face' = 'Manual'
+  ) => {
     try {
       const existing = attendanceMap.get(studentId);
+      let recordToSync: AttendanceRecord;
       if (existing) {
-        await db.attendance.update(existing.id!, { status, className });
+        await db.attendance.update(existing.id!, { status, className, attendanceMethod });
+        recordToSync = { ...existing, status, className, attendanceMethod };
       } else {
-        await db.attendance.add({
+        const newRecord = {
           date: selectedDate,
           studentId,
           className,
           status,
+          attendanceMethod,
           createdAt: new Date()
-        });
+        };
+        const newId = await db.attendance.add(newRecord);
+        recordToSync = { id: newId, ...newRecord };
       }
       await loadAttendanceRecords();
+      
+      // Sync with Hostinger MySQL
+      syncAttendanceToCloud(recordToSync).catch(console.warn);
     } catch (err: any) {
       console.error("Set attendance failed:", err);
     }
@@ -589,7 +603,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               playBeep();
               const primaryName = student.name.split('/')[0].trim();
               speakAttendance(primaryName);
-              handleSetStatus(student.id!, student.className, 'Present');
+              handleSetStatus(student.id!, student.className, 'Present', 'QR');
               setScannedFeedback(`✔ Checked-In: ${primaryName} (${student.className})`);
 
               setTimeout(() => {
@@ -747,7 +761,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   isCooldownRef.current = true;
                   playBeep();
                   speakAttendance(primaryName);
-                  handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present');
+                  handleSetStatus(topMatch.student.id!, topMatch.student.className, 'Present', 'Face');
                   setScannedFeedback(`✔ Face Recognized: ${primaryName} (${matchPct}% Match)`);
                   setTrackedFace({
                     ...faceBox,

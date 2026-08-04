@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb } from 'lucide-react';
+import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb, Users, CheckCircle2 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
@@ -98,6 +98,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   // Dynamic Header Logo Scaling States
   const [logoHeight, setLogoHeight] = useState<number>(42);
   const [logoNameHeight, setLogoNameHeight] = useState<number>(38);
+  const [activeTab, setActiveTab] = useState<'exams' | 'attendance'>('exams');
 
   useEffect(() => {
     const loadBranding = () => {
@@ -173,6 +174,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const exams = useLiveQuery(() => db.exams.toArray()) || [];
   const allSubmissions = useLiveQuery(() => db.submissions.toArray()) || [];
   const allQuestions = useLiveQuery(() => db.questions.toArray()) || [];
+  const studentAttendance = useLiveQuery(() => db.attendance.where('studentId').equals(numStudentId).toArray(), [numStudentId]) || [];
 
   // Match exam, calculate rank, and class average for each submission
   const examMap = new Map(exams.map(e => [e.id, e]));
@@ -1136,27 +1138,133 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         ) : (
           /* Landing Dashboard Overview screen */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-            
-            {/* Top Welcome Header */}
-            <header style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight}px`, width: 'auto', objectFit: 'contain' }} />
-                  <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
-                  <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Candidate Hub</span>
-                </div>
-                <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                  Welcome back, <strong style={{ color: '#0f172a' }}>{student.name}</strong> {student.fatherName ? `(Father: ${student.fatherName})` : ''} | Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code> | Target Stream: <strong style={{ color: '#0f172a' }}>{student.className}</strong>
-                </p>
-              </div>
+            {(() => {
+              const storedJson = localStorage.getItem('omr_custom_settings');
+              let titleFontSize = 14;
+              let addressFontSize = 11;
+              let contactFontSize = 11;
+              if (storedJson) {
+                try {
+                  const parsed = JSON.parse(storedJson);
+                  if (parsed.pdfTitleFontSize) titleFontSize = Math.max(12, parsed.pdfTitleFontSize - 1);
+                  if (parsed.pdfAddressFontSize) addressFontSize = Math.max(10, parsed.pdfAddressFontSize);
+                  if (parsed.pdfContactFontSize) contactFontSize = Math.max(10, parsed.pdfContactFontSize);
+                } catch (e) {}
+              }
 
-              <button 
-                onClick={adminMode ? onClose : onLogout}
-                style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', transition: 'all 0.2s ease', outline: 'none' }}
-              >
-                {adminMode ? <ChevronLeft size={16} /> : <LogOut size={16} />} {adminMode ? 'Close Analysis' : 'Log Out'}
-              </button>
-            </header>
+              return (
+                <>
+                  {/* Top Branding Header (matches printable A4 report branding) */}
+                  <header style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    padding: '24px',
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <img src="/logo.png" alt="APEX Logo" style={{ height: `${logoHeight + 16}px`, width: 'auto', objectFit: 'contain' }} />
+                      <img src="/logo_name.png" alt="Institute APEX" style={{ height: `${logoNameHeight + 10}px`, width: 'auto', objectFit: 'contain' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ fontSize: `${titleFontSize}px`, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Institute of Medical Entrance Exams (NEET) & IIT-JEE Coaching
+                      </div>
+                      <div style={{ fontSize: `${addressFontSize}px`, fontWeight: 600, color: '#475569' }}>
+                        #1257, Urban State, Near HUDA Ground, Jind- 126102 (Haryana)
+                      </div>
+                      <div style={{ fontSize: `${contactFontSize}px`, fontWeight: 600, color: '#64748b' }}>
+                        Call : 9467752374, Email: instituteapexjind@gmail.com
+                      </div>
+                    </div>
+                  </header>
+
+                  {/* Candidate Info sub-bar with Portal Navigation and Logout */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    padding: '16px 24px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '16px',
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.03)'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, padding: '4px 12px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'inline-block', marginBottom: '6px' }}>Candidate Hub</span>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                        Welcome back, <strong style={{ color: '#0f172a' }}>{student.name}</strong> {student.fatherName ? `(Father: ${student.fatherName})` : ''} | Roll ID: <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{student.studentNum}</code> | Target Stream: <strong style={{ color: '#0f172a' }}>{student.className}</strong>
+                      </p>
+                    </div>
+
+                    {/* Tab Navigation & Logout button */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '10px', padding: '4px', gap: '4px' }}>
+                        <button
+                          onClick={() => setActiveTab('exams')}
+                          style={{
+                            border: 'none',
+                            background: activeTab === 'exams' ? '#ffffff' : 'transparent',
+                            color: activeTab === 'exams' ? '#2563eb' : '#64748b',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontSize: '0.82rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: activeTab === 'exams' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                            transition: 'all 0.2s ease',
+                            outline: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <BookOpen size={14} /> Exam Reports
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('attendance')}
+                          style={{
+                            border: 'none',
+                            background: activeTab === 'attendance' ? '#ffffff' : 'transparent',
+                            color: activeTab === 'attendance' ? '#2563eb' : '#64748b',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontSize: '0.82rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: activeTab === 'attendance' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                            transition: 'all 0.2s ease',
+                            outline: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Calendar size={14} /> Attendance
+                        </button>
+                      </div>
+
+                      <button 
+                        onClick={adminMode ? onClose : onLogout}
+                        style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 20px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', transition: 'all 0.2s ease', outline: 'none' }}
+                      >
+                        {adminMode ? <ChevronLeft size={16} /> : <LogOut size={16} />} {adminMode ? 'Close Analysis' : 'Log Out'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
+            {activeTab === 'exams' ? (
+              <>
 
             {/* KPI Cards Row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
@@ -1399,8 +1507,140 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                   </div>
                 </div>
               </div>
-
             </div>
+          </>
+        ) : (
+              /* Attendance View */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {(() => {
+                  const totalDays = studentAttendance.length;
+                  const presentCount = studentAttendance.filter(a => a.status === 'Present').length;
+                  const absentCount = studentAttendance.filter(a => a.status === 'Absent').length;
+                  const attendancePct = totalDays > 0 ? Math.round((presentCount / totalDays) * 100) : 0;
+
+                  // Sort attendance by date descending
+                  const sortedAttendance = [...studentAttendance].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                  return (
+                    <>
+                      {/* Attendance KPI Cards */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+                        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.01)' }}>
+                          <div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Attendance Percentage</span>
+                            <h3 style={{ margin: '8px 0 4px 0', fontSize: '1.8rem', fontWeight: 900, color: attendancePct >= 75 ? '#16a34a' : '#ea580c' }}>{attendancePct}%</h3>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{attendancePct >= 75 ? 'Excellent standing' : 'Low attendance (Required >= 75%)'}</span>
+                          </div>
+                          <div style={{ background: attendancePct >= 75 ? '#dcfce7' : '#fee2e2', color: attendancePct >= 75 ? '#16a34a' : '#ef4444', padding: '12px', borderRadius: '12px' }}>
+                            <CheckCircle2 size={24} />
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.01)' }}>
+                          <div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Days Present</span>
+                            <h3 style={{ margin: '8px 0 4px 0', fontSize: '1.8rem', fontWeight: 900, color: '#16a34a' }}>{presentCount} <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 'normal' }}>/ {totalDays}</span></h3>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Classes & exams attended</span>
+                          </div>
+                          <div style={{ background: '#dcfce7', color: '#16a34a', padding: '12px', borderRadius: '12px' }}>
+                            <Users size={24} />
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.01)' }}>
+                          <div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Days Absent</span>
+                            <h3 style={{ margin: '8px 0 4px 0', fontSize: '1.8rem', fontWeight: 900, color: '#ef4444' }}>{absentCount}</h3>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Unexcused absences</span>
+                          </div>
+                          <div style={{ background: '#fee2e2', color: '#ef4444', padding: '12px', borderRadius: '12px' }}>
+                            <X size={24} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Daily Log list */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Daily Attendance Log</h3>
+                        
+                        {sortedAttendance.length === 0 ? (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                            No attendance records found for your account.
+                          </div>
+                        ) : (
+                          <>
+                            {/* Desktop Table View */}
+                            <div className="desktop-attendance-table-view" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                                <thead>
+                                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 800 }}>
+                                    <th style={{ padding: '18px 24px' }}>Date</th>
+                                    <th style={{ padding: '18px 20px' }}>Status</th>
+                                    <th style={{ padding: '18px 20px' }}>Method</th>
+                                    <th style={{ padding: '18px 20px' }}>Class</th>
+                                    <th style={{ padding: '18px 24px' }}>Remarks</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sortedAttendance.map((rec) => (
+                                    <tr key={rec.id || rec.date} style={{ borderBottom: '1px solid #edf2f7' }}>
+                                      <td style={{ padding: '18px 24px', fontWeight: 700, color: '#0f172a' }}>
+                                        {new Date(rec.date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                      </td>
+                                      <td style={{ padding: '18px 20px' }}>
+                                        <span style={{
+                                          padding: '4px 10px',
+                                          borderRadius: '20px',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 800,
+                                          background: rec.status === 'Present' ? '#dcfce7' : rec.status === 'Absent' ? '#fee2e2' : '#fef3c7',
+                                          color: rec.status === 'Present' ? '#15803d' : rec.status === 'Absent' ? '#b91c1c' : '#b45309'
+                                        }}>
+                                          {rec.status}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: '18px 20px', color: '#475569', fontWeight: 600 }}>{rec.attendanceMethod || 'Manual'}</td>
+                                      <td style={{ padding: '18px 20px', color: '#475569' }}>{rec.className}</td>
+                                      <td style={{ padding: '18px 24px', color: '#64748b' }}>{rec.remarks || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Mobile Cards List */}
+                            <div className="mobile-attendance-cards-view" style={{ flexDirection: 'column', gap: '12px' }}>
+                              {sortedAttendance.map((rec) => (
+                                <div key={`m-att-${rec.id || rec.date}`} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                  <div>
+                                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', marginBottom: '4px' }}>
+                                      {new Date(rec.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                      Method: {rec.attendanceMethod || 'Manual'} | Class: {rec.className} {rec.remarks ? `| Remarks: ${rec.remarks}` : ''}
+                                    </div>
+                                  </div>
+                                  <span style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '20px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    background: rec.status === 'Present' ? '#dcfce7' : rec.status === 'Absent' ? '#fee2e2' : '#fef3c7',
+                                    color: rec.status === 'Present' ? '#15803d' : rec.status === 'Absent' ? '#b91c1c' : '#b45309'
+                                  }}>
+                                    {rec.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
 
           </div>
         )}
@@ -1478,6 +1718,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
           align-items: center;
           gap: 8px;
           flex-wrap: wrap;
+        }
+
+        .desktop-attendance-table-view {
+          display: block;
+        }
+        .mobile-attendance-cards-view {
+          display: none;
+        }
+        @media (max-width: 768px) {
+          .desktop-attendance-table-view {
+            display: none !important;
+          }
+          .mobile-attendance-cards-view {
+            display: flex !important;
+          }
         }
 
         @media (max-width: 768px) {

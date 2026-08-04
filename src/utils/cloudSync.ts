@@ -1,4 +1,16 @@
-import { db, type Student, type Exam, type ExamSubmission, type PendingRegistration, type ClassEntity, type QuestionBank, type BankQuestion } from '../db';
+import { db, type Student, type Exam, type ExamSubmission, type PendingRegistration, type ClassEntity, type QuestionBank, type BankQuestion, type AttendanceRecord } from '../db';
+
+export async function syncAttendanceToCloud(record: AttendanceRecord) {
+  try {
+    await fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+  } catch (err) {
+    console.warn("Cloud sync attendance failed:", err);
+  }
+}
 
 /**
  * Cloud Sync helper for synchronizing IndexedDB data with Hostinger MySQL Database
@@ -570,6 +582,34 @@ export async function pullCloudUpdatesToIndexedDB() {
           }
         } catch (err) {
           console.warn("Error syncing teacher item:", err);
+        }
+      }
+    }
+
+    // 6.5. Sync Daily Attendance Records
+    if (data.attendance && Array.isArray(data.attendance)) {
+      const serverAttendanceIds = new Set(data.attendance.map((a: any) => a.id));
+      const localAttendance = await db.attendance.toArray();
+      for (const la of localAttendance) {
+        if (la.id && !serverAttendanceIds.has(la.id)) {
+          await db.attendance.delete(la.id);
+        }
+      }
+
+      for (const att of data.attendance) {
+        try {
+          const { id: mysqlId, ...attFields } = att;
+          // Find existing by ID or composite key [date+studentId]
+          const existing = await db.attendance.get(att.id) || await db.attendance.where('[date+studentId]').equals([att.date, att.studentId]).first();
+          if (!existing) {
+            await db.attendance.add({ id: att.id, ...attFields });
+          } else {
+            if (!isRecordEqual(existing, attFields)) {
+              await db.attendance.update(existing.id!, attFields);
+            }
+          }
+        } catch (err) {
+          console.warn("Error syncing attendance record:", err);
         }
       }
     }

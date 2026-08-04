@@ -41,6 +41,17 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [editingStudentIds, setEditingStudentIds] = useState<Record<number, boolean>>({});
   const [remarksMap, setRemarksMap] = useState<Record<number, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Reports & Export Manager states
+  const [activePortalTab, setActivePortalTab] = useState<'sessions' | 'reports'>('sessions');
+  const [reportStartDate, setReportStartDate] = useState<string>(() => {
+    const d = new Date();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${d.getFullYear()}-${month}-01`;
+  });
+  const [reportEndDate, setReportEndDate] = useState<string>(getTodayString());
+  const [reportClass, setReportClass] = useState<string>('All');
+  const [reportType, setReportType] = useState<'matrix' | 'daily'>('matrix');
 
   // Scanner & Biometric States
   const [isScanning, setIsScanning] = useState(false);
@@ -221,12 +232,12 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       return;
     }
 
-    let csvContent = 'Roll ID,Student Name,Class,Status,Date,Check-In Time\n';
+    let csvContent = 'Roll ID,Student Name,Class,Status,Date,Check-In Time,Remarks\n';
     classSts.forEach((s, idx) => {
       const rec = attendanceMap.get(s.id!);
       const statusStr = rec ? rec.status : 'Unmarked';
-      const timeStr = rec ? rec.createdAt.toLocaleTimeString() : 'N/A';
-      csvContent += `"${s.studentNum || (idx + 1)}","${s.name.replace(/"/g, '""')}","${s.className}","${statusStr}","${selectedDate}","${timeStr}"\n`;
+      const timeStr = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleTimeString() : 'N/A';
+      csvContent += `"${s.studentNum || (idx + 1)}","${s.name.replace(/"/g, '""')}","${s.className}","${statusStr}","${selectedDate}","${timeStr}","${(rec?.remarks || '').replace(/"/g, '""')}"\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -237,6 +248,130 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Export Daily Summary or Student Matrix over a date range
+  const handleExportReport = async () => {
+    try {
+      // Fetch all attendance logs in date range
+      const records = await db.attendance
+        .where('date')
+        .between(reportStartDate, reportEndDate, true, true)
+        .toArray();
+
+      if (reportType === 'daily') {
+        // Daily Summary Report
+        // Group records by date
+        const dateGroups: Record<string, { present: number; absent: number; total: number }> = {};
+        
+        // Generate list of dates in range
+        const start = new Date(reportStartDate);
+        const end = new Date(reportEndDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0];
+          dateGroups[dateStr] = { present: 0, absent: 0, total: 0 };
+        }
+
+        records.forEach(rec => {
+          if (dateGroups[rec.date]) {
+            // Filter by class if selected
+            const student = dbStudents.find(s => s.id === rec.studentId);
+            if (!student) return;
+            if (reportClass !== 'All' && student.className !== reportClass) return;
+
+            if (rec.status === 'Present') dateGroups[rec.date].present++;
+            else if (rec.status === 'Absent') dateGroups[rec.date].absent++;
+            dateGroups[rec.date].total++;
+          }
+        });
+
+        let csvContent = 'Date,Total Target Students,Present Count,Absent Count,Present Percentage (%)\n';
+        Object.keys(dateGroups).sort().forEach(dateStr => {
+          const group = dateGroups[dateStr];
+          const targetStudents = reportClass === 'All' ? dbStudents.length : dbStudents.filter(s => s.className === reportClass).length;
+          const pct = group.total > 0 ? Math.round((group.present / group.total) * 100) : 0;
+          csvContent += `"${dateStr}",${targetStudents},${group.present},${group.absent},${pct}%\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Daily_Attendance_Summary_${reportClass}_${reportStartDate}_to_${reportEndDate}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Student-wise Matrix Report
+        const targetStudents = reportClass === 'All' 
+          ? dbStudents 
+          : dbStudents.filter(s => s.className === reportClass);
+
+        if (targetStudents.length === 0) {
+          alert("No students found for this class.");
+          return;
+        }
+
+        // Generate list of dates in range
+        const datesList: string[] = [];
+        const start = new Date(reportStartDate);
+        const end = new Date(reportEndDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          datesList.push(d.toISOString().split('T')[0]);
+        }
+
+        // Create mapping date -> studentId -> status
+        const statusMap: Record<string, Record<number, string>> = {};
+        datesList.forEach(d => {
+          statusMap[d] = {};
+        });
+        records.forEach(rec => {
+          if (statusMap[rec.date]) {
+            statusMap[rec.date][rec.studentId] = rec.status;
+          }
+        });
+
+        // Headers
+        let csvContent = 'Roll ID,Student Name,Class,';
+        csvContent += datesList.join(',') + ',Total Days,Total Present,Total Absent,Attendance Percentage (%)\n';
+
+        targetStudents.forEach(s => {
+          csvContent += `"${s.studentNum}","${s.name.replace(/"/g, '""')}","${s.className}",`;
+          let totalPresent = 0;
+          let totalAbsent = 0;
+          let totalWorking = 0;
+
+          const rowValues = datesList.map(d => {
+            const status = statusMap[d][s.id!];
+            if (status === 'Present') {
+              totalPresent++;
+              totalWorking++;
+              return 'P';
+            } else if (status === 'Absent') {
+              totalAbsent++;
+              totalWorking++;
+              return 'A';
+            }
+            return '-';
+          });
+
+          const pct = totalWorking > 0 ? Math.round((totalPresent / totalWorking) * 100) : 0;
+          csvContent += rowValues.join(',') + `,${totalWorking},${totalPresent},${totalAbsent},${pct}%\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Attendance_Matrix_${reportClass}_${reportStartDate}_to_${reportEndDate}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      showToast("Report exported successfully!");
+    } catch (err: any) {
+      alert("Failed to export report: " + err.message);
+    }
   };
 
 
@@ -844,15 +979,6 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     hasBlinkedRef.current = false;
   };
 
-  // Helper to format date display (DD-MM-YYYY)
-  const formatDateDisplay = (dateStr: string) => {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-    return dateStr;
-  };
-
   // Class Students Roster for currently selected class
   const classStudents = selectedClass ? dbStudents.filter(s => s.className === selectedClass) : [];
   const filteredStudents = classStudents;
@@ -907,107 +1033,237 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 type="date" 
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', fontWeight: 700, outline: 'none', color: '#0f172a', width: '105px' }}
+                onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', fontWeight: 700, outline: 'none', color: '#0f172a', width: '105px', cursor: 'pointer' }}
               />
             </div>
           </div>
 
-          {/* COMPACT SCANNER CARD */}
-          <div 
-            onClick={startScanner}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              marginBottom: '20px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '14px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Camera size={24} color="#1d4ed8" />
-            </div>
-
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                Attendance
-              </h3>
-            </div>
-
-            <span style={{
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              color: '#ffffff',
-              padding: '6px 12px',
-              borderRadius: '8px',
-              fontWeight: 700,
-              fontSize: '0.78rem',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.2)',
-              flexShrink: 0
-            }}>
-              Start Scan
-            </span>
+          {/* Tab Navigation */}
+          <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '10px', padding: '4px', gap: '4px', marginBottom: '20px' }}>
+            <button
+              onClick={() => setActivePortalTab('sessions')}
+              style={{
+                flex: 1,
+                border: 'none',
+                background: activePortalTab === 'sessions' ? '#ffffff' : 'transparent',
+                color: activePortalTab === 'sessions' ? '#2563eb' : '#64748b',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: activePortalTab === 'sessions' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              Active Sessions
+            </button>
+            <button
+              onClick={() => setActivePortalTab('reports')}
+              style={{
+                flex: 1,
+                border: 'none',
+                background: activePortalTab === 'reports' ? '#ffffff' : 'transparent',
+                color: activePortalTab === 'reports' ? '#2563eb' : '#64748b',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: activePortalTab === 'reports' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              Reports & Exports
+            </button>
           </div>
 
-          {/* CLASSES LIST */}
-          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>
-            Select Class ({dbClasses.length})
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {dbClasses.map((cls) => {
-              const clsStudents = dbStudents.filter(s => s.className === cls.name);
-              const clsPresent = clsStudents.filter(s => {
-                const rec = attendanceMap.get(s.id!);
-                return rec && rec.status === 'Present';
-              }).length;
-
-              const pct = clsStudents.length > 0 ? Math.round((clsPresent / clsStudents.length) * 100) : 0;
-
-              return (
-                <div
-                  key={`cls-card-${cls.id}`}
-                  onClick={() => setSelectedClass(cls.name)}
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '12px',
-                    padding: '12px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '14px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.25rem', flexShrink: 0 }}>
-                    {cls.name.charAt(0).toUpperCase()}
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{cls.name}</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {clsStudents.length}</span>
-                      <span style={{ color: '#cbd5e1' }}>|</span>
-                      <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#94a3b8') }}>
-                      {pct}%
-                    </span>
-                    <ChevronRight size={18} color="#94a3b8" />
-                  </div>
+          {activePortalTab === 'sessions' ? (
+            <>
+              {/* COMPACT SCANNER CARD */}
+              <div 
+                onClick={startScanner}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  marginBottom: '20px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Camera size={24} color="#1d4ed8" />
                 </div>
-              );
-            })}
-          </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                    Attendance
+                  </h3>
+                </div>
+
+                <span style={{
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  color: '#ffffff',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  boxShadow: '0 2px 4px rgba(37,99,235,0.2)',
+                  flexShrink: 0
+                }}>
+                  Start Scan
+                </span>
+              </div>
+
+              {/* CLASSES LIST */}
+              <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>
+                Select Class ({dbClasses.length})
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {dbClasses.map((cls) => {
+                  const clsStudents = dbStudents.filter(s => s.className === cls.name);
+                  const clsPresent = clsStudents.filter(s => {
+                    const rec = attendanceMap.get(s.id!);
+                    return rec && rec.status === 'Present';
+                  }).length;
+
+                  const pct = clsStudents.length > 0 ? Math.round((clsPresent / clsStudents.length) * 100) : 0;
+
+                  return (
+                    <div
+                      key={`cls-card-${cls.id}`}
+                      onClick={() => setSelectedClass(cls.name)}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.25rem', flexShrink: 0 }}>
+                        {cls.name.charAt(0).toUpperCase()}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{cls.name}</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {clsStudents.length}</span>
+                          <span style={{ color: '#cbd5e1' }}>|</span>
+                          <span style={{ color: '#16a34a', fontWeight: 700 }}>{clsPresent}/{clsStudents.length} Present</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#94a3b8') }}>
+                          {pct}%
+                        </span>
+                        <ChevronRight size={18} color="#94a3b8" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* Reports Tab View */
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.01)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Attendance Export Manager</h3>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
+                  Select a date range and class to generate spreadsheet reports.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Report Type</label>
+                  <select
+                    value={reportType}
+                    onChange={(e: any) => setReportType(e.target.value)}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', background: '#fff' }}
+                  >
+                    <option value="matrix">Student-wise Matrix (Daily logs spreadsheet)</option>
+                    <option value="daily">Daily Summary Report (Aggregates per day)</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Target Class</label>
+                  <select
+                    value={reportClass}
+                    onChange={(e) => setReportClass(e.target.value)}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', background: '#fff' }}
+                  >
+                    <option value="All">All Classes</option>
+                    {dbClasses.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>From Date</label>
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>To Date</label>
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleExportReport}
+                style={{
+                  marginTop: '8px',
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(37,99,235,0.2)',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                <FileSpreadsheet size={18} /> Export CSV Report
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1087,9 +1343,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
             {/* Metadata Line */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', fontSize: '0.78rem', color: '#64748b' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '3px 6px', borderRadius: '8px' }}>
                 <Calendar size={12} color="#64748b" />
-                <span style={{ fontWeight: 600 }}>{formatDateDisplay(selectedDate)}</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                  style={{ border: 'none', background: 'transparent', fontSize: '0.78rem', fontWeight: 700, outline: 'none', color: '#0f172a', width: '105px', cursor: 'pointer' }}
+                />
               </div>
 
               <span>•</span>

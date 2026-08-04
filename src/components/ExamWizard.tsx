@@ -91,6 +91,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
   // Word AI Parser States
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-1.5-flash');
   const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
   const [wordParseError, setWordParseError] = useState<string | null>(null);
   const [wordParseStatus, setWordParseStatus] = useState<string>('');
@@ -542,6 +543,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
     // Save key locally
     localStorage.setItem('gemini_api_key', geminiApiKey.trim());
+    localStorage.setItem('gemini_model', geminiModel);
 
     setIsParsingWord(true);
     setWordParseError(null);
@@ -620,7 +622,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
 
       const allParsed: any[] = [];
       const totalChunks = questionChunks.length;
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey.trim()}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey.trim()}`;
       
       const systemPrompt = `You are a professional examiner. Extract all Multiple Choice Questions (MCQs) from the provided HTML document. 
 Return ONLY a valid JSON array of objects representing the questions. Do not include any markdown styling, \`\`\`json blocks, or explanation text.
@@ -1996,6 +1998,18 @@ Verify:
                           placeholder="Paste your AI Studio API Key here..."
                           style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
                         />
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                          <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Model Version:</span>
+                          <select
+                            value={geminiModel}
+                            onChange={(e) => setGeminiModel(e.target.value)}
+                            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
+                          >
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Stable / Recommended)</option>
+                            <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast / Deprecated for some projects)</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
+                          </select>
+                        </div>
                       </div>
 
                       {/* Upload zone */}

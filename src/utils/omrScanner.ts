@@ -24,7 +24,7 @@ export const OMR_CONFIG = {
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
   studentId: {
-    xStart: 100, // Center of first digit column
+    xStart: 124, // Center of first digit column (perfectly centered dynamically)
     xStep: 36,   // Horizontal spacing between digits (enlarged)
     yStart: 185, // Center of '1' bubble row (adjusted to y = 185)
     yStep: 20,   // Vertical spacing between rows (adjusted to yStep = 20 to fill box)

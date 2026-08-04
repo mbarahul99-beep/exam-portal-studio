@@ -66,7 +66,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         margin:       [0, 0, 0, 0],
         filename:     `${student.name}_${activeAnalysisSub.exam.title}_Report.pdf`.replace(/\s+/g, '_'),
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        html2canvas:  { scale: 3, useCORS: true, logging: false },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak:    { mode: ['css', 'legacy'] }
       };
@@ -1031,93 +1031,6 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     </div>
                   )}
                 </div>
-
-                {/* 2. Details Table and Questions list Card */}
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Difficulty Metrics Summary</h4>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1.5px solid #cbd5e1', color: '#475569' }}>
-                        <th style={{ padding: '6px 4px', fontWeight: 'bold' }}>Level</th>
-                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Correct</th>
-                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Wrong</th>
-                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Skipped</th>
-                        <th style={{ padding: '6px 4px', fontWeight: 'bold', textAlign: 'center' }}>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
-                        const stats = analysisDetails.diffStats[level];
-                        return (
-                          <tr key={level} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '8px 4px', fontWeight: 'bold', color: '#1e293b' }}>{level}</td>
-                            <td style={{ padding: '8px 4px', color: '#16a34a', fontWeight: 'bold', textAlign: 'center' }}>{stats.correct}</td>
-                            <td style={{ padding: '8px 4px', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>{stats.wrong}</td>
-                            <td style={{ padding: '8px 4px', color: '#64748b', textAlign: 'center' }}>{stats.skipped}</td>
-                            <td style={{ padding: '8px 4px', color: '#0f172a', fontWeight: 'bold', textAlign: 'center' }}>{stats.total}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  {/* Inline list of color-coded questions per difficulty */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
-                    {(['Easy', 'Moderate', 'Difficult'] as const).map(level => {
-                      const stats = analysisDetails.diffStats[level];
-                      if (stats.questions.length === 0) return null;
-                      return (
-                        <div key={`inline-list-${level}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#64748b' }}>{level} Questions:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {stats.questions.map(qNum => {
-                              const sAns = activeAnalysisSub.answers[qNum];
-                              const subSet = activeAnalysisSub.bookletSet || 'A';
-                              const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
-                              const cAns = setKey[qNum];
-                              
-                              const isCorrect = sAns === cAns;
-                              const isLeft = !sAns;
-                              
-                              let bg = '#f8fafc';
-                              let color = '#64748b';
-                              let border = '1px solid #e2e8f0';
-
-                              if (isCorrect) {
-                                bg = '#f0fdf4';
-                                color = '#15803d';
-                                border = '1px solid #bcf0da';
-                              } else if (!isLeft) {
-                                bg = '#fdf2f2';
-                                color = '#b91c1c';
-                                border = '1px solid #fbd5d5';
-                              }
-
-                              return (
-                                <span 
-                                  key={`badge-${qNum}`} 
-                                  style={{
-                                    fontSize: '0.65rem',
-                                    fontWeight: 'bold',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    background: bg,
-                                    color: color,
-                                    border: border
-                                  }}
-                                  title={`Q.${qNum} | Student Answer: ${sAns || 'Left'} | Correct: ${cAns}`}
-                                >
-                                  {qNum}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
               </div>
 
               {/* 3. ROI Insights Alert Box */}
@@ -1134,188 +1047,89 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               )}
             </div>
 
-            {/* Split layout: Section-wise table (left) & Question grid (right) */}
-            <div className="student-analysis-split">
-              
-              {/* Left Column: Section Analysis Table */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Section-wise Performance Breakdown</h3>
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                  {/* Desktop Table View */}
-                  <div className="desktop-sec-table-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 800 }}>
-                          <th style={{ padding: '12px 16px' }}>Section / Subject</th>
-                          <th style={{ padding: '12px 16px' }}>Correct</th>
-                          <th style={{ padding: '12px 16px' }}>Incorrect</th>
-                          <th style={{ padding: '12px 16px' }}>Left</th>
-                          <th style={{ padding: '12px 16px' }}>Marks Scored</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'right' }}>Accuracy</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analysisDetails.sectionRows.map((row, idx) => {
-                          const pct = row.total > 0 ? Math.round((row.correct / row.total) * 100) : 0;
-                          return (
-                            <tr key={idx} style={{ borderBottom: '1px solid #edf2f7' }}>
-                              <td style={{ padding: '14px 16px', fontWeight: 'bold' }}>{row.name}</td>
-                              <td style={{ padding: '14px 16px', color: '#16a34a', fontWeight: 'bold' }}>{row.correct}</td>
-                              <td style={{ padding: '14px 16px', color: '#ef4444', fontWeight: 'bold' }}>{row.incorrect}</td>
-                              <td style={{ padding: '14px 16px', color: '#64748b' }}>{row.unanswered}</td>
-                              <td style={{ padding: '14px 16px', fontWeight: 'bold' }}>
-                                {row.score} <span style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: 'normal' }}>/ {row.maxScore}</span>
-                              </td>
-                              <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 'bold', color: pct >= 75 ? '#16a34a' : pct >= 50 ? '#2563eb' : '#ea580c' }}>
-                                {pct}%
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile Cards View */}
-                  <div className="mobile-sec-cards-view">
-                    {analysisDetails.sectionRows.map((row, idx) => {
-                      const pct = row.total > 0 ? Math.round((row.correct / row.total) * 100) : 0;
-                      return (
-                        <div key={`m-sec-${idx}`} className="mobile-sec-card">
-                          <div className="mobile-sec-card-header">
-                            <h4 className="sec-name">{row.name}</h4>
-                            <span 
-                              className="sec-accuracy-pill"
-                              style={{ 
-                                color: pct >= 75 ? '#15803d' : pct >= 50 ? '#1d4ed8' : '#c2410c',
-                                background: pct >= 75 ? '#f0fdf4' : pct >= 50 ? '#eff6ff' : '#fff7ed',
-                                border: `1px solid ${pct >= 75 ? '#bbf7d0' : pct >= 50 ? '#bfdbfe' : '#ffedd5'}`
-                              }}
-                            >
-                              {pct}% Accuracy
-                            </span>
-                          </div>
-
-                          <div className="mobile-sec-card-stats-row">
-                            <div className="sec-stat-badge correct">
-                              <span className="dot">✓</span> {row.correct} Correct
-                            </div>
-                            <div className="sec-stat-badge incorrect">
-                              <span className="dot">✗</span> {row.incorrect} Wrong
-                            </div>
-                            <div className="sec-stat-badge left">
-                              <span className="dot">◯</span> {row.unanswered} Left
-                            </div>
-                          </div>
-
-                          <div className="mobile-sec-card-footer">
-                            <span className="sec-score-label">Marks Scored</span>
-                            <span className="sec-score-val">
-                              <strong>{row.score}</strong> / {row.maxScore} pts
-                            </span>
-                          </div>
-
-                          <div className="sec-progress-track">
-                            <div 
-                              className="sec-progress-fill" 
-                              style={{ 
-                                width: `${Math.max(0, Math.min(100, pct))}%`,
-                                background: pct >= 75 ? '#16a34a' : pct >= 50 ? '#2563eb' : '#ea580c'
-                              }} 
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+            {/* Full-width Question Response Map */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Question Response Map</h3>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                
+                {/* Color Key */}
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px', fontSize: '0.7rem', color: '#64748b' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={14} style={{ color: '#16a34a' }} /> Correct
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <XCircle size={14} style={{ color: '#ef4444' }} /> Wrong
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <MinusCircle size={14} style={{ color: '#64748b' }} /> Skipped
+                  </span>
                 </div>
-              </div>
 
-              {/* Right Column: Interactive Response Grid */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Question Response Map</h3>
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                  
-                  {/* Color Key */}
-                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px', fontSize: '0.7rem', color: '#64748b' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <CheckCircle size={14} style={{ color: '#16a34a' }} /> Correct
-                    </span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <XCircle size={14} style={{ color: '#ef4444' }} /> Wrong
-                    </span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <MinusCircle size={14} style={{ color: '#64748b' }} /> Skipped
-                    </span>
-                  </div>
+                {/* Bubble grid list */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {Array.from({ length: activeAnalysisSub.exam.numQuestions }, (_, i) => {
+                    const qNum = i + 1;
+                    const sAns = activeAnalysisSub.answers[qNum];
+                    const subSet = activeAnalysisSub.bookletSet || 'A';
+                    const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
+                    const cAns = setKey[qNum];
+                    
+                    const isCorrect = sAns === cAns;
+                    const isLeft = !sAns;
 
-                  {/* Bubble grid list */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
-                    {Array.from({ length: activeAnalysisSub.exam.numQuestions }, (_, i) => {
-                      const qNum = i + 1;
-                      const sAns = activeAnalysisSub.answers[qNum];
-                      const subSet = activeAnalysisSub.bookletSet || 'A';
-                      const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
-                      const cAns = setKey[qNum];
-                      
-                      const isCorrect = sAns === cAns;
-                      const isLeft = !sAns;
+                    let bg = '#f1f5f9';
+                    let color = '#475569';
+                    let border = '1px solid #cbd5e1';
 
-                      let bg = '#f1f5f9';
-                      let color = '#475569';
-                      let border = '1px solid #cbd5e1';
+                    if (isLeft) {
+                      bg = '#f8fafc';
+                      color = '#64748b';
+                      border = '1px solid #e2e8f0';
+                    } else if (isCorrect) {
+                      bg = '#f0fdf4';
+                      color = '#15803d';
+                      border = '1px solid #bcf0da';
+                    } else {
+                      bg = '#fdf2f2';
+                      color = '#b91c1c';
+                      border = '1px solid #fbd5d5';
+                    }
 
-                      if (isLeft) {
-                        bg = '#f8fafc';
-                        color = '#64748b';
-                        border = '1px solid #e2e8f0';
-                      } else if (isCorrect) {
-                        bg = '#f0fdf4';
-                        color = '#15803d';
-                        border = '1px solid #bcf0da';
-                      } else {
-                        bg = '#fdf2f2';
-                        color = '#b91c1c';
-                        border = '1px solid #fbd5d5';
-                      }
-
-                      const displayAns = sAns === 'MULTIPLE' ? 'M' : (sAns || '-');
-                      return (
-                        <div 
-                          key={qNum}
-                          title={`Q.${qNum} | Correct Key: ${cAns} | Student Response: ${sAns || 'Left/Unanswered'}`}
-                          style={{
-                            width: '48px',
-                            height: '42px',
-                            borderRadius: '8px',
-                            background: bg,
-                            color: color,
-                            border: border,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold',
-                            boxSizing: 'border-box'
-                          }}
-                        >
-                          <span style={{ fontSize: '0.62rem', color: '#64748b' }}>Q{qNum}</span>
-                          <div style={{ display: 'flex', gap: '3px', fontSize: '0.55rem', marginTop: '1px' }}>
-                            <span style={{ color: '#16a34a', fontWeight: '900' }} title="Correct Key">{cAns}</span>
-                            <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>/</span>
-                            <span style={{ fontWeight: '900', color: isCorrect ? '#16a34a' : isLeft ? '#64748b' : '#ef4444' }} title="Student Response">
-                              {displayAns}
-                            </span>
-                          </div>
+                    const displayAns = sAns === 'MULTIPLE' ? 'M' : (sAns || '-');
+                    return (
+                      <div 
+                        key={qNum}
+                        title={`Q.${qNum} | Correct Key: ${cAns} | Student Response: ${sAns || 'Left/Unanswered'}`}
+                        style={{
+                          width: '48px',
+                          height: '42px',
+                          borderRadius: '8px',
+                          background: bg,
+                          color: color,
+                          border: border,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <span style={{ fontSize: '0.62rem', color: '#64748b' }}>Q{qNum}</span>
+                        <div style={{ display: 'flex', gap: '3px', fontSize: '0.55rem', marginTop: '1px' }}>
+                          <span style={{ color: '#16a34a', fontWeight: '900' }} title="Correct Key">{cAns}</span>
+                          <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>/</span>
+                          <span style={{ fontWeight: '900', color: isCorrect ? '#16a34a' : isLeft ? '#64748b' : '#ef4444' }} title="Student Response">
+                            {displayAns}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
 
+              </div>
             </div>
 
           </div>

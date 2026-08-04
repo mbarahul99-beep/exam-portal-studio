@@ -1,0 +1,149 @@
+App.backup.tsx:7: import { OmrPrintSheet } from './components/OmrPrintSheet';
+App.backup.tsx:550: // Printing state
+App.backup.tsx:551: const [printExam, setPrintExam] = useState<Exam | null>(null);
+App.backup.tsx:995: // Printing Action
+App.backup.tsx:996: const triggerPrint = (exam: Exam) => {
+App.backup.tsx:997: setPrintExam(exam);
+App.backup.tsx:999: window.print();
+App.backup.tsx:1000: // Keep it mounted longer (e.g. 3000ms) on mobile or listen to afterprint
+App.backup.tsx:1001: const handleAfterPrint = () => {
+App.backup.tsx:1002: setPrintExam(null);
+App.backup.tsx:1003: window.removeEventListener('afterprint', handleAfterPrint);
+App.backup.tsx:1005: window.addEventListener('afterprint', handleAfterPrint);
+App.backup.tsx:1006: setTimeout(handleAfterPrint, 3000);
+App.backup.tsx:1043: // 4 black square corner anchors (sized 48x48 to match 10mm x 10mm print anchors)
+App.backup.tsx:1828: <div className="admin-report-portal-modal no-print" style={{ position: 'fixed', inset: 0, zIndex: 9999, overflowY: 'auto', background: '#f8fafc' }}>
+App.backup.tsx:1838: {/* 1. PRINT ONLY CONTAINER: Loaded on print dialog */}
+App.backup.tsx:1839: {printExam && (
+App.backup.tsx:1840: <div className="print-only">
+App.backup.tsx:1841: <OmrPrintSheet
+App.backup.tsx:1842: examTitle={printExam.title}
+App.backup.tsx:1843: numQuestions={printExam.numQuestions}
+App.backup.tsx:1844: exam={printExam}
+App.backup.tsx:1855: <header className="mobile-header no-print" style={{ justifyContent: 'flex-start', gap: '16px', padding: '12px 16px' }}>
+App.backup.tsx:1869: <div className="no-print app-layout">
+App.backup.tsx:2668: onPrintRedirect={(exam) => triggerPrint(exam)}
+App.backup.tsx:2972: <span>Want to test the scanner without printing?</span>
+App.backup.tsx:3952: {/* Printable ID Card Container */}
+App.backup.tsx:3953: <div id="student-printable-card" style={{
+App.backup.tsx:3986: const printContent = document.getElementById('student-printable-card');
+App.backup.tsx:3987: if (printContent) {
+App.backup.tsx:3988: const printWindow = window.open('', '_blank');
+App.backup.tsx:3989: if (printWindow) {
+App.backup.tsx:3990: printWindow.document.write(`
+App.backup.tsx:3993: <title>Print ID Card - ${viewingQrStudent.name}</title>
+App.backup.tsx:4000: <div id="card">${printContent.innerHTML}</div>
+App.backup.tsx:4001: <script>window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); }</script>
+App.backup.tsx:4005: printWindow.document.close();
+App.backup.tsx:4008: }}>Print Card</button>
+App.backup.tsx:5103: .print-only {
+App.backup.tsx:5106: @media print {
+App.backup.tsx:5107: .no-print {
+App.backup.tsx:5110: .print-only {
+App.tsx:7: import { OmrPrintSheet } from './components/OmrPrintSheet';
+App.tsx:549: // Printing state
+App.tsx:550: const [printExam, setPrintExam] = useState<Exam | null>(null);
+App.tsx:994: // Printing Action
+App.tsx:995: const triggerPrint = (exam: Exam) => {
+App.tsx:996: setPrintExam(exam);
+App.tsx:998: window.print();
+App.tsx:999: setPrintExam(null);
+App.tsx:1025: // 4 black square corner anchors (sized 48x48 to match 10mm x 10mm print anchors)
+App.tsx:1285: // 4 black square corner anchors (sized 48x48 to match 10mm x 10mm print anchors)
+App.tsx:2050: <div className="admin-report-portal-modal no-print" style={{ position: 'fixed', inset: 0, zIndex: 9999, overflowY: 'auto', background: '#f8fafc' }}>
+App.tsx:2060: {/* 1. PRINT ONLY CONTAINER: Loaded on print dialog */}
+App.tsx:2061: {printExam && (
+App.tsx:2062: <div className="print-only">
+App.tsx:2063: <OmrPrintSheet
+App.tsx:2064: examTitle={printExam.title}
+App.tsx:2065: numQuestions={printExam.numQuestions}
+App.tsx:2066: exam={printExam}
+App.tsx:2077: <header className="mobile-header no-print" style={{ justifyContent: 'flex-start', gap: '16px', padding: '12px 16px' }}>
+App.tsx:2091: <div className="no-print app-layout">
+App.tsx:2890: onPrintRedirect={(exam) => triggerPrint(exam)}
+App.tsx:3194: <span>Want to test the scanner without printing?</span>
+App.tsx:4174: {/* Printable ID Card Container */}
+App.tsx:4175: <div id="student-printable-card" style={{
+App.tsx:4208: const printContent = document.getElementById('student-printable-card');
+App.tsx:4209: if (printContent) {
+App.tsx:4210: const printWindow = window.open('', '_blank');
+App.tsx:4211: if (printWindow) {
+App.tsx:4212: printWindow.document.write(`
+App.tsx:4215: <title>Print ID Card - ${viewingQrStudent.name}</title>
+App.tsx:4222: <div id="card">${printContent.innerHTML}</div>
+App.tsx:4223: <script>window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); }</script>
+App.tsx:4227: printWindow.document.close();
+App.tsx:4230: }}>Print Card</button>
+App.tsx:5325: @media print {
+App.tsx:5326: .no-print {
+App.tsx:5329: .print-only {
+ExamDetailsView.tsx:23: Printer,
+ExamDetailsView.tsx:48: onPrintRedirect: (exam: Exam) => void;
+ExamDetailsView.tsx:59: onPrintRedirect,
+ExamDetailsView.tsx:902: <button className="circular-action-card" onClick={() => onPrintRedirect(exam)}>
+ExamDetailsView.tsx:904: <Printer size={22} color="#1058ca" />
+ExamDetailsView.tsx:1754: {/* Draw bubble grid in multiple columns just like printed OMR */}
+OmrPrintSheet.original.tsx:4: import { Printer, Sliders, Columns, Maximize2 } from 'lucide-react';
+OmrPrintSheet.original.tsx:7: interface OmrPrintSheetProps {
+OmrPrintSheet.original.tsx:13: export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQuestions, exam }) => {
+OmrPrintSheet.original.tsx:37: console.warn("Failed loading OMR custom settings in print view:", e);
+OmrPrintSheet.original.tsx:90: <div className="omr-print-wrapper">
+OmrPrintSheet.original.tsx:93: <div className="no-print omr-print-toolbar" style={{
+OmrPrintSheet.original.tsx:115: onClick={() => window.print()}
+OmrPrintSheet.original.tsx:131: <Printer size={16} /> Print / Save PDF
+OmrPrintSheet.original.tsx:200: <div className="omr-print-page">
+OmrPrintSheet.original.tsx:476: .omr-print-page {
+OmrPrintSheet.original.tsx:693: @media print {
+OmrPrintSheet.original.tsx:706: .no-print {
+OmrPrintSheet.original.tsx:709: .omr-print-wrapper {
+OmrPrintSheet.original.tsx:715: .omr-print-page {
+OmrPrintSheet.tsx:4: import { Printer, Sliders, Columns, Maximize2 } from 'lucide-react';
+OmrPrintSheet.tsx:7: interface OmrPrintSheetProps {
+OmrPrintSheet.tsx:13: export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQuestions, exam }) => {
+OmrPrintSheet.tsx:37: console.warn("Failed loading OMR custom settings in print view:", e);
+OmrPrintSheet.tsx:90: <div className="omr-print-wrapper">
+OmrPrintSheet.tsx:93: <div className="no-print omr-print-toolbar" style={{
+OmrPrintSheet.tsx:115: onClick={() => window.print()}
+OmrPrintSheet.tsx:131: <Printer size={16} /> Print / Save PDF
+OmrPrintSheet.tsx:200: <div className="omr-print-page">
+OmrPrintSheet.tsx:476: .omr-print-page {
+OmrPrintSheet.tsx:693: @media print {
+OmrPrintSheet.tsx:706: .no-print {
+OmrPrintSheet.tsx:709: .omr-print-wrapper {
+OmrPrintSheet.tsx:715: .omr-print-page {
+OmrSettingsView.tsx:124: OMR Sheet Printing & Header Settings
+OmrSettingsView.tsx:128: Customize all printable OMR sheet headings, titles, candidate field labels, and signature boxes.
+ScanImagesView.tsx:1401: {/* Draw bubble grid in multiple columns just like printed OMR */}
+StudentReportPortal.tsx:6: import { StudentReportPrint } from './StudentReportPrint';
+StudentReportPortal.tsx:56: const element = document.querySelector('.report-print-page');
+StudentReportPortal.tsx:478: {/* Print-only scorecard document (rendered outside the no-print modal overlay via React Portal) */}
+StudentReportPortal.tsx:480: <div className="print-only">
+StudentReportPortal.tsx:481: <StudentReportPrint
+StudentReportPortal.tsx:490: {/* Main Dashboard Screen (hidden on print) */}
+StudentReportPortal.tsx:491: <div className="no-print" style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+StudentReportPortal.tsx:532: <div className="dashboard-actions-btn-group no-print">
+StudentReportPortal.tsx:1074: .print-only {
+StudentReportPortal.tsx:1196: @media print {
+StudentReportPortal.tsx:1197: .no-print {
+StudentReportPortal.tsx:1200: .print-only {
+StudentReportPortal.tsx:1227: className="no-print"
+StudentReportPrint.tsx:4: interface StudentReportPrintProps {
+StudentReportPrint.tsx:14: export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: rawExam, student, submission }) => {
+StudentReportPrint.tsx:160: let printLogoHeight = 42;
+StudentReportPrint.tsx:161: let printLogoNameHeight = 26;
+StudentReportPrint.tsx:165: if (parsed.logoHeight) printLogoHeight = parsed.logoHeight;
+StudentReportPrint.tsx:166: if (parsed.logoNameHeight) printLogoNameHeight = parsed.logoNameHeight;
+StudentReportPrint.tsx:173: <img src="/logo.png" alt="Logo" className="print-logo-img" style={{ height: `${printLogoHeight}px`, width: 'auto', objectFit: 'contain' }} />
+StudentReportPrint.tsx:174: <img src="/logo_name.png" alt="Institute APEX" className="print-logo-name-img" style={{ height: `${printLogoNameHeight}px`, width: 'auto', objectFit: 'contain' }} />
+StudentReportPrint.tsx:393: <div className={`report-print-page ${isTwoPages ? 'two-pages' : 'one-page'}`}>
+StudentReportPrint.tsx:444: .report-print-page {
+StudentReportPrint.tsx:450: .report-print-page.is-generating-pdf .page-container {
+StudentReportPrint.tsx:511: .print-logo-img {
+StudentReportPrint.tsx:517: .print-logo-name-img {
+StudentReportPrint.tsx:828: @media print {
+StudentReportPrint.tsx:835: .no-print {
+StudentReportPrint.tsx:843: .report-print-page {
+StudentReportPrint.tsx:859: -webkit-print-color-adjust: exact !important;
+StudentReportPrint.tsx:860: print-color-adjust: exact !important;
+omrScanner.ts:604: // 7. Scan Answers (Dynamic Grid Layout matching printed OMR sheet)
+omrScanner.ts:698: * Highly robust against bubble outlines and characters printed in dark grayscale ink.

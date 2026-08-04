@@ -1,0 +1,109 @@
+248: <header className="report-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #2b6cb0', paddingBottom: '12px', marginBottom: '10px', width: '100%' }}>
+253: <div style={{ textAlign: 'center', color: '#1e293b', fontFamily: 'sans-serif', marginTop: '0px' }}>
+254: <div style={{ fontSize: `${pdfTitleFontSize}px`, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+257: <div style={{ fontSize: `${pdfAddressFontSize}px`, fontWeight: 600, color: '#475569', marginBottom: '2px' }}>
+258: #1257, Urban State, Near HUDA Ground, Jind- 126102 (Haryana)
+260: <div style={{ fontSize: `${pdfContactFontSize}px`, fontWeight: 600, color: '#475569' }}>
+338: <div key={`print-sub-${subName}`} style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#f8fafc', boxSizing: 'border-box' }}>
+339: <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>{subName}</div>
+341: <span style={{ color: '#475569' }}>Attempted:</span>
+343: <span style={{ color: '#16a34a' }}>Correct:</span>
+344: <strong style={{ color: '#16a34a', textAlign: 'right' }}>{stats.correct}</strong>
+345: <span style={{ color: '#ef4444' }}>Negative:</span>
+346: <strong style={{ color: '#ef4444', textAlign: 'right' }}>-{stats.negativeMarks}</strong>
+347: <span style={{ color: '#475569' }}>Accuracy:</span>
+348: <strong style={{ color: '#2563eb', textAlign: 'right' }}>{accuracy}%</strong>
+349: <span style={{ color: '#475569' }}>Scored Marks:</span>
+350: <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.score} / {stats.totalPossible}</strong>
+351: <span style={{ color: '#475569' }}>Percentage:</span>
+352: <strong style={{ color: '#1e293b', textAlign: 'right' }}>{stats.totalPossible > 0 ? Math.round((stats.score / stats.totalPossible) * 100) : 0}%</strong>
+358: <div style={{ border: '1px solid #fee2e2', background: '#fef2f2', borderRadius: '8px', padding: '10px 14px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+359: <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444' }}>Negative Marks Lost:</span>
+362: <span key={`print-neg-sub-${subName}`} style={{ color: '#475569' }}>
+363: {subName}: <strong style={{ color: '#ef4444' }}>-{stats.negativeMarks}</strong>
+366: <span style={{ borderLeft: '1px solid #fca5a5', paddingLeft: '12px', color: '#b91c1c' }}>
+381: <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px', background: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+391: <div style={{ width: '22px', height: '90px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse' }}>
+392: {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} />}
+393: {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} />}
+394: {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} />}
+396: <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#475569' }}>{level[0]}</span>
+401: <div style={{ display: 'flex', gap: '8px', fontSize: '0.58rem', color: '#64748b', marginTop: '6px', justifyContent: 'center' }}>
+409: <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 14px', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '6px', boxSizing: 'border-box' }}>
+412: <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#475569' }}>
+424: <tr key={`print-row-${level}`} style={{ borderBottom: '1px dashed #edf2f7' }}>
+425: <td style={{ padding: '4px 4px', fontWeight: 'bold', color: '#1e293b' }}>{level}</td>
+426: <td style={{ padding: '4px 4px', color: '#16a34a', fontWeight: 'bold', textAlign: 'center' }}>{stats.correct}</td>
+427: <td style={{ padding: '4px 4px', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>{stats.wrong}</td>
+428: <td style={{ padding: '4px 4px', color: '#64748b', textAlign: 'center' }}>{stats.skipped}</td>
+429: <td style={{ padding: '4px 4px', color: '#0f172a', fontWeight: 'bold', textAlign: 'center' }}>{stats.total}</td>
+438: <div style={{ border: '1px solid #fef3c7', background: '#fffbeb', borderRadius: '6px', padding: '6px 10px', fontSize: '0.68rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+487: <div key={`rep-col-${colIdx}`} className="resp-col" style={{ border: '1px solid #edf2f7', borderRadius: '4px', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
+489: background: '#2b6cb0',
+490: color: '#ffffff',
+521: borderBottom: '0.5px solid #f1f5f9',
+526: <span className="q-lbl font-mono" style={{ color: '#64748b', textAlign: 'left' }}>Q{String(qNum).padStart(2, '0')}</span>
+564: <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
+608: <div style={{ textTransform: 'uppercase', fontSize: '11px', fontWeight: 850, color: '#1e3a8a', textAlign: 'center', margin: '8px 0', letterSpacing: '1px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>EXAM PERFORMANCE REPORT CARD</div>
+620: background: #f1f5f9 !important;
+621: color: #000000 !important;
+645: background: #ffffff;
+647: border: 1px solid #cbd5e1;
+649: box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+659: border-bottom: 2px solid #2b6cb0;
+663: color: #000000;
+684: border-bottom: 2px solid #2b6cb0;
+714: color: #1a202c;
+721: color: #718096;
+735: background: #f8fafc;
+736: border: 1px solid #e2e8f0;
+750: color: #000000;
+758: color: #000000;
+769: border: 1.5px solid #2b6cb0;
+776: background: #ebf8ff;
+782: color: #2b6cb0;
+790: color: #2b6cb0;
+803: background: #e2e8f0;
+812: background: #2b6cb0;
+819: color: #000000;
+834: border: 1px solid #e2e8f0;
+835: background: #ffffff;
+839: border-left: 4px solid #16a34a;
+840: background: #f0fff4;
+844: border-left: 4px solid #dc2626;
+845: background: #fff5f5;
+849: border-left: 4px solid #64748b;
+850: background: #f8fafc;
+856: color: #000000;
+862: color: #000000;
+871: .sub-score-card.correct .pts { color: #15803d; }
+872: .sub-score-card.wrong .pts { color: #b91c1c; }
+873: .sub-score-card.left .pts { color: #000000; }
+878: color: #000000;
+881: border-bottom: 1.5px solid #e2e8f0;
+891: border: 1px solid #e2e8f0;
+897: background: #f8fafc;
+898: color: #000000;
+903: border-bottom: 1px solid #e2e8f0;
+910: border-bottom: 1px solid #edf2f7;
+912: color: #000000;
+925: border: 1px solid #edf2f7;
+931: background: #2b6cb0;
+932: color: #ffffff;
+947: border-bottom: 0.5px solid #f1f5f9;
+951: background: #f0fff4;
+952: color: #166534;
+956: background: #fff5f5;
+957: color: #991b1b;
+962: background: #ffffff;
+963: color: #94a3b8;
+967: color: #000000;
+976: color: #16a34a;
+980: color: #dc2626;
+1000: border-bottom: 1.2px dashed #cbd5e1;
+1006: color: #000000;
+1016: #root,
+1024: background: #fff !important;
+1041: background: #ffffff !important;
+1042: -webkit-print-color-adjust: exact !important;
+1043: print-color-adjust: exact !important;

@@ -26,8 +26,8 @@ export const OMR_CONFIG = {
   studentId: {
     xStart: 100, // Center of first digit column
     xStep: 36,   // Horizontal spacing between digits (enlarged)
-    yStart: 206, // Center of '1' bubble row (adjusted)
-    yStep: 25,   // Vertical spacing between rows (enlarged)
+    yStart: 153, // Center of '1' bubble row (adjusted)
+    yStep: 19,   // Vertical spacing between rows (adjusted for compact fit)
     numDigits: 10,
     bubbleRadius: 8
   },
@@ -147,65 +147,12 @@ export function getDynamicOMRQuestionLayout(
   const colWidth = availWidth / numCols;
 
   // 3. Question distribution
+  // 3. Question distribution (equal question counts per column to keep bottom spacing identical)
   const colCounts = Array(numCols).fill(0);
-  if (numCols === 5 && total >= 120) {
-    // Balanced split to keep Column 0 and Column 1 short (25 questions each) under Roll No and Booklet Set cards
-    // and push larger counts (40/45) to Columns 2, 3, 4 to stretch them to the bottom
-    colCounts[0] = 25;
-    colCounts[1] = 25;
-    const R = total - 50;
-    const C = 3;
-    const base = 5 * Math.floor(R / 15);
-    const rem = R - base * C;
-    const numExtra = rem / 5;
-    for (let c = 2; c <= 4; c++) {
-      colCounts[c] = base + (c - 2 > 2 - numExtra ? 5 : 0);
-    }
-  } else {
-    // Standard greedy allocator loop for other configurations
-    let approxYStep = 21.2;
-    let totalSubHdrs = 0;
-    sections?.forEach((s: any) => {
-      if (s.subjectName && s.subjectName.toUpperCase() !== 'GENERAL' && s.subjectName.toLowerCase() !== 'subject') {
-        totalSubHdrs++;
-      }
-    });
-    const approxTotalSlots = total + Math.ceil(total / 5) + totalSubHdrs;
-
-    let sumYStart = 0;
-    for (let c = 0; c < numCols; c++) {
-      const colXStart = frameLeft + 12 + c * colWidth;
-      const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
-      sumYStart += colYStart;
-    }
-    const targetBottom = (sumYStart + approxTotalSlots * approxYStep) / numCols;
-
-    let curCol = 0;
-    let tempQStart = 1;
-    const maxQPerCol = Math.ceil(total / numCols) + 4;
-
-    for (let q = 1; q <= total; q++) {
-      if (curCol === numCols - 1) {
-        colCounts[curCol]++;
-        continue;
-      }
-
-      if (curCol === 0 && colCounts[0] === 25) {
-        curCol++;
-        tempQStart = q;
-      }
-
-      const slots = getColumnSlots(tempQStart, tempQStart + colCounts[curCol], sections, total);
-      const colXStart = frameLeft + 12 + curCol * colWidth;
-      const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
-      const currentBottom = colYStart + slots.length * approxYStep;
-
-      if (curCol > 0 && (currentBottom > targetBottom || colCounts[curCol] >= maxQPerCol) && colCounts[curCol] >= 10 && colCounts[curCol] % 5 === 0) {
-        curCol++;
-        tempQStart = q;
-      }
-      colCounts[curCol]++;
-    }
+  const base = Math.floor(total / numCols);
+  const rem = total % numCols;
+  for (let c = 0; c < numCols; c++) {
+    colCounts[c] = base + (c < rem ? 1 : 0);
   }
 
   // 4. Dynamic yStep calculation based on maximum column slots to perfectly fit page height (up to y = 1295)
@@ -217,8 +164,7 @@ export function getDynamicOMRQuestionLayout(
     const slots = getColumnSlots(currentQStart, currentQStart + count - 1, sections, total);
     currentQStart += count;
 
-    const colXStart = frameLeft + 12 + c * colWidth;
-    const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
+    const colYStart = 370;
     const availHeight = 1295 - colYStart;
     const limit = availHeight / slots.length;
     if (limit < minLimit) {
@@ -250,7 +196,7 @@ export function getDynamicOMRQuestionLayout(
     const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
     const optStart = colXStart + (numCols <= 3 ? 62 : 44);
     const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = (numCols > 2 && colXStart < 410) ? 485 : 220;
+    const colYStart = 370;
 
     columns.push({
       qStart,
@@ -266,7 +212,7 @@ export function getDynamicOMRQuestionLayout(
     });
   }
 
-  const yStart = 220;
+  const yStart = 370;
   const rowsPerCol = Math.max(...colCounts);
 
   return {
@@ -618,26 +564,8 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
-    // 5.5. Scan Booklet Code Set (A, B, C, D) just to the right of Roll Number
+    // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
-    const bookletSetXStart = 261;
-    const bookletSetY = 206 + bestDy;
-    const setIntensities: number[] = [];
-    for (let i = 0; i < 4; i++) {
-      const x = bookletSetXStart + i * 36;
-      const avgGray = calculateBubbleAverageGray(warpedGray, x, bookletSetY, 4.5);
-      setIntensities.push(avgGray);
-    }
-    let minSetVal = 256;
-    let minSetIdx = 0;
-    for (let i = 0; i < 4; i++) {
-      if (setIntensities[i] < minSetVal) {
-        minSetVal = setIntensities[i];
-        minSetIdx = i;
-      }
-    }
-    bookletSet = String.fromCharCode(65 + minSetIdx);
-    console.log("[OMR Scanner] Scanned booklet set:", bookletSet, "intensities:", setIntensities);
 
     // 5.8. Dynamic White Level Auto-Calibration
     // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting

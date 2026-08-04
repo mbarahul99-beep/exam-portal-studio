@@ -255,9 +255,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70),
-               top: toY(150),
+               top: toY(115),
                width: toX(rollNoWidth),
-               height: toY(305)
+               height: toY(225)
              }}
         >
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
@@ -296,39 +296,6 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               </div>
             );
           });
-        })}
-
-        {/* BOOKLET CODE CARD (BOOK NUMBER) */}
-        <div className="bg-border-card" 
-             style={{
-               left: toX(228),
-               top: toY(150),
-               width: toX(174),
-               height: toY(305)
-             }}
-        >
-          <div className="box-title">{omrConfig.bookletCodeBoxTitle || 'BOOKLET CODE'}</div>
-        </div>
-
-        {/* BOOKLET CODE OPTIONS */}
-        {Array.from({ length: 4 }).map((_, idx) => {
-          const code = String.fromCharCode(65 + idx);
-          return (
-            <div
-              key={`bk-code-${code}`}
-              className="omr-bubble code-bubble"
-              style={{
-                left: toX(261 + idx * 36),
-                top: toY(206),
-                width: '4.8mm',
-                height: '4.8mm',
-                fontSize: '8px',
-                fontWeight: 800
-              }}
-            >
-              {code}
-            </div>
-          );
         })}
 
         {/* DYNAMIC QUESTIONS GRID SECTION */}

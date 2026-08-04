@@ -123,6 +123,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [reportClass, setReportClass] = useState<string>('All');
   const [reportType, setReportType] = useState<'matrix' | 'daily'>('matrix');
   const [showOverallDaily, setShowOverallDaily] = useState<boolean>(false);
+  const [scanClassFilter, setScanClassFilter] = useState<string>('All');
 
   // Scanner & Biometric States
   const [isScanning, setIsScanning] = useState(false);
@@ -516,6 +517,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     isCooldownRef.current = false;
     hasBlinkedRef.current = false;
     setLivenessStatus('pending');
+    setScanClassFilter(selectedClass || 'All');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacingMode } });
@@ -590,6 +592,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     setTrackedFace(null);
     hasBlinkedRef.current = false;
     setLivenessStatus('pending');
+    setScanClassFilter(selectedClass || 'All');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
@@ -812,7 +815,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               return cleaned === '' ? '0' : cleaned;
             };
             const cvRollStripped = stripLeadingZeros(rawRoll);
-            const student = dbStudents.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
+            const student = dbStudents.find(s => 
+              stripLeadingZeros(s.studentNum) === cvRollStripped && 
+              (scanClassFilter === 'All' || s.className === scanClassFilter)
+            );
 
             if (student) {
               isCooldownRef.current = true;
@@ -928,7 +934,10 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   return;
                 }
 
-                const enrolledStudents = dbStudents.filter(s => s.faceDescriptor && s.faceDescriptor.length > 0);
+                const enrolledStudents = dbStudents.filter(s => 
+                  s.faceDescriptor && s.faceDescriptor.length > 0 &&
+                  (scanClassFilter === 'All' || s.className === scanClassFilter)
+                );
 
                 if (enrolledStudents.length === 0) {
                   setTrackedFace({
@@ -1577,6 +1586,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <button
+                onClick={startScanner}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', marginRight: '6px' }}
+                title="Start Camera Scan"
+              >
+                <Camera size={18} color="#2563eb" />
+              </button>
+
+              <button
                 onClick={() => handleExportCSV(selectedClass)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                 title="Export CSV"
@@ -2023,6 +2040,21 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               >
                 <Sparkles size={16} color="#8b5cf6" /> Face Biometrics
               </button>
+            </div>
+
+            {/* Target Class Filter Selector */}
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Target Class:</label>
+              <select
+                value={scanClassFilter}
+                onChange={(e) => setScanClassFilter(e.target.value)}
+                style={{ flex: 1, padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none', background: '#ffffff', fontWeight: 700, color: '#0f172a' }}
+              >
+                <option value="All">All Classes (Global scan)</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
             </div>
 
             {/* Video Viewport with Scanning Target Reticle */}

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { db, type Student, type ClassEntity, type AttendanceRecord } from '../db';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { syncAttendanceToCloud } from '../utils/cloudSync';
 import { 
   ArrowLeft, 
@@ -27,6 +28,75 @@ interface AttendancePortalProps {
   students: Student[];
 }
 
+const RangeSummaryList: React.FC<{
+  startDate: string;
+  endDate: string;
+  dbStudents: Student[];
+  onSelectDate: (d: string) => void;
+  selectedDate: string;
+}> = ({ startDate, endDate, dbStudents, onSelectDate, selectedDate }) => {
+  const rangeRecords = useLiveQuery(() => 
+    db.attendance
+      .where('date')
+      .between(startDate, endDate, true, true)
+      .toArray()
+  , [startDate, endDate]) || [];
+
+  // Generate list of dates in range
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  dates.reverse(); // Newest first
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', paddingRight: '4px' }}>
+      {dates.map(dateStr => {
+        const dayRecs = rangeRecords.filter((r: AttendanceRecord) => r.date === dateStr);
+        const dayPresent = dayRecs.filter((r: AttendanceRecord) => r.status === 'Present').length;
+        const dayAbsent = dayRecs.filter((r: AttendanceRecord) => r.status === 'Absent').length;
+        const totalRegistered = dbStudents.length;
+        const pct = totalRegistered > 0 ? Math.round((dayPresent / totalRegistered) * 100) : 0;
+        const isCurrent = dateStr === selectedDate;
+
+        return (
+          <div
+            key={dateStr}
+            onClick={() => onSelectDate(dateStr)}
+            style={{
+              background: isCurrent ? '#eff6ff' : '#ffffff',
+              border: isCurrent ? '1px solid #2563eb' : '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.8rem' }}>
+                {new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                Presents: <strong style={{ color: '#16a34a' }}>{dayPresent}</strong> | Absents: <strong style={{ color: '#ef4444' }}>{dayAbsent}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: pct >= 75 ? '#16a34a' : (pct > 0 ? '#d97706' : '#64748b') }}>
+                {pct}%
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, students }) => {
   // Current local date in YYYY-MM-DD format
   const getTodayString = () => {
@@ -52,6 +122,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [reportEndDate, setReportEndDate] = useState<string>(getTodayString());
   const [reportClass, setReportClass] = useState<string>('All');
   const [reportType, setReportType] = useState<'matrix' | 'daily'>('matrix');
+  const [showOverallDaily, setShowOverallDaily] = useState<boolean>(false);
 
   // Scanner & Biometric States
   const [isScanning, setIsScanning] = useState(false);
@@ -1019,7 +1090,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
       {/* ==================================================================== */}
       {/* VIEW 1: CLASSES SELECTION LIST VIEW (WHEN NO CLASS IS SELECTED)       */}
       {/* ==================================================================== */}
-      {!selectedClass && (
+      {!selectedClass && !showOverallDaily && (
         <div style={{ padding: '4px' }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1130,6 +1201,52 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(() => {
+                  const overallPresent = attendanceRecords.filter(r => r.status === 'Present').length;
+                  const overallAbsent = attendanceRecords.filter(r => r.status === 'Absent').length;
+                  const totalRegistered = dbStudents.length;
+                  const overallPct = totalRegistered > 0 ? Math.round((overallPresent / totalRegistered) * 100) : 0;
+
+                  return (
+                    <div
+                      onClick={() => setShowOverallDaily(true)}
+                      style={{
+                        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                        color: '#ffffff',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(15,23,42,0.15)',
+                        transition: 'all 0.2s ease',
+                        marginBottom: '4px'
+                      }}
+                    >
+                      <div style={{ width: '52px', height: '56px', borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.25rem', flexShrink: 0 }}>
+                        📊
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#ffffff' }}>Overall Daily Summary</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.78rem', color: '#94a3b8', marginTop: '6px' }}>
+                          <span>Today's Attendance: <strong style={{ color: '#10b981' }}>{overallPresent} Present</strong> / {totalRegistered} Registered</span>
+                          <span>Absent today: <strong style={{ color: '#ef4444' }}>{overallAbsent}</strong></span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '0.98rem', fontWeight: 800, color: '#10b981' }}>
+                          {overallPct}%
+                        </span>
+                        <ChevronRight size={18} color="#94a3b8" />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {dbClasses.map((cls) => {
                   const clsStudents = dbStudents.filter(s => s.className === cls.name);
                   const clsPresent = clsStudents.filter(s => {
@@ -1264,6 +1381,168 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* VIEW 1.5: OVERALL DAILY ATTENDANCE SUMMARY VIEW                     */}
+      {/* ==================================================================== */}
+      {showOverallDaily && !selectedClass && (
+        <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* HEADER BAR */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            borderBottom: '1px solid #f1f5f9',
+            background: '#ffffff',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={() => setShowOverallDaily(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+              >
+                <ArrowLeft size={18} color="#0f172a" />
+              </button>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                Overall Daily Summary
+              </h2>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '3px 6px', borderRadius: '8px' }}>
+              <Calendar size={12} color="#64748b" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                style={{ border: 'none', background: 'transparent', fontSize: '0.78rem', fontWeight: 700, outline: 'none', color: '#0f172a', width: '105px', cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+
+          {/* KPI CARDS & CLASS BREAKDOWN */}
+          <div style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '80px' }}>
+            {(() => {
+              const totalPresent = attendanceRecords.filter(r => r.status === 'Present').length;
+              const totalAbsent = attendanceRecords.filter(r => r.status === 'Absent').length;
+              const totalRegistered = dbStudents.length;
+              const attendancePct = totalRegistered > 0 ? Math.round((totalPresent / totalRegistered) * 100) : 0;
+
+              return (
+                <>
+                  {/* Summary blocks */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Present Rate</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>{attendancePct}%</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Total Present</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#2563eb', marginTop: '4px' }}>{totalPresent}</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Total Absent</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#ef4444', marginTop: '4px' }}>{totalAbsent}</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Registered Students</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#475569', marginTop: '4px' }}>{totalRegistered}</div>
+                    </div>
+                  </div>
+
+                  {/* Class-wise totals breakdown list */}
+                  <div>
+                    <h3 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Class-wise Breakdown</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {dbClasses.map(cls => {
+                        const clsStudents = dbStudents.filter(s => s.className === cls.name);
+                        const clsPresent = clsStudents.filter(s => {
+                          const r = attendanceRecords.find(rec => rec.studentId === s.id && rec.status === 'Present');
+                          return !!r;
+                        }).length;
+                        const clsAbsent = clsStudents.filter(s => {
+                          const r = attendanceRecords.find(rec => rec.studentId === s.id && rec.status === 'Absent');
+                          return !!r;
+                        }).length;
+                        const clsUnmarked = clsStudents.length - (clsPresent + clsAbsent);
+                        const clsPct = clsStudents.length > 0 ? Math.round((clsPresent / clsStudents.length) * 100) : 0;
+
+                        return (
+                          <div key={cls.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem' }}>{cls.name}</div>
+                              <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>
+                                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{clsPresent} Present</span>
+                                <span>•</span>
+                                <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{clsAbsent} Absent</span>
+                                <span>•</span>
+                                <span>{clsUnmarked} Unmarked</span>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{
+                                background: clsPct >= 75 ? '#dcfce7' : (clsPct > 0 ? '#fef3c7' : '#f1f5f9'),
+                                color: clsPct >= 75 ? '#16a34a' : (clsPct > 0 ? '#d97706' : '#64748b'),
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 800
+                              }}>
+                                {clsPct}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Dynamic Date Range summary logs section */}
+                  <div style={{ marginTop: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '20px' }}>
+                    <h3 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date Range Summaries</h3>
+                    
+                    {/* Range selectors */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>From Date</span>
+                        <input
+                          type="date"
+                          value={reportStartDate}
+                          onChange={(e) => setReportStartDate(e.target.value)}
+                          onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none', background: '#fff', cursor: 'pointer' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>To Date</span>
+                        <input
+                          type="date"
+                          value={reportEndDate}
+                          onChange={(e) => setReportEndDate(e.target.value)}
+                          onClick={(e) => { try { e.currentTarget.showPicker(); } catch(err){} }}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none', background: '#fff', cursor: 'pointer' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Summary lists loader */}
+                    <RangeSummaryList 
+                      startDate={reportStartDate}
+                      endDate={reportEndDate}
+                      dbStudents={dbStudents}
+                      onSelectDate={(d) => setSelectedDate(d)}
+                      selectedDate={selectedDate}
+                    />
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       )}
 

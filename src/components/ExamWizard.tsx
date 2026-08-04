@@ -560,12 +560,19 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       const arrayBuffer = await fileLoaded;
 
       setWordParseStatus("Extracting images and text formatting...");
+
+      // Cache mapping to keep heavy base64 strings out of LLM inputs, preventing quota/token size overflows
+      const imageMap: Record<string, string> = {};
+      let imageCounter = 0;
       
       const options = {
         convertImage: mammoth.images.imgElement((image) => {
           return image.read("base64").then((imageBuffer) => {
+            const base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+            const refId = `img_ref_${imageCounter++}`;
+            imageMap[refId] = base64Data;
             return {
-              src: `data:${image.contentType};base64,${imageBuffer}`
+              src: refId
             };
           });
         })
@@ -578,8 +585,41 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         throw new Error("No text or content could be parsed from the Word document.");
       }
 
-      setWordParseStatus("Analyzing with Gemini AI (generating structured questions)...");
+      setWordParseStatus("Analyzing document structure...");
 
+      // Split the document into lines/paragraphs/tables to chunk it safely
+      const paragraphs = htmlContent.match(/<p[^>]*>.*?<\/p>|<table[^>]*>.*?<\/table>|<h\d[^>]*>.*?<\/h\d>/gi) || [htmlContent];
+      
+      const questionBlocks: string[][] = [];
+      let currentBlock: string[] = [];
+      
+      paragraphs.forEach((p) => {
+        // Strip HTML tags to verify plain text content
+        const textContent = p.replace(/<[^>]+>/g, '').trim();
+        // Check if paragraph starts with a question marker (e.g. Q1., 1., Q 1.)
+        const isNewQuestion = /^(?:Q(?:uestion)?[\s\.]*\d+|\d+\s*[\.\)\-]\s*)/i.test(textContent);
+        
+        if (isNewQuestion && currentBlock.length > 0) {
+          questionBlocks.push(currentBlock);
+          currentBlock = [p];
+        } else {
+          currentBlock.push(p);
+        }
+      });
+      if (currentBlock.length > 0) {
+        questionBlocks.push(currentBlock);
+      }
+
+      // Group question blocks into chunks (12 questions per chunk to guarantee safe outputs/inputs)
+      const questionChunks: string[] = [];
+      const questionsPerChunk = 12;
+      for (let i = 0; i < questionBlocks.length; i += questionsPerChunk) {
+        const chunk = questionBlocks.slice(i, i + questionsPerChunk).map(block => block.join('\n')).join('\n');
+        questionChunks.push(chunk);
+      }
+
+      const allParsed: any[] = [];
+      const totalChunks = questionChunks.length;
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey.trim()}`;
       
       const systemPrompt = `You are a professional examiner. Extract all Multiple Choice Questions (MCQs) from the provided HTML document. 
@@ -587,7 +627,7 @@ Return ONLY a valid JSON array of objects representing the questions. Do not inc
 The JSON structure MUST follow this format strictly:
 [
   {
-    "questionText": "string containing question. If it contains formula, preserve LaTeX notation. If it contains a diagram like <img src=\\\"data:image/...\\\" />, keep the exact image tag intact inside the text.",
+    "questionText": "string containing question. If it contains formula, preserve LaTeX notation. If it contains a diagram like <img src=\\\"img_ref_0\\\" />, keep the exact image tag intact inside the text.",
     "options": ["Option A", "Option B", "Option C", "Option D"],
     "correctOptionIdx": number (0 for A, 1 for B, 2 for C, 3 for D)
   }
@@ -596,61 +636,108 @@ The JSON structure MUST follow this format strictly:
 Verify:
 - Every question must have exactly 4 options (unless it is a 5-option format, then 5 options).
 - Find the correct answer key in the text (often marked as "Answer: A" or similar) and translate it to the 0-based index. If no answer is mentioned, default to 0.
-- Do NOT alter the base64 src inside the img tag. Preserve the full img tag exactly where it was located in the question.`;
+- Do NOT alter the ref values inside the img tag src attributes (e.g., img_ref_0). Preserve them exactly where they were located in the questions.`;
 
-      const response = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: systemPrompt },
-                { text: `Here is the HTML document containing the questions:\n\n${htmlContent}` }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json'
+      for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
+        setWordParseStatus(`Processing questions ${cIdx * questionsPerChunk + 1} to ${Math.min((cIdx + 1) * questionsPerChunk, questionBlocks.length)} (${cIdx + 1} of ${totalChunks} chunks) with Gemini AI...`);
+        
+        const chunkHtml = questionChunks[cIdx];
+        
+        try {
+          const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { text: systemPrompt },
+                    { text: `Here is the HTML document containing the questions:\n\n${chunkHtml}` }
+                  ]
+                }
+              ],
+              generationConfig: {
+                responseMimeType: 'application/json'
+              }
+            })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `HTTP error! status: ${response.status}`);
           }
-        })
+
+          const resData = await response.json();
+          const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (!rawText) {
+            throw new Error("Gemini API returned an empty response. Verify your API key or the input text.");
+          }
+
+          let cleanedJson = rawText.trim();
+          if (cleanedJson.startsWith("```")) {
+            cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+          }
+
+          const parsed = JSON.parse(cleanedJson);
+          if (Array.isArray(parsed)) {
+            allParsed.push(...parsed);
+          }
+        } catch (err: any) {
+          console.warn(`Error parsing chunk ${cIdx + 1}:`, err);
+          // If we have parsed some questions already, we will let them review what succeeded so far
+          if (allParsed.length === 0) {
+            throw err;
+          } else {
+            setWordParseError(`Partial failure at chunk ${cIdx + 1}: ${err.message || err}. Loaded ${allParsed.length} questions successfully.`);
+            break;
+          }
+        }
+
+        // Add short delay between requests to prevent hitting concurrent request rate limits
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      if (allParsed.length === 0) {
+        throw new Error("No questions could be successfully parsed from the document.");
+      }
+
+      setWordParseStatus("Restoring diagrams and formulas...");
+
+      // Restore base64 source representations from cache
+      const restoredQuestions = allParsed.map((q: any) => {
+        let text = q.questionText || '';
+        text = text.replace(/<img[^>]+src=["'](img_ref_\d+)["']/gi, (match: string, refId: string) => {
+          const originalBase64 = imageMap[refId];
+          return originalBase64 ? `<img src="${originalBase64}" />` : match;
+        });
+
+        const options = (q.options || []).map((opt: string) => {
+          return opt.replace(/<img[^>]+src=["'](img_ref_\d+)["']/gi, (match: string, refId: string) => {
+            const originalBase64 = imageMap[refId];
+            return originalBase64 ? `<img src="${originalBase64}" />` : match;
+          });
+        });
+
+        return {
+          ...q,
+          questionText: text,
+          options
+        };
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const resData = await response.json();
-      const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!rawText) {
-        throw new Error("Gemini API returned an empty response. Verify your API key or the input text.");
-      }
-
-      // Clean raw text if markdown block is returned
-      let cleanedJson = rawText.trim();
-      if (cleanedJson.startsWith("```")) {
-        cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-      }
-
-      const parsed = JSON.parse(cleanedJson);
-      if (!Array.isArray(parsed)) {
-        throw new Error("API response is not a valid JSON array of questions.");
-      }
-
-      setParsedQuestions(parsed);
+      setParsedQuestions(restoredQuestions);
       
       // Auto-select all by default
       const initialIndexes: Record<number, boolean> = {};
-      parsed.forEach((_, idx) => {
+      restoredQuestions.forEach((_, idx) => {
         initialIndexes[idx] = true;
       });
       setSelectedParsedIndexes(initialIndexes);
-      setWordParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
+      setWordParseStatus(`Successfully parsed ${restoredQuestions.length} questions! Review and import them below.`);
     } catch (err: any) {
       console.error(err);
       setWordParseError(err.message || "Failed to upload or parse MS Word file.");

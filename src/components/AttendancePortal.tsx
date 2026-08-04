@@ -39,6 +39,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [editingStudentIds, setEditingStudentIds] = useState<Record<number, boolean>>({});
+  const [remarksMap, setRemarksMap] = useState<Record<number, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Scanner & Biometric States
@@ -166,14 +167,15 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
     studentId: number, 
     className: string, 
     status: 'Present' | 'Absent',
-    attendanceMethod: 'Manual' | 'QR' | 'Face' = 'Manual'
+    attendanceMethod: 'Manual' | 'QR' | 'Face' = 'Manual',
+    remarks?: string
   ) => {
     try {
       const existing = attendanceMap.get(studentId);
       let recordToSync: AttendanceRecord;
       if (existing) {
-        await db.attendance.update(existing.id!, { status, className, attendanceMethod });
-        recordToSync = { ...existing, status, className, attendanceMethod };
+        await db.attendance.update(existing.id!, { status, className, attendanceMethod, remarks });
+        recordToSync = { ...existing, status, className, attendanceMethod, remarks };
       } else {
         const newRecord = {
           date: selectedDate,
@@ -181,6 +183,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           className,
           status,
           attendanceMethod,
+          remarks,
           createdAt: new Date()
         };
         const newId = await db.attendance.add(newRecord);
@@ -197,7 +200,14 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
 
   // Toggle Edit Mode for a student row
   const toggleEditStudent = (studentId: number) => {
-    setEditingStudentIds(prev => ({ ...prev, [studentId]: !prev[studentId] }));
+    setEditingStudentIds(prev => {
+      const willBeEditing = !prev[studentId];
+      if (willBeEditing) {
+        const existing = attendanceMap.get(studentId);
+        setRemarksMap(prevRem => ({ ...prevRem, [studentId]: existing?.remarks || '' }));
+      }
+      return { ...prev, [studentId]: willBeEditing };
+    });
   };
 
   // Export CSV Action for selected class or all classes
@@ -1159,6 +1169,31 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           <ListOrdered size={12} color="#94a3b8" />
                           <span>{rollDisplay}</span>
                         </div>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            placeholder="Add remarks..."
+                            value={remarksMap[student.id!] || ''}
+                            onChange={(e) => setRemarksMap(prev => ({ ...prev, [student.id!]: e.target.value }))}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '3px 6px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '6px',
+                              marginTop: '4px',
+                              width: '100%',
+                              minWidth: '130px',
+                              maxWidth: '180px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                        ) : (
+                          record?.remarks && (
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                              💬 {record.remarks}
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
 
@@ -1171,7 +1206,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           <button
                             type="button"
                             onClick={() => {
-                              handleSetStatus(student.id!, selectedClass, 'Absent');
+                              handleSetStatus(student.id!, selectedClass, 'Absent', 'Manual', remarksMap[student.id!]);
                               setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
                             }}
                             style={{
@@ -1195,7 +1230,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                           <button
                             type="button"
                             onClick={() => {
-                              handleSetStatus(student.id!, selectedClass, 'Present');
+                              handleSetStatus(student.id!, selectedClass, 'Present', 'Manual', remarksMap[student.id!]);
                               setEditingStudentIds(prev => ({ ...prev, [student.id!]: false }));
                             }}
                             style={{

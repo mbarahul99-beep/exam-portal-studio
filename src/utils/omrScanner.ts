@@ -27,7 +27,7 @@ export const OMR_CONFIG = {
     xStart: 100, // Center of first digit column
     xStep: 36,   // Horizontal spacing between digits (enlarged)
     yStart: 185, // Center of '1' bubble row (adjusted to y = 185)
-    yStep: 18,   // Vertical spacing between rows (adjusted to yStep = 18)
+    yStep: 20,   // Vertical spacing between rows (adjusted to yStep = 20 to fill box)
     numDigits: 10,
     bubbleRadius: 8
   },

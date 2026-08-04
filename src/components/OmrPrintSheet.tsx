@@ -246,9 +246,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70),
-               top: toY(125),
+               top: toY(120),
                width: toX(rollNoWidth),
-               height: toY(260)
+               height: toY(265)
              }}
         >
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
@@ -263,7 +263,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
               className="digit-box-header"
               style={{
                 left: toX(x),
-                top: toY(OMR_CONFIG.studentId.yStart - 28)
+                top: toY(OMR_CONFIG.studentId.yStart - 25)
               }}
             />
           );
@@ -289,40 +289,25 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           });
         })}
 
-        {/* LEFT & RIGHT DIGIT LABEL COLUMNS TO HELP STUDENTS IDENTIFY ROWS */}
+        {/* LEFT DIGIT LABEL COLUMN TO HELP STUDENTS IDENTIFY ROWS */}
         {digits.map((digitVal, rowIdx) => {
           const y = OMR_CONFIG.studentId.yStart + rowIdx * OMR_CONFIG.studentId.yStep;
           const leftX = OMR_CONFIG.studentId.xStart - 22; // 100 - 22 = 78px
-          const rightX = OMR_CONFIG.studentId.xStart + rollNoDigits * OMR_CONFIG.studentId.xStep - 14; // 100 + 108 - 14 = 194px
           return (
-            <React.Fragment key={`roll-row-label-${digitVal}`}>
-              <div
-                style={{
-                  position: 'absolute',
-                  left: toX(leftX),
-                  top: toY(y),
-                  transform: 'translate(-50%, -50%)',
-                  fontSize: '7.5px',
-                  fontWeight: 800,
-                  color: '#dc0045'
-                }}
-              >
-                {digitVal}
-              </div>
-              <div
-                style={{
-                  position: 'absolute',
-                  left: toX(rightX),
-                  top: toY(y),
-                  transform: 'translate(-50%, -50%)',
-                  fontSize: '7.5px',
-                  fontWeight: 800,
-                  color: '#dc0045'
-                }}
-              >
-                {digitVal}
-              </div>
-            </React.Fragment>
+            <div
+              key={`roll-row-label-${digitVal}`}
+              style={{
+                position: 'absolute',
+                left: toX(leftX),
+                top: toY(y),
+                transform: 'translate(-50%, -50%)',
+                fontSize: '7.5px',
+                fontWeight: 800,
+                color: '#dc0045'
+              }}
+            >
+              {digitVal}
+            </div>
           );
         })}
 
@@ -330,9 +315,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card"
              style={{
                left: toX(240),
-               top: toY(125),
+               top: toY(120),
                width: toX(690),
-               height: toY(260),
+               height: toY(265),
                display: 'flex',
                flexDirection: 'column',
                justifyContent: 'center',

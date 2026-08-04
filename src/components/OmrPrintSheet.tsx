@@ -48,7 +48,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   const toY = (y: number) => `${y * 0.21}mm`;
 
   const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
-  const rollNoWidth = rollNoDigits * OMR_CONFIG.studentId.xStep + 30;
+  const rollNoWidth = rollNoDigits * OMR_CONFIG.studentId.xStep + 50;
 
   const rollCols = Array.from({ length: rollNoDigits });
   const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
@@ -246,9 +246,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="bg-border-card" 
              style={{
                left: toX(70),
-               top: toY(150),
+               top: toY(125),
                width: toX(rollNoWidth),
-               height: toY(240)
+               height: toY(260)
              }}
         >
           <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
@@ -289,13 +289,50 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           });
         })}
 
+        {/* LEFT & RIGHT DIGIT LABEL COLUMNS TO HELP STUDENTS IDENTIFY ROWS */}
+        {digits.map((digitVal, rowIdx) => {
+          const y = OMR_CONFIG.studentId.yStart + rowIdx * OMR_CONFIG.studentId.yStep;
+          const leftX = OMR_CONFIG.studentId.xStart - 22; // 100 - 22 = 78px
+          const rightX = OMR_CONFIG.studentId.xStart + rollNoDigits * OMR_CONFIG.studentId.xStep - 14; // 100 + 108 - 14 = 194px
+          return (
+            <React.Fragment key={`roll-row-label-${digitVal}`}>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: toX(leftX),
+                  top: toY(y),
+                  transform: 'translate(-50%, -50%)',
+                  fontSize: '7.5px',
+                  fontWeight: 800,
+                  color: '#dc0045'
+                }}
+              >
+                {digitVal}
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: toX(rightX),
+                  top: toY(y),
+                  transform: 'translate(-50%, -50%)',
+                  fontSize: '7.5px',
+                  fontWeight: 800,
+                  color: '#dc0045'
+                }}
+              >
+                {digitVal}
+              </div>
+            </React.Fragment>
+          );
+        })}
+
         {/* CANDIDATE DETAILS CARD (STACKED VERTICALLY TO THE RIGHT OF ROLL NUMBER CARD) */}
         <div className="bg-border-card"
              style={{
-               left: toX(230),
-               top: toY(150),
-               width: toX(700),
-               height: toY(240),
+               left: toX(240),
+               top: toY(125),
+               width: toX(690),
+               height: toY(260),
                display: 'flex',
                flexDirection: 'column',
                justifyContent: 'center',

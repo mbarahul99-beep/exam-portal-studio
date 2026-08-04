@@ -26,8 +26,8 @@ export const OMR_CONFIG = {
   studentId: {
     xStart: 100, // Center of first digit column
     xStep: 36,   // Horizontal spacing between digits (enlarged)
-    yStart: 205, // Center of '1' bubble row (adjusted to y = 205)
-    yStep: 20,   // Vertical spacing between rows (enlarged to prevent touching)
+    yStart: 185, // Center of '1' bubble row (adjusted to y = 185)
+    yStep: 18,   // Vertical spacing between rows (adjusted to yStep = 18)
     numDigits: 10,
     bubbleRadius: 8
   },

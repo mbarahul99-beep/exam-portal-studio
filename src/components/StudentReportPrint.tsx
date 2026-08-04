@@ -617,6 +617,21 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
               </div>
             </header>
             {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`, 840)}
+            <div style={{ flex: 1 }} /> {/* Push footer to bottom */}
+            {renderFooter()}
+          </div>
+
+          {/* PAGE 3 */}
+          <div className="page-container page-three">
+            <header className="report-header-minimized">
+              <div className="logo-brand-min">
+                <img src="/logo.png" alt="Logo" className="min-logo" />
+                <span>Institute APEX — NEET Graded Analysis</span>
+              </div>
+              <div className="candidate-min font-mono">
+                {student.name} | Roll: {student.studentNum}
+              </div>
+            </header>
             {renderPrintSubjectBreakdown()}
             {renderPrintDifficultyDiagnostics()}
             <div style={{ flex: 1 }} /> {/* Push footer to bottom */}

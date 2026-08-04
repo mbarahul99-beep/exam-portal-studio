@@ -386,6 +386,9 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (examFields.sectionsMarking && typeof examFields.sectionsMarking === 'string') {
             examFields.sectionsMarking = JSON.parse(examFields.sectionsMarking);
           }
+          if (examFields.difficulties && typeof examFields.difficulties === 'string') {
+            examFields.difficulties = JSON.parse(examFields.difficulties);
+          }
           examFields.isResultsPublished = Boolean(examFields.isResultsPublished);
 
           // Auto-heal numQuestions if it was accidentally wiped to 0 or is smaller than answerKey entries count or sections qCount total

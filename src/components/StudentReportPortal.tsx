@@ -25,6 +25,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   publicMode = false
 }) => {
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
+  const [selectedChartDiff, setSelectedChartDiff] = useState<'Easy' | 'Moderate' | 'Difficult' | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
   const [showOmrModal, setShowOmrModal] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -844,14 +845,29 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       const correctPct = (stats.correct / tot) * 100;
                       const wrongPct = (stats.wrong / tot) * 100;
                       const skippedPct = (stats.skipped / tot) * 100;
+                      const isSelected = selectedChartDiff === 'Easy';
                       return (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                          <div 
+                            onClick={() => setSelectedChartDiff(prev => prev === 'Easy' ? null : 'Easy')}
+                            style={{ 
+                              width: '36px', 
+                              height: '160px', 
+                              background: '#f1f5f9', 
+                              borderRadius: '6px', 
+                              overflow: 'hidden', 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse', 
+                              boxShadow: isSelected ? '0 0 0 2px #2563eb, inset 0 2px 4px rgba(0,0,0,0.05)' : 'inset 0 2px 4px rgba(0,0,0,0.05)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
                             {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
                             {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
                             {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
                           </div>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Easy</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Easy</span>
                         </div>
                       );
                     })()}
@@ -863,14 +879,29 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       const correctPct = (stats.correct / tot) * 100;
                       const wrongPct = (stats.wrong / tot) * 100;
                       const skippedPct = (stats.skipped / tot) * 100;
+                      const isSelected = selectedChartDiff === 'Moderate';
                       return (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                          <div 
+                            onClick={() => setSelectedChartDiff(prev => prev === 'Moderate' ? null : 'Moderate')}
+                            style={{ 
+                              width: '36px', 
+                              height: '160px', 
+                              background: '#f1f5f9', 
+                              borderRadius: '6px', 
+                              overflow: 'hidden', 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse', 
+                              boxShadow: isSelected ? '0 0 0 2px #2563eb, inset 0 2px 4px rgba(0,0,0,0.05)' : 'inset 0 2px 4px rgba(0,0,0,0.05)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
                             {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
                             {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
                             {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
                           </div>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Moderate</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Moderate</span>
                         </div>
                       );
                     })()}
@@ -882,14 +913,29 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       const correctPct = (stats.correct / tot) * 100;
                       const wrongPct = (stats.wrong / tot) * 100;
                       const skippedPct = (stats.skipped / tot) * 100;
+                      const isSelected = selectedChartDiff === 'Difficult';
                       return (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '36px', height: '160px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', display: 'flex', flexDirection: 'column-reverse', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                          <div 
+                            onClick={() => setSelectedChartDiff(prev => prev === 'Difficult' ? null : 'Difficult')}
+                            style={{ 
+                              width: '36px', 
+                              height: '160px', 
+                              background: '#f1f5f9', 
+                              borderRadius: '6px', 
+                              overflow: 'hidden', 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse', 
+                              boxShadow: isSelected ? '0 0 0 2px #2563eb, inset 0 2px 4px rgba(0,0,0,0.05)' : 'inset 0 2px 4px rgba(0,0,0,0.05)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
                             {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
                             {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
                             {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
                           </div>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569' }}>Difficult</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Difficult</span>
                         </div>
                       );
                     })()}
@@ -908,6 +954,65 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       <span style={{ width: '12px', height: '12px', background: '#cbd5e1', borderRadius: '3px' }} /> Skipped
                     </span>
                   </div>
+
+                  {/* Interactive Chart Details Box */}
+                  {selectedChartDiff && (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px 14px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      position: 'relative',
+                      alignSelf: 'stretch',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                    }}>
+                      <button 
+                        onClick={() => setSelectedChartDiff(null)}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          fontWeight: 'bold',
+                          lineHeight: '1'
+                        }}
+                      >
+                        ×
+                      </button>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '0.75rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {selectedChartDiff} Level Stats
+                      </h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                        <div style={{ background: '#f0fdf4', padding: '4px 6px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.6rem', color: '#15803d', fontWeight: 'bold' }}>CORRECT</div>
+                          <div style={{ fontSize: '0.9rem', color: '#166534', fontWeight: 800 }}>{analysisDetails.diffStats[selectedChartDiff].correct}</div>
+                        </div>
+                        <div style={{ background: '#fdf2f2', padding: '4px 6px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.6rem', color: '#b91c1c', fontWeight: 'bold' }}>WRONG</div>
+                          <div style={{ fontSize: '0.9rem', color: '#991b1b', fontWeight: 800 }}>{analysisDetails.diffStats[selectedChartDiff].wrong}</div>
+                        </div>
+                        <div style={{ background: '#f8fafc', padding: '4px 6px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 'bold' }}>SKIPPED</div>
+                          <div style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 800 }}>{analysisDetails.diffStats[selectedChartDiff].skipped}</div>
+                        </div>
+                        <div style={{ background: '#eff6ff', padding: '4px 6px', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.6rem', color: '#2563eb', fontWeight: 'bold' }}>TOTAL</div>
+                          <div style={{ fontSize: '0.9rem', color: '#1e40af', fontWeight: 800 }}>{analysisDetails.diffStats[selectedChartDiff].total}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginTop: '4px', lineHeight: '1.4', wordBreak: 'break-word' }}>
+                        <strong>Questions:</strong> {analysisDetails.diffStats[selectedChartDiff].questions.map(qNum => `Q${qNum}`).join(', ') || 'None'}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Details Table and Questions list Card */}

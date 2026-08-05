@@ -16,10 +16,10 @@ export const OMR_CONFIG = {
   
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 30, y: 30 },
-    tr: { x: 970, y: 30 },
-    bl: { x: 30, y: 1384 },
-    br: { x: 970, y: 1384 }
+    tl: { x: 48, y: 48 },
+    tr: { x: 952, y: 48 },
+    bl: { x: 48, y: 1366 },
+    br: { x: 952, y: 1366 }
   },
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
@@ -290,7 +290,7 @@ export async function scanOMRSheet(
       const pageArea = srcWidth * srcHeight;
       // Anchor size check: must be a big corner mark (at least 0.012% of page area) and square-shaped
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8; // Relaxed to handle cropped printed corners
+      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
       
       const cArea = cv.contourArea(cnt);
       const solidity = area > 0 ? cArea / area : 0;
@@ -414,7 +414,7 @@ export async function scanOMRSheet(
         const pageArea = srcWidth * srcHeight;
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8;
+        const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
         
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
@@ -828,7 +828,7 @@ export function findOMRSheetCornersLive(
 
       // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8; // Relaxed to handle cropped printed corners
+      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
       
       // Check solidity (anchors are solid black squares)
       const cArea = cv.contourArea(cnt);

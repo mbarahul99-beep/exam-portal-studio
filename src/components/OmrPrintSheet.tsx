@@ -192,9 +192,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         <div className="sheet-border-frame" 
              style={{
                left: toX(70),
-               top: toY(70),
+               top: toY(75),
                width: toX(860),
-               height: toY(1300)
+               height: toY(1240)
              }} 
         />
 

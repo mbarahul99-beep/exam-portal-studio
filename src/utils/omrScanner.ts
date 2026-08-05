@@ -290,7 +290,7 @@ export async function scanOMRSheet(
       const pageArea = srcWidth * srcHeight;
       // Anchor size check: must be a big corner mark (at least 0.012% of page area) and square-shaped
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+      const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8; // Relaxed to handle cropped printed corners
       
       const cArea = cv.contourArea(cnt);
       const solidity = area > 0 ? cArea / area : 0;
@@ -414,7 +414,7 @@ export async function scanOMRSheet(
         const pageArea = srcWidth * srcHeight;
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+        const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8;
         
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
@@ -828,7 +828,7 @@ export function findOMRSheetCornersLive(
 
       // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+      const isSquare = aspectRatio >= 0.35 && aspectRatio <= 2.8; // Relaxed to handle cropped printed corners
       
       // Check solidity (anchors are solid black squares)
       const cArea = cv.contourArea(cnt);

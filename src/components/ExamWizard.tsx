@@ -573,8 +573,12 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         convertImage: mammoth.images.imgElement((image) => {
           return image.read("base64").then((imageBuffer) => {
             let base64Data = '';
+            
             const contentType = (image.contentType || '').toLowerCase();
-            if (contentType.includes('wmf') || contentType.includes('metafile')) {
+            const isWmf = contentType.includes('wmf') || contentType.includes('metafile') ||
+                          imageBuffer.startsWith('183Gmg') || imageBuffer.startsWith('183G');
+
+            if (isWmf) {
               try {
                 const binaryString = atob(imageBuffer);
                 const len = binaryString.length;
@@ -587,7 +591,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 base64Data = canvas.toDataURL('image/png');
               } catch (err) {
                 console.error("Failed to convert WMF to PNG:", err);
-                base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+                base64Data = `data:image/png;base64,${imageBuffer}`;
               }
             } else {
               base64Data = `data:${image.contentType};base64,${imageBuffer}`;
@@ -657,8 +661,11 @@ The JSON structure MUST follow this format strictly:
   }
 ]
 
-Verify:
-- Every question must have exactly 4 options (unless it is a 5-option format, then 5 options).
+IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
+- You are provided with referenced images labeled as "img_ref_X".
+- If a referenced image represents a mathematical equation, formula, variable, fraction, square root, or math symbol, you MUST transcribe it into LaTeX notation (enclosed in single $ for inline, e.g. $\\frac{9.8}{\\sqrt{2}}$ or $\\sqrt{3}$) and insert it directly into the text/option, completely replacing the corresponding <img src="img_ref_X" /> tag.
+- If a referenced image is a diagram, illustration, graph, or physics experiment setup (e.g. blocks, pulleys, circuits, drawings), you MUST keep the exact <img src="img_ref_X" /> tag intact inside the text/option so it can render as an image.
+- Verify that every question has exactly 4 options (unless it is a 5-option format, then 5 options).
 - Find the correct answer key in the text (often marked as "Answer: A" or similar) and translate it to the 0-based index. If no answer is mentioned, default to 0.
 - Do NOT alter the ref values inside the img tag src attributes (e.g., img_ref_0). Preserve them exactly where they were located in the questions.`;
 
@@ -666,6 +673,36 @@ Verify:
         setWordParseStatus(`Processing questions ${cIdx * questionsPerChunk + 1} to ${Math.min((cIdx + 1) * questionsPerChunk, questionBlocks.length)} (${cIdx + 1} of ${totalChunks} chunks) with Gemini AI...`);
         
         const chunkHtml = questionChunks[cIdx];
+        
+        // Find all img_ref_X in this chunk
+        const chunkImageRefs = Array.from(chunkHtml.matchAll(/img_ref_\d+/g)).map(m => m[0]);
+        const uniqueRefs = Array.from(new Set(chunkImageRefs));
+        
+        const requestParts: any[] = [
+          { text: systemPrompt }
+        ];
+
+        // Add each referenced image to the request parts
+        uniqueRefs.forEach((refId) => {
+          const base64Data = imageMap[refId];
+          if (base64Data) {
+            const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              const mimeType = match[1];
+              const rawData = match[2];
+              requestParts.push({ text: `Image reference for tag <img src="${refId}" />:\n` });
+              requestParts.push({
+                inlineData: {
+                  mimeType: mimeType,
+                  data: rawData
+                }
+              });
+            }
+          }
+        });
+
+        // Add the HTML text as the final part
+        requestParts.push({ text: `Here is the HTML document containing the questions:\n\n${chunkHtml}` });
         
         try {
           const response = await fetch(geminiUrl, {
@@ -677,10 +714,7 @@ Verify:
               contents: [
                 {
                   role: 'user',
-                  parts: [
-                    { text: systemPrompt },
-                    { text: `Here is the HTML document containing the questions:\n\n${chunkHtml}` }
-                  ]
+                  parts: requestParts
                 }
               ],
               generationConfig: {

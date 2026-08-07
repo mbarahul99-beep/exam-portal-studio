@@ -3949,7 +3949,7 @@ export default function App() {
               {/* QR Code image */}
               <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${viewingQrStudent.studentNum}`} 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(viewingQrStudent.studentNum + ':' + viewingQrStudent.className)}`} 
                   alt={`QR Code for student ${viewingQrStudent.name}`}
                   style={{ width: '150px', height: '150px', display: 'block' }}
                 />

@@ -419,13 +419,27 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
             const imageData = ctx.getImageData(0, 0, width, height);
             const code = jsQR(imageData.data, imageData.width, imageData.height);
             if (code && code.data && !isCooldownRef.current) {
-              const scannedNum = code.data.trim();
+              const rawData = code.data.trim();
               const stripLeadingZeros = (val: string) => {
                 const cleaned = val.replace(/^0+/, '');
                 return cleaned === '' ? '0' : cleaned;
               };
-              const cvRollStripped = stripLeadingZeros(scannedNum);
-              const matchedStudent = students.find(s => stripLeadingZeros(s.studentNum) === cvRollStripped);
+
+              let cvRollStripped = '';
+              let qrClass = '';
+
+              if (rawData.includes(':')) {
+                const parts = rawData.split(':');
+                cvRollStripped = stripLeadingZeros(parts[0]);
+                qrClass = parts.slice(1).join(':').trim();
+              } else {
+                cvRollStripped = stripLeadingZeros(rawData);
+              }
+
+              const matchedStudent = students.find(s => 
+                stripLeadingZeros(s.studentNum) === cvRollStripped &&
+                (qrClass ? s.className.trim().toLowerCase() === qrClass.trim().toLowerCase() : true)
+              );
               
               if (matchedStudent) {
                 const primaryName = matchedStudent.name.split('/')[0].trim();
@@ -439,6 +453,8 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                   isCooldownRef.current = false;
                   setScannedFeedback(null);
                 }, 2500);
+              } else {
+                setScannedFeedback(`⚠️ Unknown Roll ID: ${rawData}`);
               }
             }
           } catch (e) {

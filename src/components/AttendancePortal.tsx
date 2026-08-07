@@ -809,15 +809,26 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
           });
 
           if (code && code.data && !isCooldownRef.current) {
-            const rawRoll = code.data.trim();
+            const rawData = code.data.trim();
             const stripLeadingZeros = (val: string) => {
               const cleaned = val.replace(/^0+/, '');
               return cleaned === '' ? '0' : cleaned;
             };
-            const cvRollStripped = stripLeadingZeros(rawRoll);
+
+            let cvRollStripped = '';
+            let qrClass = '';
+
+            if (rawData.includes(':')) {
+              const parts = rawData.split(':');
+              cvRollStripped = stripLeadingZeros(parts[0]);
+              qrClass = parts.slice(1).join(':').trim();
+            } else {
+              cvRollStripped = stripLeadingZeros(rawData);
+            }
+
             const student = dbStudents.find(s => 
               stripLeadingZeros(s.studentNum) === cvRollStripped && 
-              (scanClassFilter === 'All' || s.className === scanClassFilter)
+              (qrClass ? s.className.trim().toLowerCase() === qrClass.trim().toLowerCase() : (scanClassFilter === 'All' || s.className === scanClassFilter))
             );
 
             if (student) {
@@ -833,7 +844,7 @@ export const AttendancePortal: React.FC<AttendancePortalProps> = ({ classes, stu
                 setScannedFeedback(null);
               }, 2200);
             } else {
-              setScannedFeedback(`⚠️ Unknown Roll ID: ${rawRoll}`);
+              setScannedFeedback(`⚠️ Unknown Roll ID: ${rawData}`);
             }
           }
         } else if (scanMode === 'Face') {

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'lucide-react';
 import * as mammoth from 'mammoth';
+// @ts-ignore
+import * as wmf from 'wmf';
 import { db } from '../db';
 import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 import { MathRenderer } from './MathRenderer';
@@ -570,7 +572,27 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       const options = {
         convertImage: mammoth.images.imgElement((image) => {
           return image.read("base64").then((imageBuffer) => {
-            const base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+            let base64Data = '';
+            const contentType = (image.contentType || '').toLowerCase();
+            if (contentType.includes('wmf') || contentType.includes('metafile')) {
+              try {
+                const binaryString = atob(imageBuffer);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const canvas = document.createElement('canvas');
+                wmf.draw_canvas(bytes, canvas);
+                base64Data = canvas.toDataURL('image/png');
+              } catch (err) {
+                console.error("Failed to convert WMF to PNG:", err);
+                base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+              }
+            } else {
+              base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+            }
+
             const refId = `img_ref_${imageCounter++}`;
             imageMap[refId] = base64Data;
             return {
@@ -712,13 +734,13 @@ Verify:
       // Restore base64 source representations from cache
       const restoredQuestions = allParsed.map((q: any) => {
         let text = q.questionText || '';
-        text = text.replace(/<img[^>]+src=["'](img_ref_\d+)["']/gi, (match: string, refId: string) => {
+        text = text.replace(/<img[^>]+src=["'](img_ref_\d+)["'][^>]*>/gi, (match: string, refId: string) => {
           const originalBase64 = imageMap[refId];
           return originalBase64 ? `<img src="${originalBase64}" />` : match;
         });
 
         const options = (q.options || []).map((opt: string) => {
-          return opt.replace(/<img[^>]+src=["'](img_ref_\d+)["']/gi, (match: string, refId: string) => {
+          return opt.replace(/<img[^>]+src=["'](img_ref_\d+)["'][^>]*>/gi, (match: string, refId: string) => {
             const originalBase64 = imageMap[refId];
             return originalBase64 ? `<img src="${originalBase64}" />` : match;
           });

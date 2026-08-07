@@ -147,17 +147,19 @@ const initDatabase = async () => {
         examId INT NOT NULL,
         subjectName VARCHAR(255) DEFAULT NULL,
         sectionName VARCHAR(100),
-        questionText TEXT,
+        questionText LONGTEXT,
         options JSON,
         correctOptionIdx INT DEFAULT 0,
         difficulty VARCHAR(50) DEFAULT 'Easy',
-        explanation TEXT,
+        explanation LONGTEXT,
         questionImage LONGTEXT,
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     try { await conn.query(`ALTER TABLE questions ADD COLUMN subjectName VARCHAR(255) DEFAULT NULL`); } catch {}
     try { await conn.query(`ALTER TABLE questions ADD COLUMN difficulty VARCHAR(50) DEFAULT 'Easy'`); } catch {}
+    try { await conn.query(`ALTER TABLE questions MODIFY COLUMN questionText LONGTEXT`); } catch {}
+    try { await conn.query(`ALTER TABLE questions MODIFY COLUMN explanation LONGTEXT`); } catch {}
 
     // 5. Attendance Table
     await conn.query(`
@@ -333,7 +335,7 @@ const initDatabase = async () => {
           id INT AUTO_INCREMENT PRIMARY KEY,
           bankId INT NOT NULL,
           questionText LONGTEXT NOT NULL,
-          options TEXT NOT NULL,
+          options LONGTEXT NOT NULL,
           correctOptionIdx INT NOT NULL,
           difficulty VARCHAR(50) NOT NULL,
           explanation LONGTEXT,
@@ -342,6 +344,7 @@ const initDatabase = async () => {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
       console.log('✅ bank_questions table initialized successfully!');
+      try { await conn.query('ALTER TABLE bank_questions MODIFY COLUMN options LONGTEXT NOT NULL'); } catch {}
     } catch (e) {
       console.warn('bank_questions table init warning:', e.message);
     }

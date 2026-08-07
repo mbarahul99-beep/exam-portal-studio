@@ -2787,6 +2787,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
                           <MathRenderer text={q.questionText} />
                         </div>
+                        {q.questionImage && (
+                          <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                            <img src={q.questionImage} alt="Question Diagram" style={{ maxHeight: '160px', maxWidth: '100%', objectFit: 'contain' }} />
+                          </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           {q.options.map((opt: string, oIdx: number) => (
                             <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
@@ -2926,6 +2931,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
                           <MathRenderer text={qVal.questionText} />
                         </div>
+                        {qVal.questionImage && (
+                          <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                            <img src={qVal.questionImage} alt="Library Question Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                          </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           {qVal.options.map((opt: string, oIdx: number) => (
                             <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>

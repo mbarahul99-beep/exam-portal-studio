@@ -339,12 +339,14 @@ const initDatabase = async () => {
           correctOptionIdx INT NOT NULL,
           difficulty VARCHAR(50) NOT NULL,
           explanation LONGTEXT,
+          questionImage LONGTEXT,
           createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (bankId) REFERENCES question_banks(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
       console.log('✅ bank_questions table initialized successfully!');
       try { await conn.query('ALTER TABLE bank_questions MODIFY COLUMN options LONGTEXT NOT NULL'); } catch {}
+      try { await conn.query('ALTER TABLE bank_questions ADD COLUMN questionImage LONGTEXT'); } catch {}
     } catch (e) {
       console.warn('bank_questions table init warning:', e.message);
     }
@@ -541,12 +543,12 @@ app.get('/api/bank-questions', async (req, res) => {
 
 app.post('/api/bank-questions', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, createdAt } = req.body;
+  const { id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, questionImage, createdAt } = req.body;
   try {
     const optionsJson = Array.isArray(options) ? JSON.stringify(options) : options;
     const query = `
-      INSERT INTO bank_questions (id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bank_questions (id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, questionImage, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         bankId = VALUES(bankId),
         questionText = VALUES(questionText),
@@ -554,10 +556,11 @@ app.post('/api/bank-questions', async (req, res) => {
         correctOptionIdx = VALUES(correctOptionIdx),
         difficulty = VALUES(difficulty),
         explanation = VALUES(explanation),
+        questionImage = VALUES(questionImage),
         createdAt = VALUES(createdAt);
     `;
     const createdTime = createdAt ? new Date(createdAt) : new Date();
-    const [result] = await pool.query(query, [id || null, bankId, questionText, optionsJson, correctOptionIdx, difficulty, explanation || null, createdTime]);
+    const [result] = await pool.query(query, [id || null, bankId, questionText, optionsJson, correctOptionIdx, difficulty, explanation || null, questionImage || null, createdTime]);
     res.json({ success: true, id: id || result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });

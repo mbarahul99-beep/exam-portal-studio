@@ -734,7 +734,8 @@ export async function pullCloudUpdatesToIndexedDB() {
             options: q.options,
             correctOptionIdx: q.correctOptionIdx,
             difficulty: q.difficulty,
-            explanation: q.explanation || undefined
+            explanation: q.explanation || undefined,
+            questionImage: q.questionImage || undefined
           };
           if (!existing) {
             await db.questionBank.add({
@@ -745,6 +746,7 @@ export async function pullCloudUpdatesToIndexedDB() {
               correctOptionIdx: q.correctOptionIdx,
               difficulty: q.difficulty,
               explanation: q.explanation || undefined,
+              questionImage: q.questionImage || undefined,
               createdAt: new Date(q.createdAt)
             });
           } else {
@@ -757,6 +759,7 @@ export async function pullCloudUpdatesToIndexedDB() {
                 correctOptionIdx: q.correctOptionIdx,
                 difficulty: q.difficulty,
                 explanation: q.explanation || undefined,
+                questionImage: q.questionImage || undefined,
                 createdAt: new Date(q.createdAt)
               });
             }

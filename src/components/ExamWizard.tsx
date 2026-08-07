@@ -440,6 +440,37 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       }
     }
 
+    // Sync questionsState slots with configured sections and counts
+    setQuestionsState(prev => {
+      const updated: any[] = [];
+      sectionsWithRanges.forEach(sec => {
+        const existing = prev.filter(q => q.subjectName === sec.subjectName && q.sectionName === sec.sectionName);
+        for (let i = 0; i < sec.qCount; i++) {
+          const qNum = sec.qStart + i;
+          if (existing[i]) {
+            updated.push({
+              ...existing[i],
+              qNum,
+              subjectName: sec.subjectName,
+              sectionName: sec.sectionName
+            });
+          } else {
+            updated.push({
+              qNum,
+              sectionName: sec.sectionName,
+              subjectName: sec.subjectName,
+              questionText: '',
+              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+              correctOptionIdx: 0,
+              explanation: '',
+              questionImage: ''
+            });
+          }
+        }
+      });
+      return updated.sort((a, b) => a.qNum - b.qNum);
+    });
+
     // Initialize answer keys with default 'A'
     const updatedKeys = { ...answerKeys };
     const sets = Array.from({ length: examSetsCount }).map((_, i) => String.fromCharCode(65 + i));
@@ -2603,6 +2634,11 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                                   <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
                                     <MathRenderer text={qVal.questionText} />
                                   </div>
+                                  {qVal.questionImage && (
+                                    <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                                      <img src={qVal.questionImage} alt="Library Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                                    </div>
+                                  )}
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                     {qVal.options.map((opt: string, oIdx: number) => (
                                       <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>

@@ -49,6 +49,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [newCorrectIdx, setNewCorrectIdx] = useState<number>(0);
   const [newDifficulty, setNewDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [newExplanation, setNewExplanation] = useState('');
+  const [newQuestionImage, setNewQuestionImage] = useState<string>('');
   const [addFeedback, setAddFeedback] = useState<string | null>(null);
 
   // CSV import states
@@ -144,6 +145,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
         correctOptionIdx: newCorrectIdx,
         difficulty: newDifficulty,
         explanation: newExplanation.trim() || undefined,
+        questionImage: newQuestionImage || undefined,
         createdAt: new Date()
       };
 
@@ -158,6 +160,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       setNewOptions(['', '', '', '']);
       setNewCorrectIdx(0);
       setNewExplanation('');
+      setNewQuestionImage('');
       
       setTimeout(() => setAddFeedback(null), 3000);
     } catch (err: any) {
@@ -288,7 +291,8 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
         questionText: selectedBankQ.questionText,
         options: [...selectedBankQ.options],
         correctOptionIdx: selectedBankQ.correctOptionIdx,
-        explanation: selectedBankQ.explanation || ''
+        explanation: selectedBankQ.explanation || '',
+        questionImage: selectedBankQ.questionImage || undefined
       });
 
       // 2. Update Exam parameters
@@ -537,6 +541,11 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                         <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
                           <MathRenderer text={q.questionText} />
                         </div>
+                        {q.questionImage && (
+                          <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                            <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                          </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                           {q.options.map((opt, oIdx) => (
                             <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
@@ -638,6 +647,61 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                   )}
                   {newOptions.length > 4 && (
                     <button type="button" onClick={() => setNewOptions(newOptions.slice(0, 4))} className="btn-link animate-fade-in" style={{ fontSize: '0.75rem', padding: 0, color: 'var(--warning)' }}>- Remove Option E</button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION IMAGE / DIAGRAM (OPTIONAL)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label 
+                    className="btn-secondary" 
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: '#fff', 
+                      color: 'var(--text-secondary)', 
+                      fontSize: '0.8rem', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px' 
+                    }}
+                  >
+                    <span>Upload Image</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setNewQuestionImage(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {newQuestionImage && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <img 
+                        src={newQuestionImage} 
+                        alt="Preview" 
+                        style={{ width: '40px', height: '40px', objectFit: 'contain', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#fff' }} 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => setNewQuestionImage('')}
+                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)', fontSize: '0.75rem', fontWeight: 'bold' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

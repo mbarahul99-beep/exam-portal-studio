@@ -31,6 +31,7 @@ export interface BankQuestion {
   correctOptionIdx: number;
   difficulty: 'easy' | 'medium' | 'hard';
   explanation?: string;
+  questionImage?: string; // Base64 or URL
   createdAt?: Date;
 }
 

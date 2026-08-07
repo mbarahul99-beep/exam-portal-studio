@@ -1035,7 +1035,33 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
     }
 
     setQuestionsState(prev => {
-      const updated = [...prev];
+      const synced: any[] = [];
+      sectionsWithRanges.forEach(sec => {
+        const existing = prev.filter(q => q.subjectName === sec.subjectName && q.sectionName === sec.sectionName);
+        for (let i = 0; i < sec.qCount; i++) {
+          const qNum = sec.qStart + i;
+          if (existing[i]) {
+            synced.push({
+              ...existing[i],
+              qNum,
+              subjectName: sec.subjectName,
+              sectionName: sec.sectionName
+            });
+          } else {
+            synced.push({
+              qNum,
+              sectionName: sec.sectionName,
+              subjectName: sec.subjectName,
+              questionText: '',
+              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+              correctOptionIdx: 0,
+              explanation: '',
+              questionImage: ''
+            });
+          }
+        }
+      });
+      const updated = synced.sort((a, b) => a.qNum - b.qNum);
       let importCount = 0;
 
       // Find indices in the global questionsState corresponding to the active subject and section
@@ -1242,10 +1268,8 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
       if (examMode === 'online') {
         setActiveQuestionIndex(0);
         setCsvUploadSuccess(null);
-        setStep(4);
-      } else {
-        handleGoToStep4();
       }
+      handleGoToStep4();
     } else if (step === 4) {
       setStep(5);
     } else if (step === 5) {
@@ -2035,7 +2059,29 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                                     return updated;
                                   });
                                 }}
-                                placeholder="Enter question description... Use $...$ for inline math (e.g. $E=mc^2$) or $$...$$ for block formulas."
+                                onPaste={(e) => {
+                                  const items = e.clipboardData?.items;
+                                  if (items) {
+                                    for (let i = 0; i < items.length; i++) {
+                                      if (items[i].type.indexOf('image') !== -1) {
+                                        const file = items[i].getAsFile();
+                                        if (file) {
+                                          const reader = new FileReader();
+                                          reader.onloadend = () => {
+                                            setQuestionsState(prev => {
+                                              const updated = [...prev];
+                                              updated[activeQuestionIndex].questionImage = reader.result as string;
+                                              return updated;
+                                            });
+                                          };
+                                          reader.readAsDataURL(file);
+                                          e.preventDefault();
+                                        }
+                                      }
+                                    }
+                                  }
+                                }}
+                                placeholder="Enter question description... Use $...$ for inline math (e.g. $E=mc^2$) or $$...$$ for block formulas. You can also directly paste an image (Ctrl+V) from screenshots or Word here."
                                 style={{ width: '100%', minHeight: '60px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', boxSizing: 'border-box', fontSize: '0.9rem' }}
                                 required
                               />

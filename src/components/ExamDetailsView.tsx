@@ -272,6 +272,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [editFormCorrectIdx, setEditFormCorrectIdx] = useState<number>(0);
   const [editFormExplanation, setEditFormExplanation] = useState('');
   const [editFormDifficulty, setEditFormDifficulty] = useState<'Easy' | 'Moderate' | 'Difficult'>('Easy');
+  const [editFormImage, setEditFormImage] = useState<string>('');
 
   // Library/Question Bank States
   const [banksList, setBanksList] = useState<any[]>([]);
@@ -1125,6 +1126,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     setEditFormCorrectIdx(q.correctOptionIdx);
     setEditFormExplanation(q.explanation || '');
     setEditFormDifficulty(q.difficulty || 'Easy');
+    setEditFormImage(q.questionImage || '');
   };
 
   const saveEditedQuestion = async (qId: number) => {
@@ -1136,7 +1138,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           options: [...editFormOptions],
           correctOptionIdx: editFormCorrectIdx,
           explanation: editFormExplanation,
-          difficulty: editFormDifficulty
+          difficulty: editFormDifficulty,
+          questionImage: editFormImage || undefined
         };
       }
       return q;
@@ -2682,8 +2685,83 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                           <textarea
                             value={editFormText}
                             onChange={e => setEditFormText(e.target.value)}
+                            onPaste={(e) => {
+                              const items = e.clipboardData?.items;
+                              if (items) {
+                                for (let i = 0; i < items.length; i++) {
+                                  if (items[i].type.indexOf('image') !== -1) {
+                                    const file = items[i].getAsFile();
+                                    if (file) {
+                                      const reader = new FileReader();
+                                      reader.onloadend = () => {
+                                        setEditFormImage(reader.result as string);
+                                      };
+                                      reader.readAsDataURL(file);
+                                      e.preventDefault();
+                                    }
+                                  }
+                                }
+                              }
+                            }}
+                            placeholder="Type question content here... You can also paste an image (Ctrl+V) here."
                             style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', minHeight: '80px', fontSize: '0.85rem' }}
                           />
+                        </div>
+
+                        {/* Image Preview & Upload for Edit Mode */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION IMAGE / DIAGRAM</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <label 
+                              className="btn-secondary" 
+                              style={{ 
+                                padding: '6px 12px', 
+                                borderRadius: '6px', 
+                                border: '1px solid var(--border-color)', 
+                                background: '#fff', 
+                                color: 'var(--text-secondary)', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 'bold', 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px' 
+                              }}
+                            >
+                              <span>Upload Image</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      setEditFormImage(reader.result as string);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                            {editFormImage && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <img 
+                                  src={editFormImage} 
+                                  alt="Preview" 
+                                  style={{ width: '40px', height: '40px', objectFit: 'contain', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#fff' }} 
+                                />
+                                <button 
+                                  type="button" 
+                                  onClick={() => setEditFormImage('')}
+                                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error)', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

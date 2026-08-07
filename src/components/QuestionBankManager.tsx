@@ -611,7 +611,32 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION TEXT (Supports LaTeX e.g. $E=mc^2$) *</label>
-                <textarea value={newQuestionText} onChange={e => setNewQuestionText(e.target.value)} placeholder="Type question content here..." required rows={3} style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontFamily: 'inherit' }} />
+                <textarea 
+                  value={newQuestionText} 
+                  onChange={e => setNewQuestionText(e.target.value)} 
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (items) {
+                      for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                          const file = items[i].getAsFile();
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setNewQuestionImage(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                            e.preventDefault();
+                          }
+                        }
+                      }
+                    }
+                  }}
+                  placeholder="Type question content here... You can also directly paste an image (Ctrl+V) from screenshots or Word here." 
+                  required 
+                  rows={3} 
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontFamily: 'inherit' }} 
+                />
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

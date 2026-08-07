@@ -575,12 +575,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
             let base64Data = '';
             
             const contentType = (image.contentType || '').toLowerCase();
+            const cleanBase64 = imageBuffer.replace(/\s/g, '');
             const isWmf = contentType.includes('wmf') || contentType.includes('metafile') ||
-                          imageBuffer.startsWith('183Gmg') || imageBuffer.startsWith('183G');
+                          cleanBase64.startsWith('183Gmg') || cleanBase64.startsWith('183G');
 
             if (isWmf) {
               try {
-                const binaryString = atob(imageBuffer);
+                const binaryString = atob(cleanBase64);
                 const len = binaryString.length;
                 const bytes = new Uint8Array(len);
                 for (let i = 0; i < len; i++) {
@@ -588,13 +589,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                 }
                 const canvas = document.createElement('canvas');
                 wmf.draw_canvas(bytes, canvas);
-                base64Data = canvas.toDataURL('image/png');
+                if (canvas.width > 0 && canvas.height > 0) {
+                  base64Data = canvas.toDataURL('image/png');
+                } else {
+                  throw new Error("Invalid canvas dimensions: " + canvas.width + "x" + canvas.height);
+                }
               } catch (err) {
                 console.error("Failed to convert WMF to PNG:", err);
-                base64Data = `data:image/png;base64,${imageBuffer}`;
+                base64Data = `data:image/x-wmf;base64,${cleanBase64}`;
               }
             } else {
-              base64Data = `data:${image.contentType};base64,${imageBuffer}`;
+              base64Data = `data:${image.contentType};base64,${cleanBase64}`;
             }
 
             const refId = `img_ref_${imageCounter++}`;
@@ -688,15 +693,22 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
           if (base64Data) {
             const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
             if (match) {
-              const mimeType = match[1];
+              const mimeType = match[1].toLowerCase();
               const rawData = match[2];
-              requestParts.push({ text: `Image reference for tag <img src="${refId}" />:\n` });
-              requestParts.push({
-                inlineData: {
-                  mimeType: mimeType,
-                  data: rawData
-                }
-              });
+              
+              // Only send supported formats to Gemini API (exclude wmf, emf, etc. that failed to convert)
+              const supportedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif', 'image/gif'];
+              if (supportedTypes.includes(mimeType)) {
+                requestParts.push({ text: `Image reference for tag <img src="${refId}" />:\n` });
+                requestParts.push({
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: rawData
+                  }
+                });
+              } else {
+                console.warn(`Skipping image reference ${refId} in Gemini request: unsupported MIME type "${mimeType}"`);
+              }
             }
           }
         });

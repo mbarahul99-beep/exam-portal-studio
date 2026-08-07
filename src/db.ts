@@ -111,6 +111,7 @@ export interface ExamSubmission {
   attemptType?: 'OMR' | 'Online';
   bookletSet?: string;
   accessToken?: string; // Cryptographic unguessable access key for public report sharing
+  detectedRollNum?: string; // Original detected roll number string from scanning
 }
 
 export interface SystemSetting {

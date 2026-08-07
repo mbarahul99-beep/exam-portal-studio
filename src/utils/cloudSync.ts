@@ -72,6 +72,7 @@ export async function syncStudentToCloud(student: Student) {
 }
 
 export async function syncSubmissionToCloud(sub: ExamSubmission) {
+  if (sub.studentId < 0) return; // Skip temporary placeholders for unknown candidates
   try {
     await fetch('/api/submissions', {
       method: 'POST',

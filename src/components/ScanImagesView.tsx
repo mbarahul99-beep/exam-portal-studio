@@ -125,6 +125,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showScannedSheetsFullScreen, setShowScannedSheetsFullScreen] = useState(false);
   const [scannedSheetSearch, setScannedSheetSearch] = useState('');
   const [viewingOmrModalUrl, setViewingOmrModalUrl] = useState<{ name: string; url?: string; score: number; answers?: Record<number, string>; correctCount?: number; wrongCount?: number; bookletSet?: string } | null>(null);
+  const [editingSubmission, setEditingSubmission] = useState<ExamSubmission | null>(null);
 
   // Camera Modal States & Refs
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -153,8 +154,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     omrImageUrl: string;
     studentId: number | null;
   } | null>(null);
-  const [isEditingOverlayRoll, setIsEditingOverlayRoll] = useState(false);
-  const [overlayRollInput, setOverlayRollInput] = useState('');
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
   const scannedCount = existingSubmissions.length;
@@ -199,21 +198,66 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     checkCV();
   }, []);
 
-  // Play shutter sound feedback
+  // Play shutter sound feedback (synthesizing a realistic mechanical camera click)
   const playShutterSound = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Create white noise buffer for shutter mechanical slaps
+      const bufferSize = audioCtx.sampleRate * 0.12; // 120ms
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      
+      // Shutter opening click (metallic noise burst)
+      const noise1 = audioCtx.createBufferSource();
+      noise1.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      filter.Q.setValueAtTime(3.5, audioCtx.currentTime);
+      
+      const gain1 = audioCtx.createGain();
+      gain1.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
+      
+      noise1.connect(filter);
+      filter.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      noise1.start();
+      
+      // Shutter closing click (mechanical slap slightly delayed)
+      const noise2 = audioCtx.createBufferSource();
+      noise2.buffer = buffer;
+      
+      const gain2 = audioCtx.createGain();
+      gain2.gain.setValueAtTime(0.0, audioCtx.currentTime);
+      gain2.gain.setValueAtTime(0.2, audioCtx.currentTime + 0.04);
+      gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      
+      noise2.connect(filter);
+      filter.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      noise2.start(audioCtx.currentTime + 0.04);
+      
+      // Oscillator for high frequency metallic click transient
       const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+      const oscGain = audioCtx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(2200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1400, audioCtx.currentTime + 0.02);
+      
+      oscGain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.02);
+      
+      osc.connect(oscGain);
+      oscGain.connect(audioCtx.destination);
+      
       osc.start();
-      osc.stop(audioCtx.currentTime + 0.08);
+      osc.stop(audioCtx.currentTime + 0.025);
     } catch {}
   };
 
@@ -613,8 +657,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
         : snapCanvas.toDataURL('image/jpeg', 0.92);
 
-      setIsEditingOverlayRoll(false);
-      setOverlayRollInput(cvResult.studentNum || '');
+      const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+
+      if (exam.id) {
+        try {
+          await db.submissions.where('[examId+studentId]').equals([exam.id, targetStudentId]).delete();
+          const subId = await db.submissions.add({
+            examId: exam.id!,
+            studentId: targetStudentId,
+            score: score,
+            answers: cvResult.answers,
+            bookletSet: detectedSet,
+            omrImageUrl: croppedUrl,
+            scannedAt: new Date(),
+            detectedRollNum: cvResult.studentNum || ''
+          });
+
+          const savedSub = await db.submissions.get(subId);
+          if (savedSub && targetStudentId > 0) {
+            syncSubmissionToCloud(savedSub).catch(console.warn);
+          }
+          pullCloudUpdatesToIndexedDB();
+          refreshSubmissions();
+        } catch (saveErr) {
+          console.error("Auto-save error:", saveErr);
+        }
+      }
 
       setLastScanOverlay({
         studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
@@ -626,7 +694,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         answers: cvResult.answers,
         bookletSet: detectedSet,
         omrImageUrl: croppedUrl,
-        studentId: studentId || null
+        studentId: targetStudentId
       });
 
       if (matchedStudent) {
@@ -1471,6 +1539,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                         >
                           <Eye size={15} /> View Sheet
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setEditingSubmission(sub)}
+                          style={{ padding: '8px 14px', borderRadius: '10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}
+                        >
+                          ✏️ Edit
+                        </button>
                       </div>
                     </div>
                   );
@@ -1607,6 +1683,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
       )}
 
+      {editingSubmission && (
+        <EditScannedSheetModal
+          sub={editingSubmission}
+          exam={exam}
+          students={students}
+          onClose={() => setEditingSubmission(null)}
+          refreshSubmissions={refreshSubmissions}
+        />
+      )}
+
       {/* LIVE CAMERA MODAL OVERLAY */}
       {showCameraModal && (
         <div className="camera-fullscreen-overlay">
@@ -1710,43 +1796,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {lastScanOverlay.studentName.split('/')[0].trim()}
                       </h4>
-                      {isEditingOverlayRoll ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Roll:</span>
-                          <input 
-                            type="text" 
-                            value={overlayRollInput}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setOverlayRollInput(val);
-                              // Match student by new roll number in this class
-                              const matchedStudent = students.find(
-                                s => s.studentNum.trim().toLowerCase() === val.trim().toLowerCase() && 
-                                     s.className === exam.className
-                              );
-                              setLastScanOverlay(prev => prev ? {
-                                ...prev,
-                                studentNum: val,
-                                studentId: matchedStudent ? matchedStudent.id! : null,
-                                studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate'
-                              } : null);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              padding: '2px 6px',
-                              fontSize: '0.75rem',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '4px',
-                              width: '80px',
-                              fontWeight: 700
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
-                          Roll: {lastScanOverlay.studentNum}
-                        </p>
-                      )}
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                        Roll: {lastScanOverlay.studentNum}
+                      </p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'inline-block' }}>
@@ -1775,7 +1827,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           setLastScanOverlay(null);
                           isScanningRef.current = false;
                           setIsScanning(false);
-                          setIsEditingOverlayRoll(false);
                         }}
                         style={{
                           padding: '5px 10px',
@@ -1799,7 +1850,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           setLastScanOverlay(null);
                           isScanningRef.current = false;
                           setIsScanning(false);
-                          setIsEditingOverlayRoll(false);
                         }}
                         style={{
                           padding: '5px 10px',
@@ -1814,107 +1864,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       >
                         Finish
                       </button>
-                      {isEditingOverlayRoll ? (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setIsEditingOverlayRoll(false);
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '8px',
-                            background: '#3b82f6',
-                            color: '#ffffff',
-                            border: 'none',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            fontSize: '0.72rem'
-                          }}
-                        >
-                          Done
-                        </button>
-                      ) : (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setIsEditingOverlayRoll(true);
-                            setOverlayRollInput(lastScanOverlay.studentNum);
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '8px',
-                            background: '#e2e8f0',
-                            color: '#475569',
-                            border: '1px solid #cbd5e1',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            fontSize: '0.72rem'
-                          }}
-                        >
-                          Edit
-                        </button>
-                      )}
-                      <button 
-                        type="button"
-                        onClick={async () => {
-                          if (!lastScanOverlay.studentId) {
-                            alert('Please enter a valid roll number that matches a registered student before saving.');
-                            return;
-                          }
-                          try {
-                            if (exam.id && lastScanOverlay.studentId) {
-                              // Check if duplicate submission exists
-                              const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.studentId]).first();
-                              if (existingSub) {
-                                if (!window.confirm(`Submission for ${lastScanOverlay.studentName} already exists. Overwrite?`)) {
-                                  return;
-                                }
-                                await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.studentId]).delete();
-                              }
-
-                              const subId = await db.submissions.add({
-                                examId: exam.id!,
-                                studentId: lastScanOverlay.studentId,
-                                score: lastScanOverlay.score,
-                                answers: lastScanOverlay.answers,
-                                bookletSet: lastScanOverlay.bookletSet,
-                                omrImageUrl: lastScanOverlay.omrImageUrl,
-                                scannedAt: new Date()
-                              });
-
-                              // Sync submission to Hostinger database in background
-                              const savedSub = await db.submissions.get(subId);
-                              if (savedSub) {
-                                syncSubmissionToCloud(savedSub).catch(console.warn);
-                              }
-                              pullCloudUpdatesToIndexedDB();
-                              refreshSubmissions();
-                              alert('Saved successfully!');
-                              
-                              // Reset state, auto scan next
-                              setLastScanOverlay(null);
-                              isScanningRef.current = false;
-                              setIsScanning(false);
-                              setIsEditingOverlayRoll(false);
-                            }
-                          } catch (err: any) {
-                            alert('Error saving submission: ' + err.message);
-                          }
-                        }}
-                        style={{
-                          padding: '5px 10px',
-                          borderRadius: '8px',
-                          background: '#3b82f6',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          fontSize: '0.72rem',
-                          boxShadow: '0 2px 6px rgba(59,130,246,0.2)'
-                        }}
-                      >
-                        Save
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -1926,6 +1875,475 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         </div>
       )}
 
+    </div>
+  );
+};
+
+interface EditScannedSheetModalProps {
+  sub: ExamSubmission;
+  exam: Exam;
+  students: Student[];
+  onClose: () => void;
+  refreshSubmissions: () => void;
+}
+
+const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam, students, onClose, refreshSubmissions }) => {
+  const [rollOrSearchInput, setRollOrSearchInput] = useState(() => {
+    if (sub.studentId > 0) {
+      const s = students.find(item => item.id === sub.studentId);
+      return s ? s.studentNum : '';
+    }
+    return sub.detectedRollNum || '';
+  });
+
+  const [selectedBookletSet, setSelectedBookletSet] = useState(sub.bookletSet || 'A');
+  const [editedAnswers, setEditedAnswers] = useState<Record<number, string>>(() => ({ ...sub.answers }));
+
+  // Find currently selected student
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(() => {
+    if (sub.studentId > 0) {
+      return students.find(item => item.id === sub.studentId) || null;
+    }
+    return null;
+  });
+
+  // Calculate search suggestions of class students matching input
+  const classStudents = students.filter(s => s.className === exam.className);
+  const searchResults = rollOrSearchInput.trim() === '' ? [] : classStudents.filter(s => {
+    const term = rollOrSearchInput.trim().toLowerCase();
+    return s.studentNum.toLowerCase().includes(term) || s.name.toLowerCase().includes(term);
+  });
+
+  // Handle manual option bubble toggle
+  const handleBubbleClick = (qNum: number, opt: string) => {
+    setEditedAnswers(prev => {
+      const copy = { ...prev };
+      if (copy[qNum] === opt) {
+        copy[qNum] = ''; // Clear answer on double-click
+      } else {
+        copy[qNum] = opt;
+      }
+      return copy;
+    });
+  };
+
+  // Recalculate score based on current editedAnswers and bookletSet
+  const calculateScore = () => {
+    let score = 0;
+    let correctCount = 0;
+    let wrongCount = 0;
+    let unansweredCount = 0;
+
+    let correctKey = (exam.answerKeys && exam.answerKeys[selectedBookletSet]) || exam.answerKey;
+    if (!correctKey || Object.keys(correctKey).length === 0) {
+      correctKey = exam.answerKey;
+    }
+
+    if (exam.sections && exam.sections.length > 0) {
+      exam.sections.forEach((sec: any) => {
+        const secCorrectMarks = sec.correctMarks ?? 4;
+        const secIncorrectMarks = sec.incorrectMarks ?? -1;
+        const secUnansweredMarks = sec.unansweredMarks ?? 0;
+        const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
+
+        if (sec.allowOptionalAttempts && sec.maxAttempts) {
+          const attempted: Array<{ q: number; ans: string }> = [];
+          qNums.forEach(q => {
+            const ans = editedAnswers[q] || '';
+            if (ans !== '') attempted.push({ q, ans });
+          });
+
+          const evaluated = attempted.slice(0, sec.maxAttempts);
+          evaluated.forEach(item => {
+            const correctAns = correctKey[item.q] || '';
+            if (item.ans === correctAns) {
+              score += secCorrectMarks;
+              correctCount++;
+            } else {
+              score += secIncorrectMarks;
+              wrongCount++;
+            }
+          });
+
+          const unansweredForSec = sec.qCount - evaluated.length;
+          unansweredCount += unansweredForSec;
+          score += unansweredForSec * secUnansweredMarks;
+        } else {
+          qNums.forEach(q => {
+            const studentAns = editedAnswers[q] || '';
+            const correctAns = correctKey[q] || '';
+            if (studentAns === '') {
+              score += secUnansweredMarks;
+              unansweredCount++;
+            } else if (studentAns === correctAns) {
+              score += secCorrectMarks;
+              correctCount++;
+            } else {
+              score += secIncorrectMarks;
+              wrongCount++;
+            }
+          });
+        }
+      });
+    } else {
+      const cMarks = exam.correctMarks ?? 4;
+      const iMarks = exam.incorrectMarks ?? -1;
+      const uMarks = exam.unansweredMarks ?? 0;
+
+      for (let q = 1; q <= exam.numQuestions; q++) {
+        const studentAns = editedAnswers[q] || '';
+        const correctAns = correctKey[q] || '';
+
+        if (studentAns === '') {
+          score += uMarks;
+          unansweredCount++;
+        } else if (studentAns === correctAns) {
+          score += cMarks;
+          correctCount++;
+        } else {
+          score += iMarks;
+          wrongCount++;
+        }
+      }
+    }
+
+    return { score, correctCount, wrongCount, unansweredCount };
+  };
+
+  const { score: liveScore, correctCount, wrongCount, unansweredCount } = calculateScore();
+
+  const handleSave = async () => {
+    // If saving as unknown student, we keep a negative student ID.
+    // If saving as a real student, we get the selectedStudent.id!
+    const targetStudentId = selectedStudent ? selectedStudent.id! : sub.studentId;
+
+    try {
+      if (exam.id) {
+        // If the student ID was changed, we delete the old submission record in IndexedDB,
+        // and if the old student ID was positive, we delete it from the cloud too.
+        if (targetStudentId !== sub.studentId) {
+          await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).delete();
+          if (sub.studentId > 0) {
+            const { deleteSubmissionFromCloud } = await import('../utils/cloudSync');
+            await deleteSubmissionFromCloud(sub.id!).catch(console.warn);
+          }
+          
+          // Add the new submission record
+          const newSubId = await db.submissions.add({
+            examId: exam.id!,
+            studentId: targetStudentId,
+            score: liveScore,
+            answers: editedAnswers,
+            bookletSet: selectedBookletSet,
+            omrImageUrl: sub.omrImageUrl,
+            scannedAt: new Date(),
+            detectedRollNum: sub.detectedRollNum || rollOrSearchInput
+          });
+
+          const savedSub = await db.submissions.get(newSubId);
+          if (savedSub && targetStudentId > 0) {
+            const { syncSubmissionToCloud } = await import('../utils/cloudSync');
+            await syncSubmissionToCloud(savedSub).catch(console.warn);
+          }
+        } else {
+          // Update the existing submission
+          await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).modify({
+            score: liveScore,
+            answers: editedAnswers,
+            bookletSet: selectedBookletSet,
+            detectedRollNum: sub.detectedRollNum || rollOrSearchInput
+          });
+
+          const updatedSub = await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).first();
+          if (updatedSub && sub.studentId > 0) {
+            const { syncSubmissionToCloud } = await import('../utils/cloudSync');
+            await syncSubmissionToCloud(updatedSub).catch(console.warn);
+          }
+        }
+
+        const { pullCloudUpdatesToIndexedDB } = await import('../utils/cloudSync');
+        pullCloudUpdatesToIndexedDB();
+        refreshSubmissions();
+        alert('Changes saved successfully!');
+        onClose();
+      }
+    } catch (err: any) {
+      alert('Failed to save changes: ' + err.message);
+    }
+  };
+
+  // Generate Booklet Sets Options ('A', 'B', 'C', 'D'...)
+  const setsCount = exam.examSetsCount ?? 1;
+  const bookletSets = Array.from({ length: setsCount }, (_, i) => String.fromCharCode(65 + i));
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '16px',
+        width: '100%',
+        maxWidth: '850px',
+        maxHeight: '90vh',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
+        overflow: 'hidden',
+        color: '#0f172a'
+      }}>
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>✏️ Edit Scanned Sheet</h3>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Exam: {exam.title}</p>
+          </div>
+          <button onClick={onClose} style={{ background: '#e2e8f0', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+        </div>
+
+        {/* Modal Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* Top Panel Controls: Student Selection, Set Selection, Live Score */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            
+            {/* Roll Number or Student Search input */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', position: 'relative' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Roll No / Student Search</label>
+              <input
+                type="text"
+                value={rollOrSearchInput}
+                placeholder="Type Roll or Search Name..."
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRollOrSearchInput(val);
+                  // Auto match if exact match roll number
+                  const match = classStudents.find(s => s.studentNum.trim().toLowerCase() === val.trim().toLowerCase());
+                  if (match) {
+                    setSelectedStudent(match);
+                  } else {
+                    setSelectedStudent(null);
+                  }
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  fontWeight: 600
+                }}
+              />
+              
+              {/* Matched Student indicator */}
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, marginTop: '4px' }}>
+                {selectedStudent ? (
+                  <span style={{ color: '#10b981' }}>🟢 Matched: {selectedStudent.name} (Roll: {selectedStudent.studentNum})</span>
+                ) : (
+                  <span style={{ color: '#ef4444' }}>🔴 Unmatched: Unknown Candidate</span>
+                )}
+              </div>
+
+              {/* Suggestions dropdown */}
+              {searchResults.length > 0 && !selectedStudent && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                  maxHeight: '150px',
+                  overflowY: 'auto',
+                  marginTop: '4px'
+                }}>
+                  {searchResults.map(s => (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        setSelectedStudent(s);
+                        setRollOrSearchInput(s.studentNum);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #f1f5f9',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      {s.name} (Roll: {s.studentNum})
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Booklet Set selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Booklet Set</label>
+              <select
+                value={selectedBookletSet}
+                onChange={(e) => setSelectedBookletSet(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  fontWeight: 600,
+                  background: '#ffffff'
+                }}
+              >
+                {bookletSets.map(set => (
+                  <option key={set} value={set}>Set {set}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Dynamic Score Indicator */}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Calculated Score</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#2563eb' }}>
+                {liveScore.toFixed(1)} Pts
+              </span>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', marginTop: '4px', fontWeight: 700 }}>
+                <span style={{ color: '#10b981' }}>🟢 R: {correctCount}</span>
+                <span style={{ color: '#ef4444' }}>🔴 W: {wrongCount}</span>
+                <span style={{ color: '#64748b' }}>⚫ L: {unansweredCount}</span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Answer Bubble Editing Area */}
+          <div>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#334155' }}>
+              📝 Edit Bubble Responses
+            </h4>
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.8rem', color: '#64748b' }}>
+              Click on a bubble to toggle selection. Click on the selected bubble again to leave it blank (unanswered).
+            </p>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '14px 12px',
+              maxHeight: '40vh',
+              overflowY: 'auto',
+              padding: '4px',
+              border: '1px solid #cbd5e1',
+              borderRadius: '12px',
+              background: '#f8fafc'
+            }}>
+              {Array.from({ length: exam.numQuestions }, (_, i) => {
+                const qNum = i + 1;
+                const studentAns = editedAnswers[qNum] || '';
+                
+                // Determine option list for this question
+                const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+                const is5Option = sec && sec.questionType === '5 option';
+                const options = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+
+                return (
+                  <div key={`edit-q-${qNum}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '24px', color: '#64748b' }}>
+                      {String(qNum).padStart(2, '0')}.
+                    </span>
+                    
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {options.map((opt) => {
+                        const isStudentPick = studentAns === opt;
+                        
+                        let bubbleStyle: React.CSSProperties = {
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          border: isStudentPick ? '1.5px solid #2563eb' : '1.5px solid #cbd5e1',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          color: isStudentPick ? '#ffffff' : '#475569',
+                          background: isStudentPick ? '#2563eb' : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'all 0.1s ease',
+                          userSelect: 'none'
+                        };
+
+                        return (
+                          <div
+                            key={opt}
+                            onClick={() => handleBubbleClick(qNum, opt)}
+                            style={bubbleStyle}
+                            onMouseEnter={(e) => {
+                              if (!isStudentPick) {
+                                e.currentTarget.style.borderColor = '#2563eb';
+                                e.currentTarget.style.backgroundColor = '#eff6ff';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isStudentPick) {
+                                e.currentTarget.style.borderColor = '#cbd5e1';
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }
+                            }}
+                          >
+                            {opt}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer Actions */}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              background: '#ffffff',
+              color: '#475569',
+              border: '1px solid #cbd5e1',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+              cursor: 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '8px',
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(37,99,235,0.2)'
+            }}
+          >
+            Save Changes
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 };

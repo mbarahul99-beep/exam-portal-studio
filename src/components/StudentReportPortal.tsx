@@ -471,6 +471,23 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
     };
   }
 
+  if (showOmrModal && activeAnalysisSub && activeAnalysisSub.omrImageUrl) {
+    return (
+      <FullScreenOmrViewer
+        imageUrl={activeAnalysisSub.omrImageUrl}
+        title={`Scanned OMR Sheet - ${student?.name || 'Student'}`}
+        subtitle={`Roll Number: ${student?.studentNum || ''}`}
+        onClose={() => setShowOmrModal(false)}
+        scoreInfo={{
+          score: activeAnalysisSub.score || 0,
+          correctCount: analysisDetails ? (analysisDetails.diffStats.Easy.correct + analysisDetails.diffStats.Moderate.correct + analysisDetails.diffStats.Difficult.correct) : undefined,
+          wrongCount: analysisDetails ? (analysisDetails.diffStats.Easy.wrong + analysisDetails.diffStats.Moderate.wrong + analysisDetails.diffStats.Difficult.wrong) : undefined,
+          unansweredCount: analysisDetails ? (analysisDetails.diffStats.Easy.skipped + analysisDetails.diffStats.Moderate.skipped + analysisDetails.diffStats.Difficult.skipped) : undefined
+        }}
+      />
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', width: '100%', background: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
@@ -1830,21 +1847,6 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         />
       )}
 
-      {/* OMR Sheet Viewer Modal Overlay */}
-      {showOmrModal && activeAnalysisSub && activeAnalysisSub.omrImageUrl && (
-        <FullScreenOmrViewer
-          imageUrl={activeAnalysisSub.omrImageUrl}
-          title={`Scanned OMR Sheet - ${student?.name || 'Student'}`}
-          subtitle={`Roll Number: ${student?.studentNum || ''}`}
-          onClose={() => setShowOmrModal(false)}
-          scoreInfo={{
-            score: activeAnalysisSub.score || 0,
-            correctCount: analysisDetails ? (analysisDetails.diffStats.Easy.correct + analysisDetails.diffStats.Moderate.correct + analysisDetails.diffStats.Difficult.correct) : undefined,
-            wrongCount: analysisDetails ? (analysisDetails.diffStats.Easy.wrong + analysisDetails.diffStats.Moderate.wrong + analysisDetails.diffStats.Difficult.wrong) : undefined,
-            unansweredCount: analysisDetails ? (analysisDetails.diffStats.Easy.skipped + analysisDetails.diffStats.Moderate.skipped + analysisDetails.diffStats.Difficult.skipped) : undefined
-          }}
-        />
-      )}
     </div>
   );
 };

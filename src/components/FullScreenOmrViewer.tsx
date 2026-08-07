@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, X, ArrowLeft } from 'lucide-react';
 
 interface FullScreenOmrViewerProps {
   imageUrl: string;
@@ -26,6 +26,15 @@ export const FullScreenOmrViewer: React.FC<FullScreenOmrViewerProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Lock body scroll when this component is mounted to prevent background shift
+  useEffect(() => {
+    const originalStyle = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
 
   // Reset zoom & pan when image changes
   useEffect(() => {
@@ -109,55 +118,193 @@ export const FullScreenOmrViewer: React.FC<FullScreenOmrViewerProps> = ({
 
   return (
     <div 
-      className="no-print"
+      className="no-print omr-viewer-screen"
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 99999,
-        backgroundColor: '#0f172a',
+        backgroundColor: '#090d16',
         display: 'flex',
         flexDirection: 'column',
         userSelect: 'none',
-        animation: 'omrFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+        animation: 'omrFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards'
       }}
     >
       <style>{`
         @keyframes omrFadeIn {
-          from { opacity: 0; transform: scale(0.98); }
+          from { opacity: 0; transform: scale(0.99); }
           to { opacity: 1; transform: scale(1); }
+        }
+
+        .omr-viewer-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 14px 24px;
+          background: linear-gradient(to bottom, #1e293b, #0f172a);
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          color: #ffffff;
+          z-index: 10;
+          box-sizing: border-box;
+        }
+
+        .omr-viewer-header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .omr-viewer-back-btn {
+          background: rgba(255,255,255,0.08);
+          border: none;
+          color: #f8fafc;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          transition: background 0.2s;
+        }
+
+        .omr-viewer-back-btn:hover {
+          background: rgba(255,255,255,0.15);
+        }
+
+        .omr-viewer-title-group {
+          min-width: 0;
+        }
+
+        .omr-viewer-title {
+          margin: 0;
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #f8fafc;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .omr-viewer-subtitle {
+          margin: 2px 0 0 0;
+          font-size: 0.78rem;
+          color: #94a3b8;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .omr-viewer-stats {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin: 0 16px;
+        }
+
+        .omr-viewer-badge {
+          border-radius: 20px;
+          padding: 5px 12px;
+          font-size: 0.8rem;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .omr-viewer-score-badge {
+          background: rgba(16,185,129,0.12);
+          border: 1px solid rgba(16,185,129,0.25);
+          color: #34d399;
+        }
+
+        .omr-viewer-counts {
+          display: flex;
+          gap: 10px;
+          font-size: 0.78rem;
+          color: #cbd5e1;
+          white-space: nowrap;
+        }
+
+        .omr-viewer-close-btn {
+          background: rgba(255,255,255,0.08);
+          color: #f8fafc;
+          border: none;
+          border-radius: 50%;
+          width: 38px;
+          height: 38px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.2s;
+        }
+
+        .omr-viewer-close-btn:hover {
+          background: rgba(255,255,255,0.15);
+        }
+
+        @media (max-width: 680px) {
+          .omr-viewer-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            padding: 12px 16px;
+          }
+          
+          .omr-viewer-close-btn {
+            display: none !important;
+          }
+          
+          .omr-viewer-stats {
+            margin: 0;
+            justify-content: space-between;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 6px 12px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+          }
+          
+          .omr-viewer-counts {
+            gap: 12px;
+          }
+
+          .omr-viewer-title {
+            font-size: 0.95rem;
+          }
         }
       `}</style>
 
       {/* HEADER BAR */}
-      <div 
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '16px 24px',
-          background: 'linear-gradient(to bottom, rgba(15,23,42,0.95), rgba(15,23,42,0.8))',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          color: '#ffffff',
-          zIndex: 10
-        }}
-      >
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 750, color: '#f8fafc', letterSpacing: '0.3px' }}>
-            📄 {title}
-          </h3>
-          {subtitle && (
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              {subtitle}
-            </p>
-          )}
+      <div className="omr-viewer-header">
+        <div className="omr-viewer-header-left">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="omr-viewer-back-btn" 
+            title="Go Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div className="omr-viewer-title-group">
+            <h3 className="omr-viewer-title">
+              📄 {title}
+            </h3>
+            {subtitle && (
+              <p className="omr-viewer-subtitle">
+                {subtitle}
+              </p>
+            )}
+          </div>
         </div>
 
         {scoreInfo && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '0 24px' }}>
-            <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '24px', padding: '6px 14px', fontSize: '0.85rem', fontWeight: 800, color: '#34d399' }}>
+          <div className="omr-viewer-stats">
+            <div className="omr-viewer-badge omr-viewer-score-badge">
               Marks: {scoreInfo.score.toFixed(1)}
             </div>
-            <div style={{ display: 'flex', gap: '12px', fontSize: '0.8rem', color: '#cbd5e1' }} className="hidden-xs">
+            <div className="omr-viewer-counts">
               {scoreInfo.correctCount !== undefined && <span>🟢 {scoreInfo.correctCount}</span>}
               {scoreInfo.wrongCount !== undefined && <span>🔴 {scoreInfo.wrongCount}</span>}
               {scoreInfo.unansweredCount !== undefined && <span>⚫ {scoreInfo.unansweredCount}</span>}
@@ -167,26 +314,14 @@ export const FullScreenOmrViewer: React.FC<FullScreenOmrViewerProps> = ({
 
         <button 
           onClick={onClose}
-          style={{
-            background: 'rgba(255,255,255,0.1)',
-            color: '#f8fafc',
-            border: 'none',
-            borderRadius: '50%',
-            width: '38px',
-            height: '38px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background 0.2s'
-          }}
+          className="omr-viewer-close-btn"
           title="Close (Esc)"
         >
           <X size={18} />
         </button>
       </div>
 
-      {/* VIEWPORT CONTROLLER FLOATING CONTAINER */}
+      {/* VIEWPORT CONTROLLER */}
       <div 
         ref={containerRef}
         style={{
@@ -213,8 +348,8 @@ export const FullScreenOmrViewer: React.FC<FullScreenOmrViewerProps> = ({
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           style={{
-            maxHeight: '90vh',
-            maxWidth: '95%',
+            maxHeight: '100%',
+            maxWidth: '100%',
             objectFit: 'contain',
             borderRadius: '4px',
             boxShadow: '0 20px 50px rgba(0,0,0,0.5)',

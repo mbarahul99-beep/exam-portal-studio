@@ -540,7 +540,7 @@ export async function scanOMRSheet(
         let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = sidConf.yStart + rowIdx * sidConf.yStep + dy;
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
           if (avgGray < colMin) {
             colMin = avgGray;
           }
@@ -585,7 +585,7 @@ export async function scanOMRSheet(
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
         const x = colConf.xOptions[o];
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         if (val > maxVal) maxVal = val;
       }
       if (maxVal > 0) samples.push(maxVal);
@@ -594,8 +594,8 @@ export async function scanOMRSheet(
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
-    const fillDiffThreshold = 30; // Bubble must be at least 30 gray levels darker than the local maximum
-    const maxAbsoluteFillVal = whitePaperLevel - 35; // Bubble must be at least 35 gray levels darker than page white paper
+    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
+    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
@@ -607,31 +607,32 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = sidConf.yStart + rowIdx * sidConf.yStep + bestDy;
-        // Inner radius 4.5px to cover the bubble interior
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.5);
+        // Inner radius 3.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         intensities.push(avgGray);
       }
 
-      // Find darkest row (minimum gray value)
-      let minVal = 256;
-      let maxVal = -1;
-      let minIdx = -1;
+      // Calculate column average intensity
+      let colSum = 0;
+      for (let r = 0; r < 10; r++) {
+        colSum += intensities[r];
+      }
+      const colAvg = colSum / 10;
+
+      // Find all rows in this column that are significantly darker than the column average
+      const filledRows: number[] = [];
+      const colDiffThreshold = Math.max(fillDiffThreshold + 5, colAvg * 0.18); // Adaptive threshold for roll numbers
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        if (val < minVal) {
-          minVal = val;
-          minIdx = r;
-        }
-        if (val > maxVal) {
-          maxVal = val;
+        if (colAvg - val > colDiffThreshold && val < maxAbsoluteFillVal) {
+          filledRows.push(r);
         }
       }
 
-      // Determine if a digit is filled: must satisfy adaptive thresholds
-      if (maxVal - minVal > fillDiffThreshold && minVal < maxAbsoluteFillVal) {
-        studentNum += digitValuesList[minIdx].toString();
+      if (filledRows.length === 1) {
+        studentNum += digitValuesList[filledRows[0]].toString();
       } else {
-        studentNum += '0'; // default fallback
+        studentNum += '0'; // default fallback for empty or multiple fills
       }
     }
 
@@ -670,24 +671,24 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
-        // Inner radius 4.0px to cover the bubble interior
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        // Inner radius 2.5px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         intensities.push(avgGray);
       }
 
-      let maxVal = -1;
+      // Calculate row average intensity
+      let rowSum = 0;
       for (let o = 0; o < numOptions; o++) {
-        const val = intensities[o];
-        if (val > maxVal) {
-          maxVal = val;
-        }
+        rowSum += intensities[o];
       }
+      const rowAvg = rowSum / numOptions;
 
-      // Detect all filled options for this question using adaptive thresholds
+      // Detect all filled options for this question using row-average contrast
       const filledOptions: number[] = [];
+      const rowDiffThreshold = Math.max(fillDiffThreshold, rowAvg * 0.15); // Adaptive threshold for questions
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        if (maxVal - val > fillDiffThreshold && val < maxAbsoluteFillVal) {
+        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteFillVal) {
           filledOptions.push(o);
         }
       }

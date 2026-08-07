@@ -8,6 +8,42 @@ import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 import { MathRenderer } from './MathRenderer';
 import { syncExamToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
+function drawWmfSafely(bytes: Uint8Array, canvas: HTMLCanvasElement) {
+  // Parse actions
+  const actions = wmf.get_actions(bytes);
+  
+  // Patch actions to prevent crashes due to missing properties
+  actions.forEach((act: any) => {
+    if (act.s) {
+      if (!act.s.Font) {
+        act.s.Font = { Angle: 0, Name: 'Calibri', Height: 12, Italic: false, Weight: 400 };
+      } else {
+        if (act.s.Font.Angle === undefined) act.s.Font.Angle = 0;
+        if (act.s.Font.Name === undefined) act.s.Font.Name = 'Calibri';
+        if (act.s.Font.Height === undefined) act.s.Font.Height = 12;
+        if (act.s.Font.Italic === undefined) act.s.Font.Italic = false;
+        if (act.s.Font.Weight === undefined) act.s.Font.Weight = 400;
+      }
+      
+      if (!act.s.Pen) {
+        act.s.Pen = { Color: 0, Width: 1, Style: 0 };
+      }
+      if (!act.s.Brush) {
+        act.s.Brush = { Color: 0xFFFFFF, Style: 0 };
+      }
+    }
+  });
+  
+  // Call render_canvas
+  wmf.render_canvas(actions, canvas);
+  
+  // Sanitize dimensions to prevent browser crashes or empty data URIs
+  if (canvas.width > 2048) canvas.width = 2048;
+  if (canvas.height > 2048) canvas.height = 2048;
+  if (canvas.width <= 0) canvas.width = 300;
+  if (canvas.height <= 0) canvas.height = 150;
+}
+
 interface ExamWizardProps {
   classes: ClassEntity[];
   examId?: number; // Optional prop for edit mode
@@ -588,7 +624,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                   bytes[i] = binaryString.charCodeAt(i);
                 }
                 const canvas = document.createElement('canvas');
-                wmf.draw_canvas(bytes, canvas);
+                drawWmfSafely(bytes, canvas);
                 if (canvas.width > 0 && canvas.height > 0) {
                   base64Data = canvas.toDataURL('image/png');
                 } else {
@@ -848,33 +884,32 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
         .filter(item => item.q.subjectName === selectedSubjectName && item.q.sectionName === selectedSectionName);
 
       for (let i = 0; i < sectionIndices.length; i++) {
-        // Find the first unfilled slot in this section
+        if (importCount >= toImport.length) break;
+
         const targetIdx = sectionIndices[i].idx;
-        if (!updated[targetIdx].questionText.trim()) {
-          if (importCount >= toImport.length) break;
-
-          const importedQ = toImport[importCount];
-          updated[targetIdx].questionText = importedQ.questionText;
-          
-          // Make sure options matches the expected count
-          const nextOpts = [...updated[targetIdx].options];
-          for (let o = 0; o < nextOpts.length; o++) {
-            nextOpts[o] = importedQ.options[o] || '';
-          }
-          updated[targetIdx].options = nextOpts;
-          updated[targetIdx].correctOptionIdx = typeof importedQ.correctOptionIdx === 'number' ? importedQ.correctOptionIdx : 0;
-          updated[targetIdx].explanation = importedQ.explanation || '';
-          
-          // Handle images if any are inside the question text
-          const imgMatch = importedQ.questionText.match(/<img[^>]+src="([^">]+)"/);
-          if (imgMatch && imgMatch[1]) {
-            updated[targetIdx].questionImage = imgMatch[1];
-            // Remove the raw img tag from text so it renders cleanly via our existing UI questionImage rendering
-            updated[targetIdx].questionText = importedQ.questionText.replace(/<img[^>]+>/g, '').trim();
-          }
-
-          importCount++;
+        const importedQ = toImport[importCount];
+        updated[targetIdx].questionText = importedQ.questionText;
+        
+        // Make sure options matches the expected count
+        const nextOpts = [...updated[targetIdx].options];
+        for (let o = 0; o < nextOpts.length; o++) {
+          nextOpts[o] = importedQ.options[o] || '';
         }
+        updated[targetIdx].options = nextOpts;
+        updated[targetIdx].correctOptionIdx = typeof importedQ.correctOptionIdx === 'number' ? importedQ.correctOptionIdx : 0;
+        updated[targetIdx].explanation = importedQ.explanation || '';
+        
+        // Handle images if any are inside the question text
+        const imgMatch = importedQ.questionText.match(/<img[^>]+src="([^">]+)"/);
+        if (imgMatch && imgMatch[1]) {
+          updated[targetIdx].questionImage = imgMatch[1];
+          // Remove the raw img tag from text so it renders cleanly via our existing UI questionImage rendering
+          updated[targetIdx].questionText = importedQ.questionText.replace(/<img[^>]+>/g, '').trim();
+        } else {
+          updated[targetIdx].questionImage = '';
+        }
+
+        importCount++;
       }
 
       alert(`Successfully imported ${importCount} questions into section ${selectedSectionName}!`);

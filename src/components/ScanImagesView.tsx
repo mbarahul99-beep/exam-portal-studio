@@ -13,7 +13,7 @@ import {
   FileText
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
-import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots } from '../utils/omrScanner';
+import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots, getScaledY } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
@@ -50,7 +50,7 @@ function drawOverlayOnWarpedCanvas(
     const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
     if (!qSlot) continue;
     const slotIndex = qSlot.slotIdx;
-    const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
+    const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
 
     const studentAns = answers[q] || '';
     const correctAns = correctKey[q] || '';

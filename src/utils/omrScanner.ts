@@ -9,6 +9,12 @@ export interface ScanResult {
   bestDy?: number;
 }
 
+// Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
+export function getScaledY(rawY: number, dy: number): number {
+  const yScale = 0.991; // 0.9% vertical compression correction
+  return 48 + (rawY - 48) * yScale + dy;
+}
+
 // Coordinate mapping parameters (matching the generated HTML NEET sheet)
 export const OMR_CONFIG = {
   width: 1000,
@@ -494,7 +500,7 @@ export async function scanOMRSheet(
         const x = sidConf.xStart + col * sidConf.xStep;
         let cMin = 256, cMax = -1;
         for (let row = 0; row < 10; row++) {
-          const y = sidConf.yStart + row * sidConf.yStep;
+          const y = getScaledY(sidConf.yStart + row * sidConf.yStep, 0);
           const g = calculateBubbleAverageGray(tempGray, x, y, 4.5);
           if (g < cMin) cMin = g;
           if (g > cMax) cMax = g;
@@ -527,11 +533,11 @@ export async function scanOMRSheet(
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
     // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
-    let bestDy = 0;
+    let bestDy = -3; // Default systematic vertical offset fallback (3px upward shift)
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -5; dy <= 5; dy += 1) {
+    for (let dy = -25; dy <= 25; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -539,7 +545,7 @@ export async function scanOMRSheet(
         let colMin = 256;
         let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = sidConf.yStart + rowIdx * sidConf.yStep + dy;
+          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, dy);
           const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
           if (avgGray < colMin) {
             colMin = avgGray;
@@ -581,7 +587,7 @@ export async function scanOMRSheet(
       const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
       if (!qSlot) continue;
       const slotIndex = qSlot.slotIdx;
-      const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
+      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
         const x = colConf.xOptions[o];
@@ -606,7 +612,7 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = sidConf.yStart + rowIdx * sidConf.yStep + bestDy;
+        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
         // Inner radius 3.0px to cover the bubble interior (immune to outline shift)
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         intensities.push(avgGray);
@@ -666,7 +672,7 @@ export async function scanOMRSheet(
         continue;
       }
       const slotIndex = qSlot.slotIdx;
-      const y = colConf.yStart + slotIndex * qConf.yStep + bestDy;
+      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {

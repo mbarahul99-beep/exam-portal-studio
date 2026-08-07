@@ -123,9 +123,14 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   // Online Questions Composer States
   const [questionsState, setQuestionsState] = useState<any[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library' | 'word'>('manual');
+  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library' | 'word' | 'pdf'>('manual');
   const [showAddedQuestionsModal, setShowAddedQuestionsModal] = useState(false);
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
+
+  // PDF AI Parser States
+  const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
+  const [pdfParseError, setPdfParseError] = useState<string | null>(null);
+  const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
 
   // Word AI Parser States
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
@@ -568,6 +573,130 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       }
     };
     reader.readAsText(file);
+  };
+
+  const handlePdfFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSizeBytes = 20 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setPdfParseError("File is too large. Please select a PDF file smaller than 20MB.");
+      return;
+    }
+
+    if (!geminiApiKey.trim()) {
+      setPdfParseError("Please provide a Gemini API Key to proceed.");
+      return;
+    }
+
+    localStorage.setItem('gemini_api_key', geminiApiKey);
+    localStorage.setItem('gemini_model', geminiModel);
+
+    setIsParsingPdf(true);
+    setPdfParseError(null);
+    setPdfParseStatus("Reading PDF file...");
+    setParsedQuestions([]);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const base64Data = (evt.target?.result as string).split(',')[1];
+        if (!base64Data) {
+          throw new Error("Failed to read PDF file binary data.");
+        }
+
+        setPdfParseStatus("Analyzing PDF structure and transcribing questions (this may take up to a minute)...");
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+        
+        const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided PDF document.
+Identify all multiple choice questions (MCQs) in the document.
+For each question:
+1. Extract the question text.
+2. Extract the options. If there are options like A, B, C, D, parse them. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings or reconstruct if logical.
+3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D). If not clearly indicated, choose the most likely correct answer or default to 0.
+4. Provide a brief step-by-step explanation or solution if applicable.
+5. Critical: Transcribe all mathematical expressions, equations, and physics formulas into clean inline LaTeX (enclosed in single '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
+6. Critical: If the question refers to a diagram, graph, or pulley setup in the PDF, insert a placeholder tag '[Diagram Required: <short description>]' in the question text.
+
+Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
+[
+  {
+    "questionText": "Question text here with LaTeX and optional [Diagram Required: description] tags",
+    "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+    "correctOptionIdx": 0,
+    "explanation": "Explanation here"
+  }
+]`;
+
+        const response = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      mimeType: 'application/pdf',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
+        }
+
+        const resData = await response.json();
+        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!rawText) {
+          throw new Error("Gemini API returned an empty response. Verify your API key or the input PDF.");
+        }
+
+        let cleanedJson = rawText.trim();
+        if (cleanedJson.startsWith("```")) {
+          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+        }
+
+        const parsed = JSON.parse(cleanedJson);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("No questions could be structured from the PDF contents. Make sure it contains clear text and questions.");
+        }
+
+        const initialIndexes: Record<number, boolean> = {};
+        parsed.forEach((_, idx) => {
+          initialIndexes[idx] = true;
+        });
+        setSelectedParsedIndexes(initialIndexes);
+        setParsedQuestions(parsed);
+        setPdfParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
+      } catch (err: any) {
+        console.error("PDF Parsing error:", err);
+        setPdfParseError(err.message || "Failed to upload or parse PDF file.");
+      } finally {
+        setIsParsingPdf(false);
+      }
+    };
+    reader.onerror = () => {
+      setPdfParseError("Failed to read local file bytes.");
+      setIsParsingPdf(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleWordFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1625,12 +1754,19 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                       >
                         Question Bank
                       </button>
-                      <button 
+                       <button 
                         className={`btn-seed ${questionSetupTab === 'word' ? 'active-tab' : ''}`} 
                         onClick={() => setQuestionSetupTab('word')}
                         style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'word' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'word' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
                       >
                         Import MS Word (AI)
+                      </button>
+                      <button 
+                        className={`btn-seed ${questionSetupTab === 'pdf' ? 'active-tab' : ''}`} 
+                        onClick={() => setQuestionSetupTab('pdf')}
+                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'pdf' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'pdf' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      >
+                        Import PDF (AI)
                       </button>
                     </div>
 
@@ -2206,6 +2342,163 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                                         <img src={imgMatch[1]} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
                                       </div>
                                     )}
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
+                                      {q.options.map((opt: string, oIdx: number) => (
+                                        <div key={oIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '4px', background: q.correctOptionIdx === oIdx ? '#dcfce7' : '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                          <span style={{ fontWeight: 800 }}>{String.fromCharCode(65 + oIdx)}.</span>
+                                          <span>{opt}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleImportSelectedQuestions}
+                            style={{
+                              padding: '12px 24px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'linear-gradient(135deg, #10b981, #059669)',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              fontSize: '0.88rem',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
+                              textAlign: 'center',
+                              alignSelf: 'flex-end',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : questionSetupTab === 'pdf' ? (
+                    /* PDF AI Parser Panel */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, padding: '16px', boxSizing: 'border-box' }}>
+                      {/* Configuration block */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ background: '#eff6ff', padding: '6px', borderRadius: '8px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            🔑
+                          </span>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>Gemini API Key Configuration</h4>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              Required for AI question paper extraction. Obtain a free key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Google AI Studio</a>.
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="password"
+                          value={geminiApiKey}
+                          onChange={(e) => setGeminiApiKey(e.target.value)}
+                          placeholder="Paste your AI Studio API Key here..."
+                          style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
+                        />
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                          <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Model Version:</span>
+                          <select
+                            value={geminiModel}
+                            onChange={(e) => setGeminiModel(e.target.value)}
+                            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
+                          >
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended / Fast)</option>
+                            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Upload zone */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '30px', boxSizing: 'border-box' }}>
+                        <div style={{ background: 'rgba(37,99,235,0.08)', padding: '18px', borderRadius: '50%', color: '#2563eb' }}>
+                          <FileText size={40} />
+                        </div>
+                        
+                        <div style={{ textAlign: 'center' }}>
+                          <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import PDF Question Paper</h4>
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
+                            Upload a PDF document containing text, math equations, or printed questions. Gemini AI will OCR and structure the paper into LaTeX questions.
+                          </p>
+                        </div>
+
+                        <label style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '11px 22px',
+                          borderRadius: '8px',
+                          background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
+                          fontSize: '0.88rem',
+                          boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
+                        }}>
+                          <Upload size={16} /> Choose PDF File
+                          {geminiApiKey.trim() && (
+                            <input 
+                              type="file" 
+                              accept=".pdf" 
+                              style={{ display: 'none' }} 
+                              onChange={handlePdfFileUpload}
+                              disabled={isParsingPdf}
+                            />
+                          )}
+                        </label>
+
+                        {isParsingPdf && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                            <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <span>{pdfParseStatus}</span>
+                          </div>
+                        )}
+
+                        {pdfParseError && (
+                          <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
+                            ⚠️ {pdfParseError}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Preview zone */}
+                      {parsedQuestions.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                              Parsed Questions List ({parsedQuestions.length} Found)
+                            </h4>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              Select the questions to import into section <strong>{selectedSectionName}</strong>.
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
+                            {parsedQuestions.map((q, idx) => {
+                              return (
+                                <div key={idx} style={{ display: 'flex', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!selectedParsedIndexes[idx]}
+                                    onChange={(e) => setSelectedParsedIndexes(prev => ({ ...prev, [idx]: e.target.checked }))}
+                                    style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
+                                  />
+                                  <div style={{ flex: 1, fontSize: '0.85rem' }}>
+                                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Question {idx + 1}</div>
+                                    <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
+                                      <MathRenderer text={q.questionText} />
+                                    </div>
 
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
                                       {q.options.map((opt: string, oIdx: number) => (

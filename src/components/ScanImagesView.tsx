@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Upload, 
   Camera,
   ArrowLeft,
   RotateCcw, 
@@ -8,8 +7,6 @@ import {
   ZoomIn, 
   ZoomOut, 
   RefreshCw,
-  Trash2,
-  Image as ImageIcon,
   Eye,
   Search,
   CheckCircle,
@@ -708,94 +705,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
 
-    const currentCount = fileList.length;
-    const incomingCount = e.target.files.length;
-
-    if (maxClassSheets !== Infinity && currentCount >= maxClassSheets) {
-      alert(`Class limit reached (${maxClassSheets} registered students).`);
-      e.target.value = '';
-      return;
-    }
-
-    let allowedCount = incomingCount;
-    if (maxClassSheets !== Infinity && currentCount + incomingCount > maxClassSheets) {
-      allowedCount = maxClassSheets - currentCount;
-    }
-
-    const newFiles: ScanFileItem[] = [];
-    for (let i = 0; i < allowedCount; i++) {
-      const f = e.target.files[i];
-      newFiles.push({
-        id: `file-${Date.now()}-${i}`,
-        name: f.name,
-        file: f,
-        previewUrl: URL.createObjectURL(f),
-        status: 'Pending'
-      });
-    }
-
-    setFileList(prev => {
-      const updated = [...prev, ...newFiles];
-      if (updated.length > 0 && !selectedFileId) {
-        setSelectedFileId(updated[updated.length - 1].id);
-      }
-      return updated;
-    });
-    e.target.value = '';
-  };
-
-  const handleDeleteFile = async (fileId: string) => {
-    const target = fileList.find(f => f.id === fileId);
-    if (!target) return;
-
-    if (!window.confirm(`Delete sheet record?`)) {
-      return;
-    }
-
-    try {
-      if (target.result && target.result.studentId && exam.id) {
-        await db.submissions.where('[examId+studentId]').equals([exam.id, target.result.studentId]).delete();
-        try {
-          await fetch('/api/admin/delete-submission', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ examId: exam.id, studentId: target.result.studentId })
-          });
-        } catch (e) {
-          console.warn("Cloud deletion warning:", e);
-        }
-      }
-
-      setFileList(prev => {
-        const updated = prev.filter(f => f.id !== fileId);
-        if (selectedFileId === fileId) {
-          const nextSelected = updated.length > 0 ? updated[updated.length - 1].id : null;
-          setSelectedFileId(nextSelected);
-          if (nextSelected) {
-            const nextItem = updated.find(item => item.id === nextSelected);
-            if (nextItem && nextItem.status === 'Scanned' && nextItem.result) {
-              setActiveResult(nextItem.result);
-              setDetectedStudentId(nextItem.result.studentId || null);
-            } else {
-              setActiveResult(null);
-              setDetectedStudentId(null);
-            }
-          } else {
-            setActiveResult(null);
-            setDetectedStudentId(null);
-          }
-        }
-        return updated;
-      });
-
-      refreshSubmissions();
-    } catch (err: any) {
-      alert(`Failed to delete record: ${err.message || err}`);
-    }
-  };
 
   const getSelectedFile = () => {
     return fileList.find(f => f.id === selectedFileId);
@@ -1188,7 +1098,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         
         {/* Top Section: Buttons Card */}
         <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }} className="mobile-grid-1col">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {/* Live Camera Button */}
             <button
               type="button"
@@ -1201,225 +1111,138 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }}
               disabled={isClassLimitReached}
               style={{
-                padding: '12px',
+                padding: '14px',
                 borderRadius: '12px',
                 background: isClassLimitReached ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                 color: '#ffffff',
                 border: 'none',
                 fontWeight: 'bold',
-                fontSize: '0.9rem',
+                fontSize: '1rem',
                 cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
                 boxShadow: isClassLimitReached ? 'none' : '0 4px 12px rgba(37,99,235,0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px'
-              }}
-            >
-              <Camera size={16} /> Live Camera Scanner
-            </button>
-
-            {/* Upload Files Button */}
-            <label
-              style={{
-                margin: 0,
-                padding: '10px 14px',
-                borderRadius: '12px',
-                background: isClassLimitReached ? '#f1f5f9' : '#f0fdf4',
-                border: isClassLimitReached ? '1.5px dashed #cbd5e1' : '1.5px dashed #16a34a',
-                color: isClassLimitReached ? '#94a3b8' : '#15803d',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: isClassLimitReached ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 gap: '8px',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 6px rgba(22,163,74,0.08)'
+                width: '100%'
               }}
             >
-              <Upload size={16} />
-              <span>{isClassLimitReached ? 'Limit Reached' : 'Choose OMR Files'}</span>
-              <input 
-                type="file" 
-                multiple 
-                accept="image/*" 
-                onChange={handleFileSelect} 
-                disabled={isClassLimitReached}
-                style={{ display: 'none' }} 
-              />
-            </label>
+              <Camera size={18} /> Live Camera Scanner
+            </button>
           </div>
         </div>
 
-        {/* Middle Section: Selected Image Workspace */}
-        {selectedFileId && getSelectedFile() ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="glass-card" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
-              {/* View Controls */}
-              <div style={{ position: 'absolute', left: '16px', top: '16px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.9)', padding: '6px 12px', borderRadius: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                <button type="button" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate Left" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RotateCcw size={15} /></button>
-                <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} title="Rotate Right" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RotateCw size={15} /></button>
-                <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.2, 2.5))} title="Zoom In" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><ZoomIn size={15} /></button>
-                <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.2, 0.5))} title="Zoom Out" style={{ border: 'none', background: 'none', cursor: 'pointer' }}><ZoomOut size={15} /></button>
-              </div>
+        {fileList.length > 0 && (
+          <>
+            {selectedFileId && getSelectedFile() && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="glass-card" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+                  {/* View Controls */}
+                  <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px', zIndex: 10 }}>
+                    <button type="button" className="btn-icon" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate CCW"><RotateCcw size={14} /></button>
+                    <button type="button" className="btn-icon" onClick={() => setRotation((r) => (r + 90) % 360)} title="Rotate CW"><RotateCw size={14} /></button>
+                    <button type="button" className="btn-icon" onClick={() => setZoom((z) => Math.max(z - 0.2, 0.5))} title="Zoom Out"><ZoomOut size={14} /></button>
+                    <button type="button" className="btn-icon" onClick={() => setZoom((z) => Math.min(z + 0.2, 2.5))} title="Zoom In"><ZoomIn size={14} /></button>
+                  </div>
 
-              <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: '#0f172a', padding: '16px' }}>
-                <div style={{ transform: `rotate(${rotation}deg) scale(${zoom})`, transition: 'transform 0.2s ease', transformOrigin: 'center' }}>
-                  <img 
-                    src={getSelectedFile()?.previewUrl} 
-                    alt="OMR Preview" 
-                    style={{ maxHeight: '320px', maxWidth: '100%', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }} 
-                  />
-                </div>
-              </div>
-            </div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 10px', minHeight: '240px', background: 'rgba(15,23,42,0.03)', overflow: 'hidden', borderBottom: '1px solid #e2e8f0' }}>
+                    <img 
+                      src={getSelectedFile()?.previewUrl} 
+                      alt="OMR Source" 
+                      style={{
+                        maxHeight: '320px',
+                        maxWidth: '100%',
+                        objectFit: 'contain',
+                        transform: `rotate(${rotation}deg) scale(${zoom})`,
+                        transition: 'transform 0.2s ease',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                      }} 
+                    />
+                  </div>
 
-            {/* Scan Diagnostics Card */}
-            <div className="glass-card scan-diag-card animate-fade-in" style={{ padding: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div style={{ textAlign: 'left' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>OMR Diagnostic</h4>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  {activeResult && (
-                    <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                      Score: {activeResult.score} pts
-                    </span>
-                  )}
-                </div>
-              </div>
+                  <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#ffffff' }}>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
+                    
+                    {/* Manual student selector for file mode */}
+                    {activeResult && !activeResult.studentId && (
+                      <div style={{ marginTop: '4px' }}>
+                        <select
+                          value={detectedStudentId || ''}
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            const studentId = val ? parseInt(val) : null;
+                            setDetectedStudentId(studentId);
+                            
+                            const matched = students.find(s => s.id === studentId);
+                            if (matched) {
+                              setActiveResult((prev: any) => prev ? {
+                                ...prev,
+                                studentId: matched.id!,
+                                studentName: matched.name,
+                                detectedStudentNum: matched.studentNum
+                              } : null);
+                              
+                              setFileList((prev: any[]) => prev.map(f => {
+                                if (f.id === selectedFileId) {
+                                  return {
+                                    ...f,
+                                    result: {
+                                      ...f.result,
+                                      studentId: matched.id!,
+                                      studentName: matched.name,
+                                      detectedStudentNum: matched.studentNum
+                                    }
+                                  };
+                                }
+                                return f;
+                              }));
+                            } else {
+                              setActiveResult((prev: any) => prev ? {
+                                ...prev,
+                                studentId: null,
+                                studentName: 'Unknown Candidate',
+                                detectedStudentNum: ''
+                              } : null);
+                            }
+                          }}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, background: '#fff', outline: 'none' }}
+                        >
+                          <option value="">-- Associate Student --</option>
+                          {students.filter(s => s.className === exam.className).map(s => (
+                            <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-              {activeResult && (
-                <div style={{ marginBottom: '14px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-                    Verify/Associate Student (Detected Roll: <code>{activeResult.detectedStudentNum || 'N/A'}</code>)
-                  </label>
-                  <select 
-                    value={detectedStudentId || ''} 
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setDetectedStudentId(val ? Number(val) : null);
-                      const sObj = students.find(s => s.id === Number(val));
-                      if (sObj) {
-                        setActiveResult((prev: any) => prev ? {
-                          ...prev,
-                          studentId: sObj.id!,
-                          studentName: sObj.name,
-                          detectedStudentNum: sObj.studentNum
-                        } : null);
-                      } else {
-                        setActiveResult((prev: any) => prev ? {
-                          ...prev,
-                          studentId: null,
-                          studentName: 'Unknown Candidate',
-                          detectedStudentNum: ''
-                        } : null);
-                      }
-                    }}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, background: '#fff', outline: 'none' }}
-                  >
-                    <option value="">-- Associate Student --</option>
-                    {students.filter(s => s.className === exam.className).map(s => (
-                      <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  className="btn-primary" 
-                  onClick={runOMRScan} 
-                  disabled={isScanning}
-                  style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
-                >
-                  {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
-                </button>
-
-                {activeResult && (
-                  <button 
-                    className="btn-success" 
-                    onClick={handleSaveResult}
-                    style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
-                  >
-                    💾 Save Result
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            <ImageIcon size={32} className="mb-2" style={{ opacity: 0.3 }} />
-            <h4 style={{ margin: 0, fontSize: '0.88rem' }}>No OMR Sheet Selected</h4>
-            <p style={{ fontSize: '0.78rem', marginTop: '2px' }}>Select a file from the queue below or click "Live Camera Scanner".</p>
-          </div>
-        )}
-
-        {/* Bottom Section: Scan Queue (rendered below the image workspace!) */}
-        <div className="glass-card" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>Scan Queue ({fileList.length})</h4>
-          </div>
-
-          {fileList.length === 0 ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-              Queue is empty. Scanned sheets are automatically saved and removed from queue.
-            </div>
-          ) : (
-            <table className="clean-table" style={{ fontSize: '0.8rem' }}>
-              <thead>
-                <tr>
-                  <th>File</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fileList.map((item) => (
-                  <tr 
-                    key={item.id} 
-                    className={selectedFileId === item.id ? 'active-row' : ''}
-                    onClick={() => {
-                      setSelectedFileId(item.id);
-                      if (item.result) {
-                        setActiveResult(item.result);
-                        setDetectedStudentId(item.result.studentId || null);
-                      } else {
-                        setActiveResult(null);
-                        setDetectedStudentId(null);
-                      }
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td style={{ fontWeight: 600 }}>{item.name}</td>
-                    <td>
-                      <span className={`status-badge ${item.status.toLowerCase()}`} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteFile(item.id);
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', padding: '4px' }}
-                        title="Delete record"
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button 
+                        className="btn-primary" 
+                        onClick={runOMRScan} 
+                        disabled={isScanning}
+                        style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
                       >
-                        <Trash2 size={14} />
+                        {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+
+                      {activeResult && (
+                        <button 
+                          className="btn-success" 
+                          onClick={handleSaveResult}
+                          disabled={!detectedStudentId}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
+                        >
+                          💾 Save Result
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
       </div>
 
@@ -1507,21 +1330,27 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   return (
                     <div 
                       key={`sub-full-${sub.id}`}
-                      style={{ padding: '14px 18px', borderRadius: '14px', border: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}
+                      style={{ padding: '16px', borderRadius: '16px', border: '1px solid #cbd5e1', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
                     >
+                      {/* Top Row: Avatar and Details */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#ebf8ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.05rem' }}>
                           {cleanName.charAt(0)}
                         </div>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)' }}>{cleanName}</h4>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Roll: {rollNo} | Booklet Set: {sub.bookletSet || 'A'}</span>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>{cleanName}</h4>
+                          <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Roll: {rollNo} | Booklet Set: {sub.bookletSet || 'A'}</span>
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ padding: '4px 10px', background: '#def7ec', color: '#03543f', borderRadius: '16px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle size={14} /> ∑ {sub.score.toFixed(1)} Pts
+                      {/* Bottom Row: Actions */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ padding: '6px 12px', background: '#e6f4ea', color: '#137333', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid #c2e7d9' }}>
+                          <CheckCircle size={15} />
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: '1.1' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>Σ {sub.score.toFixed(1)}</span>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.9 }}>Marks</span>
+                          </div>
                         </span>
 
                         <button
@@ -1535,7 +1364,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                             wrongCount: wrongCount,
                             bookletSet: sub.bookletSet
                           })}
-                          style={{ padding: '8px 14px', borderRadius: '10px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          style={{ padding: '8px 16px', borderRadius: '12px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flex: 1 }}
                         >
                           <Eye size={15} /> View Sheet
                         </button>
@@ -1543,7 +1372,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                         <button
                           type="button"
                           onClick={() => setEditingSubmission(sub)}
-                          style={{ padding: '8px 14px', borderRadius: '10px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}
+                          style={{ padding: '8px 16px', borderRadius: '12px', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
                         >
                           ✏️ Edit
                         </button>
@@ -1564,7 +1393,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#ffffff', marginBottom: '12px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📄 {viewingOmrModalUrl.name}'s Scanned OMR Sheet</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Score: {viewingOmrModalUrl.score.toFixed(1)} Pts</p>
+              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Score: {viewingOmrModalUrl.score.toFixed(1)} Marks</p>
             </div>
             <button 
               onClick={() => setViewingOmrModalUrl(null)}
@@ -1597,7 +1426,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '20px' }}>
                   <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
-                    Graded Score: <span style={{ color: '#059669', fontWeight: 800 }}>{viewingOmrModalUrl.score} Pts</span>
+                    Graded Score: <span style={{ color: '#059669', fontWeight: 800 }}>{viewingOmrModalUrl.score} Marks</span>
                   </div>
                   <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
                     <span style={{ color: '#059669', fontWeight: 600 }}>🟢 Correct: {viewingOmrModalUrl.correctCount || 0}</span>
@@ -2019,16 +1848,19 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
 
     try {
       if (exam.id) {
-        // If the student ID was changed, we delete the old submission record in IndexedDB,
-        // and if the old student ID was positive, we delete it from the cloud too.
+        // Run database saves and trigger cloud updates immediately in background
         if (targetStudentId !== sub.studentId) {
-          await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).delete();
-          if (sub.studentId > 0) {
-            const { deleteSubmissionFromCloud } = await import('../utils/cloudSync');
-            await deleteSubmissionFromCloud(sub.id!).catch(console.warn);
-          }
+          // Delete old local
+          await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).delete();
           
-          // Add the new submission record
+          // Trigger old cloud deletion in background
+          if (sub.studentId > 0) {
+            import('../utils/cloudSync').then(({ deleteSubmissionFromCloud }) => {
+              deleteSubmissionFromCloud(sub.id!).catch(console.warn);
+            });
+          }
+
+          // Add new local
           const newSubId = await db.submissions.add({
             examId: exam.id!,
             studentId: targetStudentId,
@@ -2040,31 +1872,41 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
             detectedRollNum: sub.detectedRollNum || rollOrSearchInput
           });
 
-          const savedSub = await db.submissions.get(newSubId);
-          if (savedSub && targetStudentId > 0) {
-            const { syncSubmissionToCloud } = await import('../utils/cloudSync');
-            await syncSubmissionToCloud(savedSub).catch(console.warn);
+          // Trigger new cloud sync in background
+          if (targetStudentId > 0) {
+            import('../utils/cloudSync').then(({ syncSubmissionToCloud }) => {
+              db.submissions.get(newSubId).then(savedSub => {
+                if (savedSub) syncSubmissionToCloud(savedSub).catch(console.warn);
+              });
+            });
           }
         } else {
-          // Update the existing submission
-          await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).modify({
+          // Modify local
+          await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).modify({
             score: liveScore,
             answers: editedAnswers,
             bookletSet: selectedBookletSet,
             detectedRollNum: sub.detectedRollNum || rollOrSearchInput
           });
 
-          const updatedSub = await db.submissions.where('[examId+studentId]').equals([exam.id, sub.studentId]).first();
-          if (updatedSub && sub.studentId > 0) {
-            const { syncSubmissionToCloud } = await import('../utils/cloudSync');
-            await syncSubmissionToCloud(updatedSub).catch(console.warn);
+          // Trigger cloud sync in background
+          if (sub.studentId > 0) {
+            import('../utils/cloudSync').then(({ syncSubmissionToCloud }) => {
+              db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).first().then(updatedSub => {
+                if (updatedSub) syncSubmissionToCloud(updatedSub).catch(console.warn);
+              });
+            });
           }
         }
 
-        const { pullCloudUpdatesToIndexedDB } = await import('../utils/cloudSync');
-        pullCloudUpdatesToIndexedDB();
+        // Trigger pull cloud updates in background
+        import('../utils/cloudSync').then(({ pullCloudUpdatesToIndexedDB }) => {
+          pullCloudUpdatesToIndexedDB();
+        });
+
+        // Trigger visual success feedback & close modal immediately!
+        confetti({ particleCount: 40, spread: 60 });
         refreshSubmissions();
-        alert('Changes saved successfully!');
         onClose();
       }
     } catch (err: any) {
@@ -2077,26 +1919,44 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
   const bookletSets = Array.from({ length: setsCount }, (_, i) => String.fromCharCode(65 + i));
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
       <div style={{
         background: '#ffffff',
-        borderRadius: '16px',
         width: '100%',
-        maxWidth: '850px',
-        maxHeight: '90vh',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
         overflow: 'hidden',
         color: '#0f172a'
       }}>
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>✏️ Edit Scanned Sheet</h3>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Exam: {exam.title}</p>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>✏️ Edit Scanned Sheet</h3>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>Exam: {exam.title}</p>
           </div>
-          <button onClick={onClose} style={{ background: '#e2e8f0', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+          <button 
+            onClick={onClose} 
+            style={{ 
+              background: '#f1f5f9', 
+              color: '#334155',
+              border: 'none', 
+              borderRadius: '50%', 
+              width: '36px', 
+              height: '36px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              cursor: 'pointer', 
+              fontWeight: 'bold',
+              fontSize: '1rem',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+          >
+            ✕
+          </button>
         </div>
 
         {/* Modal Content */}
@@ -2208,7 +2068,7 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Calculated Score</span>
               <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#2563eb' }}>
-                {liveScore.toFixed(1)} Pts
+                {liveScore.toFixed(1)} Marks
               </span>
               <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', marginTop: '4px', fontWeight: 700 }}>
                 <span style={{ color: '#10b981' }}>🟢 R: {correctCount}</span>

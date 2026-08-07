@@ -16,6 +16,7 @@ import { db, type Exam, type Student, type ExamSubmission } from '../db';
 import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots, getScaledY } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+import { FullScreenOmrViewer } from './FullScreenOmrViewer';
 
 // Helper function to draw green/red overlays on scanned OMR image bubbles
 function drawOverlayOnWarpedCanvas(
@@ -1382,133 +1383,131 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 })}
               </div>
             )}
-
           </div>
-        </div>
-      )}
-
-      {/* FULL IMAGE VIEWER OVERLAY */}
-      {viewingOmrModalUrl && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#ffffff', marginBottom: '12px' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📄 {viewingOmrModalUrl.name}'s Scanned OMR Sheet</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Score: {viewingOmrModalUrl.score.toFixed(1)} Marks</p>
-            </div>
-            <button 
-              onClick={() => setViewingOmrModalUrl(null)}
-              style={{ background: '#334155', color: '#ffffff', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ✕
-            </button>
-          </div>
-
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '10px' }}>
-            {viewingOmrModalUrl.url ? (
-              <img 
-                src={viewingOmrModalUrl.url} 
-                alt="Scanned OMR Sheet" 
-                style={{ maxHeight: '85vh', maxWidth: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
+          {/* FULL IMAGE VIEWER OVERLAY */}
+          {viewingOmrModalUrl && (
+            viewingOmrModalUrl.url ? (
+              <FullScreenOmrViewer
+                imageUrl={viewingOmrModalUrl.url}
+                title={viewingOmrModalUrl.name}
+                subtitle={`Score: ${viewingOmrModalUrl.score.toFixed(1)} Marks`}
+                onClose={() => setViewingOmrModalUrl(null)}
+                scoreInfo={{
+                  score: viewingOmrModalUrl.score,
+                  correctCount: viewingOmrModalUrl.correctCount,
+                  wrongCount: viewingOmrModalUrl.wrongCount,
+                  unansweredCount: exam.numQuestions - (viewingOmrModalUrl.correctCount || 0) - (viewingOmrModalUrl.wrongCount || 0)
+                }}
               />
             ) : (
-              // Graded Bubble Response Map
-              <div style={{
-                background: '#ffffff',
-                borderRadius: '16px',
-                padding: '24px',
-                width: '100%',
-                maxWidth: '800px',
-                maxHeight: '75vh',
-                overflowY: 'auto',
-                color: '#0f172a',
-                boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-                boxSizing: 'border-box'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '20px' }}>
-                  <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
-                    Graded Score: <span style={{ color: '#059669', fontWeight: 800 }}>{viewingOmrModalUrl.score} Marks</span>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#ffffff', marginBottom: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📄 {viewingOmrModalUrl.name}'s Scanned OMR Sheet</h3>
+                    <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Score: {viewingOmrModalUrl.score.toFixed(1)} Marks</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
-                    <span style={{ color: '#059669', fontWeight: 600 }}>🟢 Correct: {viewingOmrModalUrl.correctCount || 0}</span>
-                    <span style={{ color: '#dc2626', fontWeight: 600 }}>🔴 Incorrect: {viewingOmrModalUrl.wrongCount || 0}</span>
-                    <span style={{ color: '#64748b', fontWeight: 600 }}>⚫ Unanswered: {exam.numQuestions - (viewingOmrModalUrl.correctCount || 0) - (viewingOmrModalUrl.wrongCount || 0)}</span>
-                  </div>
+                  <button 
+                    onClick={() => setViewingOmrModalUrl(null)}
+                    style={{ background: '#334155', color: '#ffffff', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                {/* Draw bubble grid in multiple columns just like printed OMR */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                  gap: '20px 14px'
-                }}>
-                  {Array.from({ length: exam.numQuestions }, (_, i) => {
-                    const qNum = i + 1;
-                    const studentAns = viewingOmrModalUrl.answers?.[qNum] || '';
-                    const sheetSet = viewingOmrModalUrl.bookletSet || 'A';
-                    const correctKey = exam.answerKeys?.[sheetSet] || exam.answerKey || {};
-                    const correctAns = correctKey[qNum] || '';
-                    
-                    // Determine option list
-                    const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
-                    const is5Option = sec && sec.questionType === '5 option';
-                    const options = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
-
-                    return (
-                      <div key={`virtual-q-${qNum}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '24px', color: '#475569' }}>
-                          {String(qNum).padStart(2, '0')}.
-                        </span>
-                        
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {options.map((opt) => {
-                            const isStudentPick = studentAns === opt;
-                            const isCorrect = correctAns === opt;
-                            
-                            let bubbleStyle: React.CSSProperties = {
-                              width: '20px',
-                              height: '20px',
-                              borderRadius: '50%',
-                              border: '1.5px solid #cbd5e1',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              color: '#64748b',
-                              background: 'transparent'
-                            };
-
-                            if (isStudentPick) {
-                              if (isCorrect) {
-                                bubbleStyle.background = '#10b981'; // Green for correct bubbling
-                                bubbleStyle.borderColor = '#10b981';
-                                bubbleStyle.color = '#ffffff';
-                              } else {
-                                bubbleStyle.background = '#ef4444'; // Red for wrong bubbling
-                                bubbleStyle.borderColor = '#ef4444';
-                                bubbleStyle.color = '#ffffff';
-                              }
-                            } else if (isCorrect) {
-                              // Highlight correct option if student got it wrong or didn't answer
-                              bubbleStyle.borderColor = '#10b981';
-                              bubbleStyle.color = '#10b981';
-                              bubbleStyle.boxShadow = '0 0 0 1px #10b981';
-                            }
-
-                            return (
-                              <div key={opt} style={bubbleStyle}>
-                                {opt}
-                              </div>
-                            );
-                          })}
-                        </div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '10px' }}>
+                  {/* Graded Bubble Response Map */}
+                  <div style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    padding: '24px',
+                    width: '100%',
+                    maxWidth: '800px',
+                    maxHeight: '75vh',
+                    overflowY: 'auto',
+                    color: '#0f172a',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                    boxSizing: 'border-box'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '20px' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
+                        Graded Score: <span style={{ color: '#059669', fontWeight: 800 }}>{viewingOmrModalUrl.score} Marks</span>
                       </div>
-                    );
-                  })}
+                      <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
+                        <span style={{ color: '#059669', fontWeight: 600 }}>🟢 Correct: {viewingOmrModalUrl.correctCount || 0}</span>
+                        <span style={{ color: '#dc2626', fontWeight: 600 }}>🔴 Incorrect: {viewingOmrModalUrl.wrongCount || 0}</span>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>⚫ Unanswered: {exam.numQuestions - (viewingOmrModalUrl.correctCount || 0) - (viewingOmrModalUrl.wrongCount || 0)}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+                      {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((qNum) => {
+                        const studentAns = viewingOmrModalUrl.answers?.[qNum] || '';
+                        const sheetSet = viewingOmrModalUrl.bookletSet || 'A';
+                        const correctKey = exam.answerKeys?.[sheetSet] || exam.answerKey || {};
+                        const correctAns = correctKey[qNum] || '';
+                        
+                        // Determine option list
+                        const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+                        const is5Option = sec && sec.questionType === '5 option';
+                        const options = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+
+                        return (
+                          <div key={`virtual-q-${qNum}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '24px', color: '#475569' }}>
+                              {String(qNum).padStart(2, '0')}.
+                            </span>
+                            
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {options.map((opt) => {
+                                const isStudentPick = studentAns === opt;
+                                const isCorrect = correctAns === opt;
+                                
+                                let bubbleStyle: React.CSSProperties = {
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '50%',
+                                  border: '1.5px solid #cbd5e1',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  color: '#64748b',
+                                  background: 'transparent'
+                                };
+
+                                if (isStudentPick) {
+                                  if (isCorrect) {
+                                    bubbleStyle.background = '#10b981';
+                                    bubbleStyle.borderColor = '#10b981';
+                                    bubbleStyle.color = '#ffffff';
+                                  } else {
+                                    bubbleStyle.background = '#ef4444';
+                                    bubbleStyle.borderColor = '#ef4444';
+                                    bubbleStyle.color = '#ffffff';
+                                  }
+                                } else if (isCorrect) {
+                                  bubbleStyle.borderColor = '#10b981';
+                                  bubbleStyle.color = '#10b981';
+                                  bubbleStyle.boxShadow = '0 0 0 1px #10b981';
+                                }
+
+                                return (
+                                  <div key={opt} style={bubbleStyle}>
+                                    {opt}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            )
+          )}
         </div>
       )}
 

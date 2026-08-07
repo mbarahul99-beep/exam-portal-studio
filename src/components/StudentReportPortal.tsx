@@ -6,6 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
 import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+import { FullScreenOmrViewer } from './FullScreenOmrViewer';
 
 interface StudentReportPortalProps {
   studentId: number;
@@ -1831,65 +1832,18 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
       {/* OMR Sheet Viewer Modal Overlay */}
       {showOmrModal && activeAnalysisSub && activeAnalysisSub.omrImageUrl && (
-        <div 
-          className="no-print"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 99999,
-            padding: '20px',
-            boxSizing: 'border-box'
+        <FullScreenOmrViewer
+          imageUrl={activeAnalysisSub.omrImageUrl}
+          title={`Scanned OMR Sheet - ${student?.name || 'Student'}`}
+          subtitle={`Roll Number: ${student?.studentNum || ''}`}
+          onClose={() => setShowOmrModal(false)}
+          scoreInfo={{
+            score: activeAnalysisSub.score || 0,
+            correctCount: analysisDetails ? (analysisDetails.diffStats.Easy.correct + analysisDetails.diffStats.Moderate.correct + analysisDetails.diffStats.Difficult.correct) : undefined,
+            wrongCount: analysisDetails ? (analysisDetails.diffStats.Easy.wrong + analysisDetails.diffStats.Moderate.wrong + analysisDetails.diffStats.Difficult.wrong) : undefined,
+            unansweredCount: analysisDetails ? (analysisDetails.diffStats.Easy.skipped + analysisDetails.diffStats.Moderate.skipped + analysisDetails.diffStats.Difficult.skipped) : undefined
           }}
-          onClick={() => setShowOmrModal(false)}
-        >
-          <div 
-            style={{
-              background: '#ffffff',
-              borderRadius: '16px',
-              maxWidth: '680px',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              overflow: 'hidden',
-              animation: 'omrModalFadeIn 0.2s ease-out'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', color: '#0f172a', fontSize: '0.95rem' }}>
-                <Camera size={18} color="#0d9488" />
-                <span>Scanned OMR Sheet</span>
-              </div>
-              <button 
-                onClick={() => setShowOmrModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '50%' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            
-            <div style={{ padding: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f1f5f9', maxHeight: '70vh', overflowY: 'auto' }}>
-              <img 
-                src={activeAnalysisSub.omrImageUrl} 
-                alt="Scanned OMR Sheet" 
-                style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }} 
-              />
-            </div>
-            
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', textAlign: 'center', background: '#f8fafc', fontSize: '0.78rem', color: '#64748b' }}>
-              OMR evaluation record matching candidate: <strong>{student.name}</strong> ({student.studentNum})
-            </div>
-          </div>
-        </div>
+        />
       )}
     </div>
   );

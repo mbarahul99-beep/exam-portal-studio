@@ -158,9 +158,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   const [examSetsCount, setExamSetsCount] = useState(1);
   const [numSubjects, setNumSubjects] = useState(3);
   const [subjectsList, setSubjectsList] = useState<ExamSubject[]>([
-    { name: 'Subject 1', numSections: 1 },
-    { name: 'Subject 2', numSections: 1 },
-    { name: 'Subject 3', numSections: 1 }
+    { name: 'Physics', numSections: 1 },
+    { name: 'Chemistry', numSections: 1 },
+    { name: 'Biology', numSections: 1 }
   ]);
 
   // Step 3: Section Details States
@@ -413,16 +413,26 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
         if (existing) {
           list.push(existing);
         } else {
+          let defaultQCount = 45;
+          const lowerName = sub.name.toLowerCase().trim();
+          if (lowerName === 'biology') {
+            defaultQCount = 90;
+          } else if (lowerName === 'physics' || lowerName === 'chemistry') {
+            defaultQCount = 45;
+          } else {
+            defaultQCount = 45;
+          }
+
           list.push({
             subjectName: sub.name,
             sectionName: `Section ${s}`,
-            qCount: 5, // default questions per section
+            qCount: defaultQCount,
             questionType: '4 option',
             correctMarks: 4,
             incorrectMarks: -1,
             allowPartialMarks: false,
             allowOptionalAttempts: false,
-            maxAttempts: 5
+            maxAttempts: defaultQCount
           });
         }
       }

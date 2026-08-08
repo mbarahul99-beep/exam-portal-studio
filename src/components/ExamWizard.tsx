@@ -154,7 +154,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Step 2: Subject Details States
-  const [rollNoDigits, setRollNoDigits] = useState(6);
+  const [rollNoDigits, setRollNoDigits] = useState(2);
   const [examSetsCount, setExamSetsCount] = useState(1);
   const [numSubjects, setNumSubjects] = useState(3);
   const [subjectsList, setSubjectsList] = useState<ExamSubject[]>([
@@ -222,7 +222,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           setOnlinePasscode(exam.passcode || '1234');
         }
 
-        setRollNoDigits(exam.rollNoDigits || (exam.numQuestions && exam.numQuestions > 100 ? 10 : 6));
+        setRollNoDigits(exam.rollNoDigits || (exam.numQuestions && exam.numQuestions > 100 ? 10 : 2));
         setExamSetsCount(exam.examSetsCount || 1);
 
         if (exam.subjects) {
@@ -1659,17 +1659,7 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                             )}
                           </div>
 
-                          <div className="wiz-checkbox-row">
-                            <label className="wiz-checkbox-label">
-                              <input 
-                                type="checkbox" 
-                                checked={sec.allowPartialMarks} 
-                                onChange={(e) => updateSection({ allowPartialMarks: e.target.checked })} 
-                              />
-                              <span>Allow partial marks</span>
-                              <HelpCircle size={14} style={{ opacity: 0.5 }} />
-                            </label>
-
+                           <div className="wiz-checkbox-row">
                             <label className="wiz-checkbox-label">
                               <input 
                                 type="checkbox" 

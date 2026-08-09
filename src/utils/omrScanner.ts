@@ -675,8 +675,8 @@ export async function scanOMRSheet(
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
-    const fillDiffThreshold = 35; // Bubble must be at least 35 gray levels darker than local average
-    const maxAbsoluteFillVal = whitePaperLevel - 55; // Bubble must be at least 55 gray levels darker than page white paper
+    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
+    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
@@ -821,7 +821,8 @@ export async function scanOMRSheet(
  * Highly robust against bubble outlines and characters printed in dark grayscale ink.
  */
 function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: number): number {
-  const pixels: number[] = [];
+  let sum = 0;
+  let count = 0;
   const rSq = r * r;
   const startX = Math.max(0, Math.floor(cx - r));
   const endX = Math.min(grayMatrix.cols - 1, Math.ceil(cx + r));
@@ -834,25 +835,13 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
     for (let x = startX; x <= endX; x++) {
       const dx = x - cx;
       if (dx * dx + dySq <= rSq) {
-        pixels.push(grayMatrix.ucharAt(y, x));
+        const pixelVal = grayMatrix.ucharAt(y, x);
+        sum += pixelVal;
+        count++;
       }
     }
   }
-  
-  if (pixels.length === 0) return 255;
-  
-  // Sort pixels by brightness ascending
-  pixels.sort((a, b) => a - b);
-  
-  // Average only the brightest 50% of the pixels to remain immune to partial dark outlines/text overlapping
-  const startIndex = Math.floor(pixels.length * 0.5);
-  let sum = 0;
-  let count = 0;
-  for (let i = startIndex; i < pixels.length; i++) {
-    sum += pixels[i];
-    count++;
-  }
-  return sum / count;
+  return count > 0 ? sum / count : 255;
 }
 
 let smallCanvas: HTMLCanvasElement | null = null;

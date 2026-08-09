@@ -560,12 +560,12 @@ export async function scanOMRSheet(
     cv.imshow(debugWarpedCanvas, warped);
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
-    // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
-    let bestDy = -3; // Default systematic vertical offset fallback (3px upward shift)
+    // Scans range of vertical shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
+    let bestDy = 0; // Default systematic vertical offset fallback
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -25; dy <= 25; dy += 1) {
+    for (let dy = -8; dy <= 8; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -599,10 +599,10 @@ export async function scanOMRSheet(
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
     // 5.3. Auto-Calibrate Horizontal Scan Offset
-    // Scans range of horizontal shifts from -15px to +15px to find the alignment that maximizes bubble darkness contrast
+    // Scans range of horizontal shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
-    for (let dx = -15; dx <= 15; dx += 1) {
+    for (let dx = -8; dx <= 8; dx += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {

@@ -655,7 +655,7 @@ export async function scanOMRSheet(
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
         const x = colConf.xOptions[o] + bestDx;
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
         if (val > maxVal) maxVal = val;
       }
       if (maxVal > 0) samples.push(maxVal);
@@ -666,7 +666,7 @@ export async function scanOMRSheet(
       const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
         if (val > 0) samples.push(val);
       }
     }
@@ -674,9 +674,6 @@ export async function scanOMRSheet(
     samples.sort((a, b) => a - b);
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
-
-    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
-    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
@@ -688,24 +685,23 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        // Inner radius 3.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+        // Inner radius 5.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
         intensities.push(avgGray);
       }
 
-      // Calculate column average intensity
-      let colSum = 0;
-      for (let r = 0; r < 10; r++) {
-        colSum += intensities[r];
-      }
-      const colAvg = colSum / 10;
+      // Calculate column statistics
+      const colMax = Math.max(...intensities);
+      const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
 
-      // Find all rows in this column that are significantly darker than the column average
+      // Find all rows in this column that are significantly darker than the column average and column max
       const filledRows: number[] = [];
-      const colDiffThreshold = Math.max(fillDiffThreshold + 5, colAvg * 0.18); // Adaptive threshold for roll numbers
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        if (colAvg - val > colDiffThreshold && val < maxAbsoluteFillVal) {
+        const isLocalContrastValid = colMax - val > 42;
+        const isAvgContrastValid = colAvg - val > 26;
+        const isAbsoluteValid = val < whitePaperLevel - 48;
+        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledRows.push(r);
         }
       }
@@ -752,24 +748,24 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        // Inner radius 2.5px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
+        // Inner radius 4.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
         intensities.push(avgGray);
       }
 
-      // Calculate row average intensity
-      let rowSum = 0;
-      for (let o = 0; o < numOptions; o++) {
-        rowSum += intensities[o];
-      }
+      // Calculate row statistics
+      const rowMax = Math.max(...intensities);
+      const rowSum = intensities.reduce((sum, v) => sum + v, 0);
       const rowAvg = rowSum / numOptions;
 
-      // Detect all filled options for this question using row-average contrast
+      // Detect all filled options for this question using local, average, and absolute thresholds
       const filledOptions: number[] = [];
-      const rowDiffThreshold = Math.max(fillDiffThreshold, rowAvg * 0.15); // Adaptive threshold for questions
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteFillVal) {
+        const isLocalContrastValid = rowMax - val > 42;
+        const isAvgContrastValid = rowAvg - val > 26;
+        const isAbsoluteValid = val < whitePaperLevel - 48;
+        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledOptions.push(o);
         }
       }

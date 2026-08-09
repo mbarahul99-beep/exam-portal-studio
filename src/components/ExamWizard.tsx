@@ -1029,10 +1029,6 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
     const sectionConfig = sectionsList.find(s => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
     if (!sectionConfig) return;
 
-    const maxCount = sectionConfig.qCount;
-    const currentSectionQuestions = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
-    const existingCount = currentSectionQuestions.filter(q => q.questionText.trim()).length;
-
     // Filter only selected parsed questions
     const toImport = parsedQuestions.filter((_, idx) => selectedParsedIndexes[idx]);
     if (toImport.length === 0) {
@@ -1040,15 +1036,41 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
       return;
     }
 
-    if (existingCount + toImport.length > maxCount) {
-      if (!window.confirm(`⚠️ Warning: You are trying to import ${toImport.length} questions, but this section has a limit of ${maxCount} total questions. (Currently filled: ${existingCount}/${maxCount}). Do you want to proceed and clip the imports to fit the limit?`)) {
-        return;
+    const currentSectionQuestions = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+    const existingCount = currentSectionQuestions.filter(q => q.questionText.trim()).length;
+
+    // Calculate new required qCount if we need more slots
+    const requiredCount = Math.max(sectionConfig.qCount, existingCount + toImport.length);
+    const needsGrow = requiredCount > sectionConfig.qCount;
+
+    // Update sectionsList state so it persists
+    const updatedSecs = sectionsList.map(s => {
+      if (s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName) {
+        return {
+          ...s,
+          qCount: requiredCount,
+          maxAttempts: Math.max(s.maxAttempts || 0, requiredCount)
+        };
       }
+      return s;
+    });
+
+    if (needsGrow) {
+      setSectionsList(updatedSecs);
     }
+
+    // Locally compute synced sections with ranges to immediately sync questionsState without waiting for next render tick
+    let runningStart = 1;
+    const syncedSectionsWithRanges = updatedSecs.map(sec => {
+      const start = runningStart;
+      const end = runningStart + sec.qCount - 1;
+      runningStart = end + 1;
+      return { ...sec, qStart: start, qEnd: end };
+    });
 
     setQuestionsState(prev => {
       const synced: any[] = [];
-      sectionsWithRanges.forEach(sec => {
+      syncedSectionsWithRanges.forEach(sec => {
         const existing = prev.filter(q => q.subjectName === sec.subjectName && q.sectionName === sec.sectionName);
         for (let i = 0; i < sec.qCount; i++) {
           const qNum = sec.qStart + i;

@@ -11,7 +11,7 @@ export interface ScanResult {
 
 // Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
 export function getScaledY(rawY: number, dy: number): number {
-  const yScale = 0.991; // 0.9% vertical compression correction
+  const yScale = 1.0; // 1.0 scale factor (perspective warp normalizes scaling margins)
   return 48 + (rawY - 48) * yScale + dy;
 }
 

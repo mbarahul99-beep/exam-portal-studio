@@ -17,6 +17,20 @@ interface StudentReportPortalProps {
   publicMode?: boolean;
 }
 
+function getPieSectorPath(startPercent: number, endPercent: number): string {
+  const startAngle = 2 * Math.PI * startPercent - Math.PI / 2;
+  const endAngle = 2 * Math.PI * endPercent - Math.PI / 2;
+  
+  const x1 = 50 + 40 * Math.cos(startAngle);
+  const y1 = 50 + 40 * Math.sin(startAngle);
+  const x2 = 50 + 40 * Math.cos(endAngle);
+  const y2 = 50 + 40 * Math.sin(endAngle);
+  
+  const largeArcFlag = endPercent - startPercent > 0.5 ? 1 : 0;
+  
+  return `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+}
+
 export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({ 
   studentId, 
   onLogout,
@@ -27,6 +41,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 }) => {
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [selectedChartDiff, setSelectedChartDiff] = useState<'Easy' | 'Moderate' | 'Difficult' | null>(null);
+  const [selectedPiePortion, setSelectedPiePortion] = useState<'Right' | 'Wrong' | 'Unattempted' | null>(null);
   const [hasInitializedPreSelected, setHasInitializedPreSelected] = useState(false);
   const [showOmrModal, setShowOmrModal] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -344,6 +359,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       Difficult: { correct: 0, wrong: 0, skipped: 0, total: 0, questions: [] }
     };
 
+    const correctQuestions: number[] = [];
+    const incorrectQuestions: number[] = [];
+    const unansweredQuestions: number[] = [];
+
     let totalNegativeMarks = 0;
     const examQuestions = allQuestions.filter(q => q.examId === activeAnalysisSub.exam.id);
 
@@ -367,10 +386,13 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       
       if (isLeft) {
         secUnanswereds[secName] = (secUnanswereds[secName] || 0) + 1;
+        unansweredQuestions.push(q);
       } else if (isCorrect) {
         secCorrects[secName] = (secCorrects[secName] || 0) + 1;
+        correctQuestions.push(q);
       } else {
         secIncorrects[secName] = (secIncorrects[secName] || 0) + 1;
+        incorrectQuestions.push(q);
       }
 
       // Subject stats
@@ -467,7 +489,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       subjectStats,
       diffStats,
       totalNegativeMarks,
-      easyNegativeMarks
+      easyNegativeMarks,
+      correctQuestions,
+      incorrectQuestions,
+      unansweredQuestions
     };
   }
 
@@ -868,7 +893,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
                 
-                {/* 1. Stacked Bar Chart Card */}
+                                {/* 1. Stacked Bar Chart Card */}
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
                   <h4 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Questions Distribution by Difficulty</h4>
                   
@@ -900,9 +925,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                               transition: 'all 0.2s ease'
                             }}
                           >
-                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
-                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
-                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                            {stats.correct > 0 && (
+                              <div style={{ height: `${correctPct}%`, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Correct: ${stats.correct}`}>
+                                {correctPct >= 12 ? stats.correct : ''}
+                              </div>
+                            )}
+                            {stats.wrong > 0 && (
+                              <div style={{ height: `${wrongPct}%`, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Incorrect: ${stats.wrong}`}>
+                                {wrongPct >= 12 ? stats.wrong : ''}
+                              </div>
+                            )}
+                            {stats.skipped > 0 && (
+                              <div style={{ height: `${skippedPct}%`, background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1e293b', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Skipped: ${stats.skipped}`}>
+                                {skippedPct >= 12 ? stats.skipped : ''}
+                              </div>
+                            )}
                           </div>
                           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Easy</span>
                         </div>
@@ -934,9 +971,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                               transition: 'all 0.2s ease'
                             }}
                           >
-                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
-                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
-                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                            {stats.correct > 0 && (
+                              <div style={{ height: `${correctPct}%`, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Correct: ${stats.correct}`}>
+                                {correctPct >= 12 ? stats.correct : ''}
+                              </div>
+                            )}
+                            {stats.wrong > 0 && (
+                              <div style={{ height: `${wrongPct}%`, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Incorrect: ${stats.wrong}`}>
+                                {wrongPct >= 12 ? stats.wrong : ''}
+                              </div>
+                            )}
+                            {stats.skipped > 0 && (
+                              <div style={{ height: `${skippedPct}%`, background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1e293b', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Skipped: ${stats.skipped}`}>
+                                {skippedPct >= 12 ? stats.skipped : ''}
+                              </div>
+                            )}
                           </div>
                           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Moderate</span>
                         </div>
@@ -968,9 +1017,21 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                               transition: 'all 0.2s ease'
                             }}
                           >
-                            {stats.correct > 0 && <div style={{ height: `${correctPct}%`, background: '#2563eb' }} title={`Correct: ${stats.correct}`} />}
-                            {stats.wrong > 0 && <div style={{ height: `${wrongPct}%`, background: '#ef4444' }} title={`Incorrect: ${stats.wrong}`} />}
-                            {stats.skipped > 0 && <div style={{ height: `${skippedPct}%`, background: '#cbd5e1' }} title={`Skipped: ${stats.skipped}`} />}
+                            {stats.correct > 0 && (
+                              <div style={{ height: `${correctPct}%`, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Correct: ${stats.correct}`}>
+                                {correctPct >= 12 ? stats.correct : ''}
+                              </div>
+                            )}
+                            {stats.wrong > 0 && (
+                              <div style={{ height: `${wrongPct}%`, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Incorrect: ${stats.wrong}`}>
+                                {wrongPct >= 12 ? stats.wrong : ''}
+                              </div>
+                            )}
+                            {stats.skipped > 0 && (
+                              <div style={{ height: `${skippedPct}%`, background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1e293b', fontSize: '0.65rem', fontWeight: 'bold' }} title={`Skipped: ${stats.skipped}`}>
+                                {skippedPct >= 12 ? stats.skipped : ''}
+                              </div>
+                            )}
                           </div>
                           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#2563eb' : '#475569' }}>Difficult</span>
                         </div>
@@ -1050,6 +1111,231 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* 2. Standalone Interactive Pie Chart Card */}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                  <h4 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overall Performance Pie Chart</h4>
+
+                  {(() => {
+                    const examQuestions = allQuestions.filter(q => q.examId === activeAnalysisSub.exam.id);
+                    const totalCorrect = analysisDetails.correctQuestions.length;
+                    const totalWrong = analysisDetails.incorrectQuestions.length;
+                    const totalSkipped = analysisDetails.unansweredQuestions.length;
+                    const total = totalCorrect + totalWrong + totalSkipped;
+
+                    const slices = [
+                      { type: 'Right' as const, count: totalCorrect, color: '#22c55e', label: 'Right' },
+                      { type: 'Wrong' as const, count: totalWrong, color: '#ef4444', label: 'Wrong' },
+                      { type: 'Unattempted' as const, count: totalSkipped, color: '#78350f', label: 'Unattempted' }
+                    ];
+
+                    let currentPercent = 0;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                        {/* Interactive SVG Pie */}
+                        <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+                          <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%', overflow: 'visible' }}>
+                            {total === 0 ? (
+                              <circle cx="50" cy="50" r="40" fill="#cbd5e1" />
+                            ) : (
+                              slices.map((slice) => {
+                                if (slice.count === 0) return null;
+                                if (slice.count === total) {
+                                  return (
+                                    <circle
+                                      key={slice.type}
+                                      cx="50"
+                                      cy="50"
+                                      r="40"
+                                      fill={slice.color}
+                                      onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
+                                      style={{
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        stroke: selectedPiePortion === slice.type ? '#000' : 'none',
+                                        strokeWidth: 2
+                                      }}
+                                    />
+                                  );
+                                }
+                                const start = currentPercent;
+                                currentPercent += slice.count / total;
+                                const end = currentPercent;
+                                const pathData = getPieSectorPath(start, end);
+                                
+                                return (
+                                  <path
+                                    key={slice.type}
+                                    d={pathData}
+                                    fill={slice.color}
+                                    onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
+                                    style={{
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s ease',
+                                      transform: selectedPiePortion === slice.type ? 'scale(1.05)' : 'scale(1)',
+                                      transformOrigin: '50px 50px',
+                                      stroke: selectedPiePortion === slice.type ? '#000' : '#fff',
+                                      strokeWidth: selectedPiePortion === slice.type ? 1.5 : 0.5
+                                    }}
+                                  />
+                                );
+                              })
+                            )}
+                          </svg>
+                          
+                          {/* Inner donut hole label */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '60px',
+                            height: '60px',
+                            background: '#fff',
+                            borderRadius: '50%',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            pointerEvents: 'none'
+                          }}>
+                            <span style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 700 }}>TOTAL</span>
+                            <span style={{ fontSize: '0.95rem', color: '#0f172a', fontWeight: 900 }}>{total}</span>
+                          </div>
+                        </div>
+
+                        {/* Interactive Selection Legend & Counts */}
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '20px', fontSize: '0.75rem', fontWeight: 700 }}>
+                          {slices.map(slice => (
+                            <span
+                              key={slice.type}
+                              onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                background: selectedPiePortion === slice.type ? '#f1f5f9' : 'transparent',
+                                border: selectedPiePortion === slice.type ? '1px solid #e2e8f0' : '1px solid transparent',
+                                transition: 'all 0.2s ease',
+                                color: slice.type === 'Right' ? '#166534' : slice.type === 'Wrong' ? '#991b1b' : '#7c2d12'
+                              }}
+                            >
+                              <span style={{ width: '10px', height: '10px', background: slice.color, borderRadius: '50%' }} />
+                              {slice.label}: {slice.count}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Difficulty Level Breakdown Grid */}
+                        <div style={{ width: '100%', borderTop: '1px solid #e2e8f0', marginTop: '16px', paddingTop: '16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(3, 50px)', gap: '8px', textAlign: 'center', fontSize: '0.75rem' }}>
+                            <div style={{ fontWeight: 800, textAlign: 'left', color: '#475569' }}>Difficulty</div>
+                            <div style={{ fontWeight: 800, color: '#22c55e' }}>Right</div>
+                            <div style={{ fontWeight: 800, color: '#ef4444' }}>Wrong</div>
+                            <div style={{ fontWeight: 800, color: '#78350f' }}>Left</div>
+
+                            <div style={{ textAlign: 'left', fontWeight: 600 }}>Easy</div>
+                            <div style={{ color: '#166534', fontWeight: 700 }}>{analysisDetails.diffStats.Easy.correct}</div>
+                            <div style={{ color: '#991b1b', fontWeight: 700 }}>{analysisDetails.diffStats.Easy.wrong}</div>
+                            <div style={{ color: '#7c2d12', fontWeight: 700 }}>{analysisDetails.diffStats.Easy.skipped}</div>
+
+                            <div style={{ textAlign: 'left', fontWeight: 600 }}>Moderate</div>
+                            <div style={{ color: '#166534', fontWeight: 700 }}>{analysisDetails.diffStats.Moderate.correct}</div>
+                            <div style={{ color: '#991b1b', fontWeight: 700 }}>{analysisDetails.diffStats.Moderate.wrong}</div>
+                            <div style={{ color: '#7c2d12', fontWeight: 700 }}>{analysisDetails.diffStats.Moderate.skipped}</div>
+
+                            <div style={{ textAlign: 'left', fontWeight: 600 }}>Difficult</div>
+                            <div style={{ color: '#166534', fontWeight: 700 }}>{analysisDetails.diffStats.Difficult.correct}</div>
+                            <div style={{ color: '#991b1b', fontWeight: 700 }}>{analysisDetails.diffStats.Difficult.wrong}</div>
+                            <div style={{ color: '#7c2d12', fontWeight: 700 }}>{analysisDetails.diffStats.Difficult.skipped}</div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Click Drilldown - List of Questions of Selected Portion */}
+                        {selectedPiePortion && (
+                          <div style={{
+                            marginTop: '16px',
+                            padding: '12px 14px',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            position: 'relative',
+                            alignSelf: 'stretch',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                          }}>
+                            <button 
+                              onClick={() => setSelectedPiePortion(null)}
+                              style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                background: 'none',
+                                border: 'none',
+                                color: '#64748b',
+                                cursor: 'pointer',
+                                fontSize: '1.1rem',
+                                fontWeight: 'bold',
+                                lineHeight: '1'
+                              }}
+                            >
+                              ×
+                            </button>
+                            <h5 style={{ margin: '0 0 4px 0', fontSize: '0.75rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              {selectedPiePortion} Questions List ({selectedPiePortion === 'Right' ? totalCorrect : selectedPiePortion === 'Wrong' ? totalWrong : totalSkipped})
+                            </h5>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '120px', overflowY: 'auto', padding: '4px' }}>
+                              {(selectedPiePortion === 'Right' ? analysisDetails.correctQuestions : selectedPiePortion === 'Wrong' ? analysisDetails.incorrectQuestions : analysisDetails.unansweredQuestions).map((qNum: number) => {
+                                // Find difficulty of this specific question
+                                let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+                                if (activeAnalysisSub.attemptType === 'Online') {
+                                  const qObj = examQuestions[qNum - 1];
+                                  if (qObj && qObj.difficulty) qDiff = qObj.difficulty;
+                                } else {
+                                  if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[qNum]) {
+                                    qDiff = activeAnalysisSub.exam.difficulties[qNum];
+                                  }
+                                }
+                                return (
+                                  <a
+                                    key={qNum}
+                                    href={`#q-map-card`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      padding: '4px 8px',
+                                      borderRadius: '6px',
+                                      background: selectedPiePortion === 'Right' ? '#f0fdf4' : selectedPiePortion === 'Wrong' ? '#fdf2f2' : '#fffbeb',
+                                      border: `1px solid ${selectedPiePortion === 'Right' ? '#bbf7d0' : selectedPiePortion === 'Wrong' ? '#fecaca' : '#fef3c7'}`,
+                                      color: selectedPiePortion === 'Right' ? '#166534' : selectedPiePortion === 'Wrong' ? '#991b1b' : '#b45309',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 800,
+                                      textDecoration: 'none',
+                                      transition: 'all 0.15s ease',
+                                      minWidth: '42px'
+                                    }}
+                                  >
+                                    <span>Q{qNum}</span>
+                                    <span style={{ fontSize: '0.55rem', fontWeight: 600, opacity: 0.8 }}>{qDiff[0]}</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

@@ -119,6 +119,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   const [onlinePublishStatus, setOnlinePublishStatus] = useState<'draft' | 'published'>('draft');
   const [onlineLoginOption, setOnlineLoginOption] = useState<'roll_phone' | 'roll_email' | 'roll_only' | 'passcode'>('roll_phone');
   const [onlinePasscode, setOnlinePasscode] = useState('1234');
+  const [showResultsToStudent, setShowResultsToStudent] = useState<boolean>(true);
 
   // Online Questions Composer States
   const [questionsState, setQuestionsState] = useState<any[]>([]);
@@ -220,6 +221,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
           setOnlinePublishStatus(exam.status === 'public' ? 'published' : 'draft');
           setOnlineLoginOption(exam.loginOption || 'roll_phone');
           setOnlinePasscode(exam.passcode || '1234');
+          setShowResultsToStudent(exam.showResultsToStudent !== false);
         }
 
         setRollNoDigits(exam.rollNoDigits || (exam.numQuestions && exam.numQuestions > 100 ? 10 : 2));
@@ -1177,7 +1179,8 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
           startsAt: examMode === 'online' ? onlineStartsAt : undefined,
           durationMins: examMode === 'online' ? onlineDurationMins : undefined,
           loginOption: examMode === 'online' ? onlineLoginOption : undefined,
-          passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined
+          passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined,
+          showResultsToStudent: examMode === 'online' ? showResultsToStudent : undefined
         });
       } else {
         finalExamId = await db.exams.add({
@@ -1199,6 +1202,7 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
           durationMins: examMode === 'online' ? onlineDurationMins : undefined,
           loginOption: examMode === 'online' ? onlineLoginOption : undefined,
           passcode: (examMode === 'online' && onlineLoginOption === 'passcode') ? onlinePasscode : undefined,
+          showResultsToStudent: examMode === 'online' ? showResultsToStudent : undefined,
           createdAt: new Date()
         });
       }
@@ -1485,6 +1489,19 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                       />
                     </div>
                   )}
+
+                  {/* Immediate Marks Visibility Option */}
+                  <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center' }}>
+                    <label className="wiz-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={showResultsToStudent} 
+                        onChange={(e) => setShowResultsToStudent(e.target.checked)} 
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-dark)' }}>Show score and graded answers to candidate immediately on submission</span>
+                    </label>
+                  </div>
                 </div>
               )}
             </div>

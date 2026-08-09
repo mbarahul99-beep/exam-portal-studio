@@ -78,6 +78,7 @@ export interface Exam {
   sectionsMarking?: Record<string, { correctMarks: number; incorrectMarks: number; unansweredMarks: number }>; // Section-wise marking scheme
   rollNoDigits?: number;
   examSetsCount?: number;
+  showResultsToStudent?: boolean;
   subjects?: ExamSubject[];
   sections?: ExamSection[];
   answerKeys?: Record<string, Record<number, string>>; // Multi-set answer keys (Set -> QNum -> Option)

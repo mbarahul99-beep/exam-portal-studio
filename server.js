@@ -139,6 +139,7 @@ const initDatabase = async () => {
     await addCol('rollNoDigits INT DEFAULT 5');
     await addCol('examSetsCount INT DEFAULT 1');
     await addCol('isResultsPublished TINYINT(1) DEFAULT 0');
+    await addCol('showResultsToStudent TINYINT(1) DEFAULT 1');
 
     // 4. Questions Table for Online MCQ Tests
     await conn.query(`
@@ -418,6 +419,7 @@ app.get('/api/sync/all', async (req, res) => {
       exams: exams.map(e => ({
         ...e,
         isResultsPublished: Boolean(e.isResultsPublished),
+        showResultsToStudent: e.showResultsToStudent === undefined ? true : Boolean(e.showResultsToStudent),
         answerKey: typeof e.answerKey === 'string' ? JSON.parse(e.answerKey) : e.answerKey,
         subjects: typeof e.subjects === 'string' ? JSON.parse(e.subjects) : e.subjects,
         sections: typeof e.sections === 'string' ? JSON.parse(e.sections) : e.sections,
@@ -874,7 +876,7 @@ app.post('/api/attendance', async (req, res) => {
 // Upsert Exam API (Create or update exam details & answer keys in Hostinger MySQL)
 app.post('/api/exams', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished } = req.body;
+  const { id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished, showResultsToStudent } = req.body;
   try {
     const keyJson = typeof answerKey === 'object' ? JSON.stringify(answerKey) : answerKey;
     const subjectsJson = typeof subjects === 'object' ? JSON.stringify(subjects) : subjects;
@@ -895,17 +897,17 @@ app.post('/api/exams', async (req, res) => {
           title = ?, className = ?, date = ?, status = ?, numQuestions = ?, answerKey = ?,
           correctMarks = ?, incorrectMarks = ?, unansweredMarks = ?, startsAt = ?, durationMins = ?,
           loginOption = ?, passcode = ?, subjects = ?, sections = ?, answerKeys = ?, difficulties = ?, sectionsMarking = ?,
-          rollNoDigits = ?, examSetsCount = ?, isResultsPublished = ?
+          rollNoDigits = ?, examSetsCount = ?, isResultsPublished = ?, showResultsToStudent = ?
         WHERE id = ?;
       `;
-      await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, id]);
+      await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0, id]);
       res.json({ success: true, id });
     } else {
       const query = `
-        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished)
+        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished, showResultsToStudent)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `;
-      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0]);
+      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0]);
       res.json({ success: true, id: result.insertId });
     }
   } catch (err) {

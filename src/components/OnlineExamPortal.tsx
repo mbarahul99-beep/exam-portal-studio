@@ -49,6 +49,22 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
   const [cheatWarnings, setCheatWarnings] = useState(0);
   const [showExitWarning, setShowExitWarning] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [timeUntilStart, setTimeUntilStart] = useState<number>(0);
+
+  useEffect(() => {
+    if (!exam || !exam.startsAt) return;
+
+    const calculateTimeLeft = () => {
+      const startMs = new Date(exam.startsAt!).getTime();
+      const nowMs = Date.now();
+      const diffSecs = Math.max(0, Math.floor((startMs - nowMs) / 1000));
+      setTimeUntilStart(diffSecs);
+    };
+
+    calculateTimeLeft();
+    const interval = setInterval(calculateTimeLeft, 1000);
+    return () => clearInterval(interval);
+  }, [exam?.startsAt]);
 
   // Close mobile navigation drawer automatically on question selection
   useEffect(() => {
@@ -263,6 +279,10 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
   // Trigger HTML5 Fullscreen
   const enterFullscreen = () => {
+    if (timeUntilStart > 0) {
+      alert('The exam has not started yet. Please wait for the countdown to reach zero.');
+      return;
+    }
     if (containerRef.current) {
       containerRef.current.requestFullscreen().then(() => {
         setShowExitWarning(false);
@@ -432,6 +452,17 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Enter your registered details to verify and boot test instruction sheet.</p>
             </div>
 
+            {exam.startsAt && (
+              <div style={{ background: '#f7fafc', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', marginBottom: '20px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>📅 Exam Schedule Details:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div><strong>Exam Title:</strong> {exam.title}</div>
+                  <div><strong>Start Date/Time:</strong> {new Date(exam.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                  <div><strong>Duration Limit:</strong> {exam.durationMins || 180} minutes</div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', marginBottom: '6px', display: 'block' }}>Candidate Roll Number *</label>
@@ -536,9 +567,39 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
               </div>
             </div>
 
+            {timeUntilStart > 0 && (
+              <div style={{ background: '#fffaf0', border: '1px solid #feebc8', borderRadius: '12px', padding: '16px', textAlign: 'center', marginBottom: '20px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#c05621', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                  Scheduled Exam Countdown
+                </span>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center' }}>
+                  <Timer size={20} color="#dd6b20" />
+                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dd6b20', fontFamily: 'monospace' }}>
+                    {formatTime(timeUntilStart)}
+                  </span>
+                </div>
+                <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  This exam will unlock automatically when the timer reaches zero. Scheduled for {new Date(exam.startsAt!).toLocaleString()}.
+                </p>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '12px' }}>
               <button className="btn-outlined" onClick={() => setExamState('setup')} style={{ flex: 1 }}>Back</button>
-              <button className="btn-filled" onClick={enterFullscreen} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <button 
+                className="btn-filled" 
+                onClick={enterFullscreen} 
+                disabled={timeUntilStart > 0}
+                style={{ 
+                  flex: 2, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px',
+                  opacity: timeUntilStart > 0 ? 0.6 : 1,
+                  cursor: timeUntilStart > 0 ? 'not-allowed' : 'pointer'
+                }}
+              >
                 <Maximize size={16} /> Start Fullscreen Exam
               </button>
             </div>
@@ -923,29 +984,36 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           <div style={{ background: '#fff', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '32px', maxWidth: '500px', width: '100%', textAlign: 'center', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}>
             <CheckCircle size={56} color="#48bb78" style={{ marginBottom: '16px' }} />
             <h2 style={{ margin: '0 0 6px 0', fontSize: '1.5rem', fontWeight: 900 }}>Exam Submitted!</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
-              Thank you, <strong>{student.name}</strong>. Your test responses have been logged and graded.
-            </p>
+            {exam.showResultsToStudent !== false ? (
+              <>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
+                  Thank you, <strong>{student.name}</strong>. Your test responses have been logged and graded.
+                </p>
 
-            <div style={{ background: '#f7fafc', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Score Achieved</span>
-                <strong style={{ fontSize: '1rem', color: 'var(--text-dark)' }}>{gradedResult.score} / {gradedResult.maxScore}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Correct Questions</span>
-                <span style={{ fontSize: '0.85rem', color: 'green', fontWeight: 'bold' }}>{gradedResult.correctCount} ✔</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Wrong / Penalized</span>
-                <span style={{ fontSize: '0.85rem', color: 'red', fontWeight: 'bold' }}>{gradedResult.wrongCount} ✘</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unanswered / Skipped</span>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{gradedResult.unansweredCount}</span>
-              </div>
-            </div>
-
+                <div style={{ background: '#f7fafc', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Score Achieved</span>
+                    <strong style={{ fontSize: '1rem', color: 'var(--text-dark)' }}>{gradedResult.score} / {gradedResult.maxScore}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Correct Questions</span>
+                    <span style={{ fontSize: '0.85rem', color: 'green', fontWeight: 'bold' }}>{gradedResult.correctCount} ✔</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Wrong / Penalized</span>
+                    <span style={{ fontSize: '0.85rem', color: 'red', fontWeight: 'bold' }}>{gradedResult.wrongCount} ✘</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unanswered / Skipped</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{gradedResult.unansweredCount}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginTop: '12px', marginBottom: '24px' }}>
+                Thank you, <strong>{student.name}</strong>. Your exam has been successfully submitted! The results will be announced by your instructor. You can check your detailed performance report in the Student Portal once the results are published.
+              </p>
+            )}
             <button className="btn-filled" onClick={onClose} style={{ width: '100%', padding: '10px' }}>
               Close Portal
             </button>

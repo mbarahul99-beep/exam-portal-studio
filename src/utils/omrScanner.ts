@@ -11,7 +11,7 @@ export interface ScanResult {
 
 // Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
 export function getScaledY(rawY: number, dy: number): number {
-  const yScale = 1.0; // 1.0 scale factor (perspective warp normalizes scaling margins)
+  const yScale = 0.991; // 0.9% vertical compression correction
   return 48 + (rawY - 48) * yScale + dy;
 }
 
@@ -303,24 +303,10 @@ export async function scanOMRSheet(
       const isSolid = solidity >= 0.65;
 
       if (isCorrectSize && isSquare && isSolid) {
-        let center;
-        try {
-          const pts = cnt.data32S;
-          if (pts && pts.length > 0) {
-            let sumX = 0;
-            let sumY = 0;
-            const len = pts.length;
-            for (let idx = 0; idx < len; idx += 2) {
-              sumX += pts[idx];
-              sumY += pts[idx + 1];
-            }
-            center = { x: sumX / (len / 2), y: sumY / (len / 2) };
-          } else {
-            center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-          }
-        } catch {
-          center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-        }
+        const center = {
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2
+        };
         candidates.push({ center, area, rect });
       }
       cnt.delete();
@@ -351,28 +337,28 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                 // Validate that the areas of the 4 markers are similar
-                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
-                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                 if (minArea === 0 || maxArea / minArea > 1.45) continue;
+                // Validate that the areas of the 4 markers are similar
+                const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
+                const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
+                if (minArea === 0 || maxArea / minArea > 1.8) continue;
 
-                 // Side lengths
-                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
-                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
-                 const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
-                 const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
+                // Side lengths
+                const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
+                const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
+                const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
+                const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
 
-                 const avgW = (wTop + wBot) / 2;
-                 const avgH = (hLeft + hRight) / 2;
+                const avgW = (wTop + wBot) / 2;
+                const avgH = (hLeft + hRight) / 2;
 
-                 if (avgW === 0) continue;
-                 const ratio = avgH / avgW;
+                if (avgW === 0) continue;
+                const ratio = avgH / avgW;
 
-                 // Validate A4-like anchor ratio (~1.41 portrait or ~0.71 landscape) and parallelism of opposite sides
-                 const isRatioValid = (ratio >= 0.60 && ratio <= 0.85) || (ratio >= 1.18 && ratio <= 1.62);
-                 const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.22;
-                 const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.22;
-                 const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
+                // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
+                const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
+                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
+                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
+                const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
                 // Strict constraints:
                 // 1. Minimum sheet size check: detected quad must cover at least 15% of the page
@@ -441,24 +427,10 @@ export async function scanOMRSheet(
         const isSolid = solidity >= 0.65;
 
         if (isCorrectSize && isSquare && isSolid) {
-          let center;
-          try {
-            const pts = cnt.data32S;
-            if (pts && pts.length > 0) {
-              let sumX = 0;
-              let sumY = 0;
-              const len = pts.length;
-              for (let idx = 0; idx < len; idx += 2) {
-                sumX += pts[idx];
-                sumY += pts[idx + 1];
-              }
-              center = { x: sumX / (len / 2), y: sumY / (len / 2) };
-            } else {
-              center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-            }
-          } catch {
-            center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-          }
+          const center = {
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2
+          };
           candidates.push({ center, area, rect });
         }
         cnt.delete();
@@ -560,12 +532,12 @@ export async function scanOMRSheet(
     cv.imshow(debugWarpedCanvas, warped);
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
-    // Scans range of vertical shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
-    let bestDy = 0; // Default systematic vertical offset fallback
+    // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
+    let bestDy = -3; // Default systematic vertical offset fallback (3px upward shift)
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -8; dy <= 8; dy += 1) {
+    for (let dy = -25; dy <= 25; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -598,47 +570,11 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
-    // 5.3. Auto-Calibrate Horizontal Scan Offset
-    // Scans range of horizontal shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
-    let bestDx = 0;
-    let minAvgIntensityDx = 256;
-    for (let dx = -8; dx <= 8; dx += 1) {
-      let totalIntensity = 0;
-      let filledColumnsCount = 0;
-      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-        const x = sidConf.xStart + colIdx * sidConf.xStep + dx;
-        let colMin = 256;
-        let colMax = -1;
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-          if (avgGray < colMin) {
-            colMin = avgGray;
-          }
-          if (avgGray > colMax) {
-            colMax = avgGray;
-          }
-        }
-        if (colMax - colMin > 50) {
-          totalIntensity += colMin;
-          filledColumnsCount++;
-        }
-      }
-      if (filledColumnsCount > 0) {
-        const avg = totalIntensity / filledColumnsCount;
-        if (avg < minAvgIntensityDx) {
-          minAvgIntensityDx = avg;
-          bestDx = dx;
-        }
-      }
-    }
-    console.log("[OMR Scanner] Calibrated horizontal offset:", bestDx, "px");
-
     // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
 
     // 5.8. Dynamic White Level Auto-Calibration
-    // Samples the brightest bubble across the first 30 questions and all roll number bubbles to detect the background paper brightness under current lighting
+    // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting
     const samples: number[] = [];
     const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
     for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
@@ -654,54 +590,47 @@ export async function scanOMRSheet(
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
-        const x = colConf.xOptions[o] + bestDx;
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        const x = colConf.xOptions[o];
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         if (val > maxVal) maxVal = val;
       }
       if (maxVal > 0) samples.push(maxVal);
     }
-
-    // Add Roll No bubbles to the samples
-    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
-      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
-        if (val > 0) samples.push(val);
-      }
-    }
-
     samples.sort((a, b) => a - b);
-    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
+    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
+
+    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
+    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
+      const x = sidConf.xStart + colIdx * sidConf.xStep;
       const intensities: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        // Inner radius 5.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+        // Inner radius 3.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         intensities.push(avgGray);
       }
 
-      // Calculate column statistics
-      const colMax = Math.max(...intensities);
-      const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
+      // Calculate column average intensity
+      let colSum = 0;
+      for (let r = 0; r < 10; r++) {
+        colSum += intensities[r];
+      }
+      const colAvg = colSum / 10;
 
-      // Find all rows in this column that are significantly darker than the column average and column max
+      // Find all rows in this column that are significantly darker than the column average
       const filledRows: number[] = [];
+      const colDiffThreshold = Math.max(fillDiffThreshold + 5, colAvg * 0.18); // Adaptive threshold for roll numbers
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        const isLocalContrastValid = colMax - val > 42;
-        const isAvgContrastValid = colAvg - val > 26;
-        const isAbsoluteValid = val < whitePaperLevel - 48;
-        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
+        if (colAvg - val > colDiffThreshold && val < maxAbsoluteFillVal) {
           filledRows.push(r);
         }
       }
@@ -747,25 +676,25 @@ export async function scanOMRSheet(
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        // Inner radius 4.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
+        // Inner radius 2.5px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         intensities.push(avgGray);
       }
 
-      // Calculate row statistics
-      const rowMax = Math.max(...intensities);
-      const rowSum = intensities.reduce((sum, v) => sum + v, 0);
+      // Calculate row average intensity
+      let rowSum = 0;
+      for (let o = 0; o < numOptions; o++) {
+        rowSum += intensities[o];
+      }
       const rowAvg = rowSum / numOptions;
 
-      // Detect all filled options for this question using local, average, and absolute thresholds
+      // Detect all filled options for this question using row-average contrast
       const filledOptions: number[] = [];
+      const rowDiffThreshold = Math.max(fillDiffThreshold, rowAvg * 0.15); // Adaptive threshold for questions
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        const isLocalContrastValid = rowMax - val > 42;
-        const isAvgContrastValid = rowAvg - val > 26;
-        const isAbsoluteValid = val < whitePaperLevel - 48;
-        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
+        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteFillVal) {
           filledOptions.push(o);
         }
       }

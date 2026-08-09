@@ -338,7 +338,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 totalDistance += Math.sqrt(dx * dx + dy * dy);
               }
               const avgDistance = totalDistance / 4;
-              if (avgDistance > 6) {
+              if (avgDistance > 1.5) {
                 isMoving = true;
               }
             }

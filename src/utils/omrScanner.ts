@@ -598,6 +598,42 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
+    // 5.3. Auto-Calibrate Horizontal Scan Offset
+    // Scans range of horizontal shifts from -15px to +15px to find the alignment that maximizes bubble darkness contrast
+    let bestDx = 0;
+    let minAvgIntensityDx = 256;
+    for (let dx = -15; dx <= 15; dx += 1) {
+      let totalIntensity = 0;
+      let filledColumnsCount = 0;
+      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+        const x = sidConf.xStart + colIdx * sidConf.xStep + dx;
+        let colMin = 256;
+        let colMax = -1;
+        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+          if (avgGray < colMin) {
+            colMin = avgGray;
+          }
+          if (avgGray > colMax) {
+            colMax = avgGray;
+          }
+        }
+        if (colMax - colMin > 50) {
+          totalIntensity += colMin;
+          filledColumnsCount++;
+        }
+      }
+      if (filledColumnsCount > 0) {
+        const avg = totalIntensity / filledColumnsCount;
+        if (avg < minAvgIntensityDx) {
+          minAvgIntensityDx = avg;
+          bestDx = dx;
+        }
+      }
+    }
+    console.log("[OMR Scanner] Calibrated horizontal offset:", bestDx, "px");
+
     // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
 
@@ -618,7 +654,7 @@ export async function scanOMRSheet(
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
-        const x = colConf.xOptions[o];
+        const x = colConf.xOptions[o] + bestDx;
         const val = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         if (val > maxVal) maxVal = val;
       }
@@ -627,7 +663,7 @@ export async function scanOMRSheet(
 
     // Add Roll No bubbles to the samples
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep;
+      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
         const val = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
@@ -647,7 +683,7 @@ export async function scanOMRSheet(
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep;
+      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
       const intensities: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
@@ -715,7 +751,7 @@ export async function scanOMRSheet(
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
+        const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
         // Inner radius 2.5px to cover the bubble interior (immune to outline shift)
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         intensities.push(avgGray);

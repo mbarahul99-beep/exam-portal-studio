@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb, Users, CheckCircle2 } from 'lucide-react';
+import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb, Users, CheckCircle2, Check, AlertCircle } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
 import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
+import { MathRenderer } from './MathRenderer';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 import { FullScreenOmrViewer } from './FullScreenOmrViewer';
 
@@ -894,11 +895,11 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
                 
                                 {/* 1. Stacked Bar Chart Card */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)', width: '100%', boxSizing: 'border-box' }}>
                   <h4 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Questions Distribution by Difficulty</h4>
                   
                   {/* The Chart Axes Area */}
-                  <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-end', height: '200px', width: '100%', maxWidth: '320px', borderBottom: '2px solid #cbd5e1', paddingBottom: '8px', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-end', height: '200px', width: '100%', maxWidth: '320px', borderBottom: '2px solid #cbd5e1', paddingBottom: '8px', boxSizing: 'border-box' }}>
                     
                     {/* Easy Bar */}
                     {(() => {
@@ -1114,11 +1115,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                 </div>
 
                 {/* 2. Standalone Interactive Pie Chart Card */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                  <h4 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overall Performance Pie Chart</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)', width: '100%', boxSizing: 'border-box' }}>
+                  <h4 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overall Performance Pie Chart</h4>
 
                   {(() => {
-                    const examQuestions = allQuestions.filter(q => q.examId === activeAnalysisSub.exam.id);
                     const totalCorrect = analysisDetails.correctQuestions.length;
                     const totalWrong = analysisDetails.incorrectQuestions.length;
                     const totalSkipped = analysisDetails.unansweredQuestions.length;
@@ -1134,30 +1134,44 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                        {/* Interactive SVG Pie */}
-                        <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+                        {/* Interactive SVG Pie - Increased Size with Labels on Portions */}
+                        <div style={{ position: 'relative', width: '100%', maxWidth: '245px', aspectRatio: '1/1', margin: '0 auto' }}>
                           <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%', overflow: 'visible' }}>
                             {total === 0 ? (
-                              <circle cx="50" cy="50" r="40" fill="#cbd5e1" />
+                              <circle cx="50" cy="50" r="45" fill="#cbd5e1" />
                             ) : (
                               slices.map((slice) => {
                                 if (slice.count === 0) return null;
                                 if (slice.count === total) {
+                                  const textX = 50;
+                                  const textY = 25;
                                   return (
-                                    <circle
-                                      key={slice.type}
-                                      cx="50"
-                                      cy="50"
-                                      r="40"
-                                      fill={slice.color}
-                                      onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
-                                      style={{
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease',
-                                        stroke: selectedPiePortion === slice.type ? '#000' : 'none',
-                                        strokeWidth: 2
-                                      }}
-                                    />
+                                    <g key={slice.type}>
+                                      <circle
+                                        cx="50"
+                                        cy="50"
+                                        r="45"
+                                        fill={slice.color}
+                                        onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
+                                        style={{
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s ease',
+                                          stroke: selectedPiePortion === slice.type ? '#000' : 'none',
+                                          strokeWidth: 2
+                                        }}
+                                      />
+                                      <text
+                                        x={textX}
+                                        y={textY}
+                                        textAnchor="middle"
+                                        fill="#fff"
+                                        fontSize="7.5"
+                                        fontWeight="bold"
+                                        style={{ pointerEvents: 'none', filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.6))' }}
+                                      >
+                                        {slice.count}
+                                      </text>
+                                    </g>
                                   );
                                 }
                                 const start = currentPercent;
@@ -1165,50 +1179,54 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                                 const end = currentPercent;
                                 const pathData = getPieSectorPath(start, end);
                                 
+                                // Calculate portion labels coordinates
+                                const middlePercent = start + (end - start) / 2;
+                                const middleAngle = 2 * Math.PI * middlePercent - Math.PI / 2;
+                                const textX = 50 + 31 * Math.cos(middleAngle);
+                                const textY = 50 + 31 * Math.sin(middleAngle) + 2.2;
+                                const slicePercent = (slice.count / total) * 100;
+
                                 return (
-                                  <path
-                                    key={slice.type}
-                                    d={pathData}
-                                    fill={slice.color}
-                                    onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
-                                    style={{
-                                      cursor: 'pointer',
-                                      transition: 'all 0.2s ease',
-                                      transform: selectedPiePortion === slice.type ? 'scale(1.05)' : 'scale(1)',
-                                      transformOrigin: '50px 50px',
-                                      stroke: selectedPiePortion === slice.type ? '#000' : '#fff',
-                                      strokeWidth: selectedPiePortion === slice.type ? 1.5 : 0.5
-                                    }}
-                                  />
+                                  <g key={slice.type}>
+                                    <path
+                                      d={pathData}
+                                      fill={slice.color}
+                                      onClick={() => setSelectedPiePortion(prev => prev === slice.type ? null : slice.type)}
+                                      style={{
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        transform: selectedPiePortion === slice.type ? 'scale(1.04)' : 'scale(1)',
+                                        transformOrigin: '50px 50px',
+                                        stroke: selectedPiePortion === slice.type ? '#000' : '#fff',
+                                        strokeWidth: selectedPiePortion === slice.type ? 1.5 : 0.5
+                                      }}
+                                    />
+                                    {slicePercent > 1.5 && (
+                                      <text
+                                        x={textX}
+                                        y={textY}
+                                        textAnchor="middle"
+                                        fill="#fff"
+                                        fontSize="6.5"
+                                        fontWeight="bold"
+                                        style={{ pointerEvents: 'none', filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.65))' }}
+                                      >
+                                        {slice.count}
+                                      </text>
+                                    )}
+                                  </g>
                                 );
                               })
                             )}
+                            {/* Inner Donut hole natively rendered in SVG */}
+                            <circle cx="50" cy="50" r="26" fill="#fff" />
+                            <text x="50" y="46" textAnchor="middle" fontSize="6.5" fontWeight="bold" fill="#64748b">TOTAL</text>
+                            <text x="50" y="58" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#0f172a">{total}</text>
                           </svg>
-                          
-                          {/* Inner donut hole label */}
-                          <div style={{
-                            position: 'absolute',
-                            top: '50%',
-                            left: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            width: '60px',
-                            height: '60px',
-                            background: '#fff',
-                            borderRadius: '50%',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            pointerEvents: 'none'
-                          }}>
-                            <span style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 700 }}>TOTAL</span>
-                            <span style={{ fontSize: '0.95rem', color: '#0f172a', fontWeight: 900 }}>{total}</span>
-                          </div>
                         </div>
 
                         {/* Interactive Selection Legend & Counts */}
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '20px', fontSize: '0.75rem', fontWeight: 700 }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '16px', fontSize: '0.72rem', fontWeight: 800 }}>
                           {slices.map(slice => (
                             <span
                               key={slice.type}
@@ -1218,12 +1236,13 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                                 alignItems: 'center',
                                 gap: '6px',
                                 cursor: 'pointer',
-                                padding: '4px 8px',
-                                borderRadius: '6px',
+                                padding: '6px 10px',
+                                borderRadius: '8px',
                                 background: selectedPiePortion === slice.type ? '#f1f5f9' : 'transparent',
-                                border: selectedPiePortion === slice.type ? '1px solid #e2e8f0' : '1px solid transparent',
+                                border: selectedPiePortion === slice.type ? '1px solid #cbd5e1' : '1px solid transparent',
                                 transition: 'all 0.2s ease',
-                                color: slice.type === 'Right' ? '#166534' : slice.type === 'Wrong' ? '#991b1b' : '#7c2d12'
+                                color: slice.type === 'Right' ? '#166534' : slice.type === 'Wrong' ? '#991b1b' : '#7c2d12',
+                                boxShadow: selectedPiePortion === slice.type ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
                               }}
                             >
                               <span style={{ width: '10px', height: '10px', background: slice.color, borderRadius: '50%' }} />
@@ -1256,88 +1275,277 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                             <div style={{ color: '#7c2d12', fontWeight: 700 }}>{analysisDetails.diffStats.Difficult.skipped}</div>
                           </div>
                         </div>
-
-                        {/* Interactive Click Drilldown - List of Questions of Selected Portion */}
-                        {selectedPiePortion && (
-                          <div style={{
-                            marginTop: '16px',
-                            padding: '12px 14px',
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '10px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px',
-                            position: 'relative',
-                            alignSelf: 'stretch',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                          }}>
-                            <button 
-                              onClick={() => setSelectedPiePortion(null)}
-                              style={{
-                                position: 'absolute',
-                                top: '8px',
-                                right: '8px',
-                                background: 'none',
-                                border: 'none',
-                                color: '#64748b',
-                                cursor: 'pointer',
-                                fontSize: '1.1rem',
-                                fontWeight: 'bold',
-                                lineHeight: '1'
-                              }}
-                            >
-                              ×
-                            </button>
-                            <h5 style={{ margin: '0 0 4px 0', fontSize: '0.75rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              {selectedPiePortion} Questions List ({selectedPiePortion === 'Right' ? totalCorrect : selectedPiePortion === 'Wrong' ? totalWrong : totalSkipped})
-                            </h5>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '120px', overflowY: 'auto', padding: '4px' }}>
-                              {(selectedPiePortion === 'Right' ? analysisDetails.correctQuestions : selectedPiePortion === 'Wrong' ? analysisDetails.incorrectQuestions : analysisDetails.unansweredQuestions).map((qNum: number) => {
-                                // Find difficulty of this specific question
-                                let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
-                                if (activeAnalysisSub.attemptType === 'Online') {
-                                  const qObj = examQuestions[qNum - 1];
-                                  if (qObj && qObj.difficulty) qDiff = qObj.difficulty;
-                                } else {
-                                  if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[qNum]) {
-                                    qDiff = activeAnalysisSub.exam.difficulties[qNum];
-                                  }
-                                }
-                                return (
-                                  <a
-                                    key={qNum}
-                                    href={`#q-map-card`}
-                                    style={{
-                                      display: 'inline-flex',
-                                      flexDirection: 'column',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      padding: '4px 8px',
-                                      borderRadius: '6px',
-                                      background: selectedPiePortion === 'Right' ? '#f0fdf4' : selectedPiePortion === 'Wrong' ? '#fdf2f2' : '#fffbeb',
-                                      border: `1px solid ${selectedPiePortion === 'Right' ? '#bbf7d0' : selectedPiePortion === 'Wrong' ? '#fecaca' : '#fef3c7'}`,
-                                      color: selectedPiePortion === 'Right' ? '#166534' : selectedPiePortion === 'Wrong' ? '#991b1b' : '#b45309',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 800,
-                                      textDecoration: 'none',
-                                      transition: 'all 0.15s ease',
-                                      minWidth: '42px'
-                                    }}
-                                  >
-                                    <span>Q{qNum}</span>
-                                    <span style={{ fontSize: '0.55rem', fontWeight: 600, opacity: 0.8 }}>{qDiff[0]}</span>
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     );
                   })()}
                 </div>
               </div>
+
+              {/* Selected Pie Portion Detail List - Full Width and Length Downside Charts */}
+              {selectedPiePortion && (
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #e2e8f0', 
+                  borderRadius: '12px', 
+                  padding: '24px', 
+                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '20px',
+                  marginTop: '12px',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ 
+                        width: '12px', 
+                        height: '12px', 
+                        background: selectedPiePortion === 'Right' ? '#22c55e' : selectedPiePortion === 'Wrong' ? '#ef4444' : '#78350f', 
+                        borderRadius: '50%' 
+                      }} />
+                      {selectedPiePortion} Questions List ({
+                        selectedPiePortion === 'Right' ? analysisDetails.correctQuestions.length : 
+                        selectedPiePortion === 'Wrong' ? analysisDetails.incorrectQuestions.length : 
+                        analysisDetails.unansweredQuestions.length
+                      })
+                    </h3>
+                    <button 
+                      onClick={() => setSelectedPiePortion(null)}
+                      style={{
+                        background: '#f1f5f9',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      Close ×
+                    </button>
+                  </div>
+                  
+                  {/* Detailed list of question cards in full width and length */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {(() => {
+                      const examQuestions = allQuestions.filter(q => q.examId === activeAnalysisSub.exam.id);
+                      const sortedQs = [...examQuestions].sort((a, b) => (a.id || 0) - (b.id || 0));
+                      const qNumsList = selectedPiePortion === 'Right' ? analysisDetails.correctQuestions : selectedPiePortion === 'Wrong' ? analysisDetails.incorrectQuestions : analysisDetails.unansweredQuestions;
+                      
+                      const OPTIONS_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+                      
+                      return qNumsList.map((qNum: number) => {
+                        // Find question details in bank
+                        const qObj = sortedQs[qNum - 1];
+                        
+                        const sAns = activeAnalysisSub.answers[qNum];
+                        const subSet = activeAnalysisSub.bookletSet || 'A';
+                        const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
+                        const cAns = setKey[qNum];
+                        
+                        const isCorrect = sAns === cAns;
+                        const isLeft = !sAns;
+                        
+                        const secName = getQuestionSection(qNum, activeAnalysisSub.exam);
+                        
+                        let qDiff = 'Easy';
+                        if (activeAnalysisSub.attemptType === 'Online') {
+                          if (qObj && qObj.difficulty) qDiff = qObj.difficulty;
+                        } else {
+                          if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[qNum]) {
+                            qDiff = activeAnalysisSub.exam.difficulties[qNum];
+                          }
+                        }
+
+                        let themeColor = '#cbd5e1';
+                        let statusText = 'Left / Unattempted';
+                        let marksText = '0 Marks';
+                        
+                        if (isCorrect) {
+                          themeColor = '#22c55e';
+                          statusText = 'Correct Answer';
+                          marksText = `+${activeAnalysisSub.exam.correctMarks || 4} Marks`;
+                        } else if (!isLeft) {
+                          themeColor = '#ef4444';
+                          statusText = 'Wrong Answer';
+                          marksText = `${activeAnalysisSub.exam.incorrectMarks || -1} Marks`;
+                        }
+
+                        return (
+                          <div 
+                            key={qNum}
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderLeft: `6px solid ${themeColor}`,
+                              borderRadius: '12px',
+                              padding: '18px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '12px',
+                              boxSizing: 'border-box',
+                              width: '100%'
+                            }}
+                          >
+                            {/* Question Header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                {secName} • Question {qNum} • <span style={{ color: qDiff === 'Easy' ? '#16a34a' : qDiff === 'Difficult' ? '#dc2626' : '#d97706' }}>{qDiff}</span>
+                              </span>
+                              <span style={{ 
+                                fontSize: '0.75rem', 
+                                fontWeight: 800, 
+                                color: isCorrect ? '#166534' : isLeft ? '#475569' : '#991b1b',
+                                background: isCorrect ? '#f0fdf4' : isLeft ? '#f1f5f9' : '#fdf2f2',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${isCorrect ? '#bbf7d0' : isLeft ? '#e2e8f0' : '#fecaca'}`
+                              }}>
+                                {statusText} ({marksText})
+                              </span>
+                            </div>
+
+                            {/* Question Text */}
+                            {qObj && qObj.questionText ? (
+                              <div style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: 600, lineHeight: 1.5 }}>
+                                <MathRenderer text={qObj.questionText} />
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
+                                Question text is not registered. Grading details are shown below.
+                              </div>
+                            )}
+
+                            {/* Diagram if available */}
+                            {qObj && qObj.questionImage && (
+                              <div style={{ alignSelf: 'flex-start', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px', background: '#fff', maxWidth: '100%', boxSizing: 'border-box' }}>
+                                <img 
+                                  src={qObj.questionImage} 
+                                  alt={`Question ${qNum} diagram`} 
+                                  style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }} 
+                                />
+                              </div>
+                            )}
+
+                            {/* Options block */}
+                            {qObj && qObj.options && qObj.options.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                                {qObj.options.map((optText, optIdx) => {
+                                  const letter = OPTIONS_LETTERS[optIdx];
+                                  const isCorrectKey = letter === cAns;
+                                  const isSelectedWrong = (letter === sAns) && (sAns !== cAns);
+
+                                  let itemBg = '#fff';
+                                  let itemBorder = '1px solid #e2e8f0';
+                                  let itemColor = '#1e293b';
+
+                                  if (isCorrectKey) {
+                                    itemBg = '#f0fdf4';
+                                    itemBorder = '1px solid #bbf7d0';
+                                    itemColor = '#166534';
+                                  } else if (isSelectedWrong) {
+                                    itemBg = '#fdf2f2';
+                                    itemBorder = '1px solid #fecaca';
+                                    itemColor = '#991b1b';
+                                  }
+
+                                  return (
+                                    <div 
+                                      key={optIdx} 
+                                      style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '10px', 
+                                        padding: '10px 14px', 
+                                        borderRadius: '8px', 
+                                        background: itemBg, 
+                                        border: itemBorder,
+                                        color: itemColor,
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        boxSizing: 'border-box'
+                                      }}
+                                    >
+                                      <span style={{ 
+                                        width: '20px', 
+                                        height: '20px', 
+                                        borderRadius: '50%', 
+                                        background: isCorrectKey ? '#22c55e' : isSelectedWrong ? '#ef4444' : '#f1f5f9',
+                                        color: isCorrectKey || isSelectedWrong ? '#fff' : '#64748b',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 'bold',
+                                        flexShrink: 0
+                                      }}>
+                                        {letter}
+                                      </span>
+                                      <span style={{ flex: 1 }}><MathRenderer text={optText} /></span>
+                                      {isCorrectKey && <Check size={16} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
+                                      {isSelectedWrong && <X size={16} style={{ color: '#dc2626', marginLeft: 'auto', flexShrink: 0 }} />}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              /* Standard Fallback comparison widget */
+                              <div style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: 'repeat(2, 1fr)', 
+                                gap: '12px', 
+                                background: '#fff', 
+                                border: '1px solid #e2e8f0', 
+                                borderRadius: '8px', 
+                                padding: '10px 14px',
+                                boxSizing: 'border-box',
+                                marginTop: '4px'
+                              }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                                  Correct Answer Key: <strong style={{ color: '#16a34a', fontSize: '0.9rem', marginLeft: '4px' }}>{cAns}</strong>
+                                </div>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                                  Candidate Response: <strong style={{ 
+                                    color: isCorrect ? '#16a34a' : isLeft ? '#64748b' : '#dc2626',
+                                    fontSize: '0.9rem',
+                                    marginLeft: '4px'
+                                  }}>
+                                    {sAns === 'MULTIPLE' ? 'M (Multiple)' : (sAns || 'Left/Skipped')}
+                                  </strong>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Explanation solution box */}
+                            {qObj && qObj.explanation && (
+                              <div style={{ 
+                                background: '#f0fdf4', 
+                                border: '1px solid #ccfbf1', 
+                                borderRadius: '8px', 
+                                padding: '10px 14px',
+                                boxSizing: 'border-box',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px'
+                              }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0f766e', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase' }}>
+                                  <AlertCircle size={14} /> Explanation & Solution Detail
+                                </div>
+                                <div style={{ fontSize: '0.82rem', color: '#115e59', fontWeight: 600, lineHeight: 1.5 }}>
+                                  <MathRenderer text={qObj.explanation} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* 3. ROI Insights Alert Box */}
               {analysisDetails.diffStats.Easy.wrong > 0 && (

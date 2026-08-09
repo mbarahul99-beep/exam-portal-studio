@@ -303,10 +303,19 @@ export async function scanOMRSheet(
       const isSolid = solidity >= 0.65;
 
       if (isCorrectSize && isSquare && isSolid) {
-        const center = {
-          x: rect.x + rect.width / 2,
-          y: rect.y + rect.height / 2
-        };
+        const M = cv.moments(cnt);
+        let center;
+        if (M.m00 !== 0) {
+          center = {
+            x: M.m10 / M.m00,
+            y: M.m01 / M.m00
+          };
+        } else {
+          center = {
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2
+          };
+        }
         candidates.push({ center, area, rect });
       }
       cnt.delete();
@@ -427,10 +436,19 @@ export async function scanOMRSheet(
         const isSolid = solidity >= 0.65;
 
         if (isCorrectSize && isSquare && isSolid) {
-          const center = {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2
-          };
+          const M = cv.moments(cnt);
+          let center;
+          if (M.m00 !== 0) {
+            center = {
+              x: M.m10 / M.m00,
+              y: M.m01 / M.m00
+            };
+          } else {
+            center = {
+              x: rect.x + rect.width / 2,
+              y: rect.y + rect.height / 2
+            };
+          }
           candidates.push({ center, area, rect });
         }
         cnt.delete();
@@ -611,8 +629,8 @@ export async function scanOMRSheet(
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
-    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
-    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
+    const fillDiffThreshold = 35; // Bubble must be at least 35 gray levels darker than local average
+    const maxAbsoluteFillVal = whitePaperLevel - 55; // Bubble must be at least 55 gray levels darker than page white paper
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
@@ -757,8 +775,7 @@ export async function scanOMRSheet(
  * Highly robust against bubble outlines and characters printed in dark grayscale ink.
  */
 function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: number): number {
-  let sum = 0;
-  let count = 0;
+  const pixels: number[] = [];
   const rSq = r * r;
   const startX = Math.max(0, Math.floor(cx - r));
   const endX = Math.min(grayMatrix.cols - 1, Math.ceil(cx + r));
@@ -771,13 +788,25 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
     for (let x = startX; x <= endX; x++) {
       const dx = x - cx;
       if (dx * dx + dySq <= rSq) {
-        const pixelVal = grayMatrix.ucharAt(y, x);
-        sum += pixelVal;
-        count++;
+        pixels.push(grayMatrix.ucharAt(y, x));
       }
     }
   }
-  return count > 0 ? sum / count : 255;
+  
+  if (pixels.length === 0) return 255;
+  
+  // Sort pixels by brightness ascending
+  pixels.sort((a, b) => a - b);
+  
+  // Average only the brightest 50% of the pixels to remain immune to partial dark outlines/text overlapping
+  const startIndex = Math.floor(pixels.length * 0.5);
+  let sum = 0;
+  let count = 0;
+  for (let i = startIndex; i < pixels.length; i++) {
+    sum += pixels[i];
+    count++;
+  }
+  return sum / count;
 }
 
 let smallCanvas: HTMLCanvasElement | null = null;

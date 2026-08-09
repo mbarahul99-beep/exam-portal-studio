@@ -2744,34 +2744,34 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                                     onClick={() => {
                                       if (isAddedToExam) return;
                                       const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
-                                      const qStart = sectionConfig ? sectionConfig.qStart : 1;
-                                      const qEnd = sectionConfig ? sectionConfig.qEnd : 15;
                                       const qCount = sectionConfig ? sectionConfig.qCount : 15;
 
-                                      const sectionQs = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
-                                      if (sectionQs.length >= qCount) {
+                                      // Find first empty slot in this section
+                                      const firstEmptySlot = questionsState.find(q => 
+                                        q.subjectName === selectedSubjectName && 
+                                        q.sectionName === selectedSectionName && 
+                                        !q.questionText.trim()
+                                      );
+
+                                      if (!firstEmptySlot) {
                                         alert(`Cannot add more questions. This section is limited to ${qCount} questions.`);
                                         return;
                                       }
 
                                       setQuestionsState(prev => {
-                                        const existingQNums = new Set(sectionQs.map(q => q.qNum));
-                                        let nextQNum = qStart;
-                                        while (existingQNums.has(nextQNum) && nextQNum <= qEnd) {
-                                          nextQNum++;
-                                        }
-
-                                        const newQ = {
-                                          qNum: nextQNum,
-                                          sectionName: selectedSectionName,
-                                          subjectName: selectedSubjectName,
-                                          questionText: qVal.questionText,
-                                          options: [...qVal.options],
-                                          correctOptionIdx: qVal.correctOptionIdx,
-                                          explanation: qVal.explanation || '',
-                                          questionImage: qVal.questionImage || ''
-                                        };
-                                        return [...prev, newQ].sort((a, b) => a.qNum - b.qNum);
+                                        return prev.map(q => {
+                                          if (q.qNum === firstEmptySlot.qNum && q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName) {
+                                            return {
+                                              ...q,
+                                              questionText: qVal.questionText,
+                                              options: [...qVal.options],
+                                              correctOptionIdx: qVal.correctOptionIdx,
+                                              explanation: qVal.explanation || '',
+                                              questionImage: qVal.questionImage || ''
+                                            };
+                                          }
+                                          return q;
+                                        });
                                       });
                                     }}
                                     disabled={isAddedToExam}

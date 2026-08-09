@@ -22,7 +22,7 @@ import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView, DEFAULT_OMR_SETTINGS } from './components/OmrSettingsView';
 import { BrandingSettingsView } from './components/BrandingSettingsView';
-import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud } from './utils/cloudSync';
+import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud, renameClassOnCloud } from './utils/cloudSync';
 import { 
   Sliders,
   LayoutDashboard,
@@ -2228,6 +2228,53 @@ export default function App() {
 
                             {/* Right Side: View Students Link & Delete Action */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const newName = prompt(`Enter new name for class "${cls.name}":`, cls.name);
+                                  if (!newName || !newName.trim() || newName.trim() === cls.name) return;
+
+                                  try {
+                                    const exists = await db.classes.where('name').equalsIgnoreCase(newName.trim()).first();
+                                    if (exists) {
+                                      alert(`A class named "${newName.trim()}" already exists.`);
+                                      return;
+                                    }
+
+                                    // Update IndexedDB class name
+                                    await db.classes.update(cls.id!, { name: newName.trim() });
+
+                                    // Update IndexedDB students referencing this class
+                                    const studentsToUpdate = await db.students.where('className').equals(cls.name).toArray();
+                                    for (const st of studentsToUpdate) {
+                                      await db.students.update(st.id!, { className: newName.trim() });
+                                    }
+
+                                    // Update IndexedDB attendance records referencing this class
+                                    const attsToUpdate = await db.attendance.where('className').equals(cls.name).toArray();
+                                    for (const att of attsToUpdate) {
+                                      await db.attendance.update(att.id!, { className: newName.trim() });
+                                    }
+
+                                    // Sync rename to MySQL
+                                    await renameClassOnCloud(cls.name, newName.trim());
+
+                                    // Update active selection state if the renamed class was selected
+                                    if (selectedClassName === cls.name) {
+                                      setSelectedClassName(newName.trim());
+                                    }
+
+                                    pullCloudUpdatesToIndexedDB();
+                                  } catch (err: any) {
+                                    alert(`Error renaming class: ${err.message}`);
+                                  }
+                                }}
+                                title="Edit Class Name"
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', color: '#2563eb', display: 'flex', alignItems: 'center' }}
+                              >
+                                <Edit2 size={18} />
+                              </button>
+
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation();

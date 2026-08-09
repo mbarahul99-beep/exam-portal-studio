@@ -132,6 +132,18 @@ export async function deleteClassFromCloud(name: string) {
   }
 }
 
+export async function renameClassOnCloud(oldName: string, newName: string) {
+  try {
+    await fetch('/api/classes/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldName, newName })
+    });
+  } catch (err) {
+    console.warn("Rename class cloud sync failed:", err);
+  }
+}
+
 export async function deleteSubmissionFromCloud(id: number) {
   try {
     await fetch(`/api/submissions/${id}`, { method: 'DELETE' });

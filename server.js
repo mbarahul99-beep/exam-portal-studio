@@ -1057,6 +1057,29 @@ app.post('/api/classes', async (req, res) => {
   }
 });
 
+// Rename Class API
+app.post('/api/classes/rename', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { oldName, newName } = req.body;
+  if (!oldName || !newName) return res.status(400).json({ error: 'Missing oldName or newName' });
+  try {
+    // 1. Check if new name already exists
+    const [existing] = await pool.query('SELECT name FROM classes WHERE name = ?', [newName]);
+    if (existing && existing.length > 0) {
+      return res.status(400).json({ error: 'A class with the new name already exists' });
+    }
+
+    // 2. Cascade rename
+    await pool.query('UPDATE classes SET name = ? WHERE name = ?', [newName, oldName]);
+    await pool.query('UPDATE students SET className = ? WHERE className = ?', [newName, oldName]);
+    await pool.query('UPDATE attendance SET className = ? WHERE className = ?', [newName, oldName]);
+
+    res.json({ success: true, message: 'Class renamed successfully in Cloud database!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Pending Registrations APIs for Student Invite Links
 app.get('/api/pending-registrations', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });

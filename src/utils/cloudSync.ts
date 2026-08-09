@@ -621,6 +621,16 @@ export async function pullCloudUpdatesToIndexedDB() {
       if (pendingRes.ok) {
         const pendingData = await pendingRes.json();
         if (Array.isArray(pendingData)) {
+          const serverIds = new Set(pendingData.map(r => r.id));
+
+          // Delete local pending registrations that are no longer pending on the server
+          const localPending = await db.pendingRegistrations.where('status').equals('pending').toArray();
+          for (const localReg of localPending) {
+            if (localReg.id && !serverIds.has(localReg.id)) {
+              await db.pendingRegistrations.delete(localReg.id);
+            }
+          }
+
           for (const reg of pendingData) {
             try {
               reg.fatherName = reg.fatherName || reg.fathername || reg.father_name;

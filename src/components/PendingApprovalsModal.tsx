@@ -35,8 +35,8 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
         whatsappNumber: reg.whatsappNumber
       });
 
-      // 2. Mark pending status as approved
-      await db.pendingRegistrations.update(reg.id, { status: 'approved' });
+      // 2. Delete pending registration locally as it is approved
+      await db.pendingRegistrations.delete(reg.id);
 
       // 3. Try syncing to Hostinger MySQL
       try {
@@ -72,7 +72,7 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
   const handleReject = async (id: number) => {
     if (!confirm("Are you sure you want to reject this registration request?")) return;
     try {
-      await db.pendingRegistrations.update(id, { status: 'rejected' });
+      await db.pendingRegistrations.delete(id);
       await fetch(`/api/pending-registrations/${id}`, { method: 'DELETE' });
     } catch (err: any) {
       alert(`Rejection error: ${err.message}`);

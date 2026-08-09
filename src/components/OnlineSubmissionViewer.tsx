@@ -127,26 +127,7 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
 
   const maxPossibleScore = exam.numQuestions * (exam.correctMarks || 4);
 
-  // Active selected question details
-  const activeItem = questionStatuses[selectedQIndex] || null;
 
-  // Active section marking rules helper
-  const activeSectionRules = useMemo(() => {
-    if (!activeItem) return null;
-    const secName = activeItem.q.sectionName || 'General Test';
-    return exam.sectionsMarking?.[secName] || {
-      correctMarks: exam.correctMarks || 4,
-      incorrectMarks: exam.incorrectMarks || -1,
-      unansweredMarks: exam.unansweredMarks || 0
-    };
-  }, [activeItem, exam]);
-
-  const activeEarnedMarks = useMemo(() => {
-    if (!activeItem || !activeSectionRules) return 0;
-    if (activeItem.status === 'skipped') return activeSectionRules.unansweredMarks || 0;
-    if (activeItem.status === 'correct') return activeSectionRules.correctMarks;
-    return activeSectionRules.incorrectMarks;
-  }, [activeItem, activeSectionRules]);
 
   return (
     <div className="submission-viewer-overlay">
@@ -732,7 +713,13 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
                       <button
                         key={item.qNum}
                         className={`grid-card-btn ${item.status} ${isActive ? 'active' : ''}`}
-                        onClick={() => setSelectedQIndex(item.qNum - 1)}
+                        onClick={() => {
+                          setSelectedQIndex(item.qNum - 1);
+                          const el = document.getElementById(`q-card-${item.qNum}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }}
                         title={`Question ${item.qNum} (${item.status.toUpperCase()})`}
                       >
                         {item.qNum}
@@ -753,92 +740,110 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
           </div>
 
           {/* Main Question View Panel */}
-          <div className="viewer-main-panel">
+          <div className="viewer-main-panel" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {loading ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#64748b' }}>
                 <div style={{ width: '40px', height: '40px', border: '4px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                 <span>Loading Question Details...</span>
               </div>
-            ) : activeItem ? (
-              <div className="active-question-card">
-                {/* Header (Section & Marks) */}
-                <div className="active-q-header">
-                  <span className="section-badge">
-                    {activeItem.q.subjectName ? `${activeItem.q.subjectName} - ${activeItem.q.sectionName}` : (activeItem.q.sectionName || 'General Test')} • Q.{activeItem.qNum}
-                  </span>
-                  
-                  <span className={`marks-earned-badge ${activeItem.status === 'correct' ? 'positive' : activeItem.status === 'incorrect' ? 'negative' : 'zero'}`}>
-                    {activeItem.status === 'correct' && `Correct (+${activeSectionRules?.correctMarks || 4} Pts)`}
-                    {activeItem.status === 'incorrect' && `Incorrect (${activeSectionRules?.incorrectMarks || -1} Pts)`}
-                    {activeItem.status === 'skipped' && `Skipped (${activeEarnedMarks >= 0 ? '+' : ''}${activeEarnedMarks} Pts)`}
-                  </span>
-                </div>
+            ) : filteredQuestions.length > 0 ? (
+              filteredQuestions.map((item) => {
+                const secRules = exam.sectionsMarking?.[item.q.sectionName || 'General Test'] || { 
+                  correctMarks: exam.correctMarks, 
+                  incorrectMarks: exam.incorrectMarks, 
+                  unansweredMarks: exam.unansweredMarks 
+                };
+                const earnedMarks = item.status === 'skipped' ? (secRules.unansweredMarks || 0) : item.status === 'correct' ? secRules.correctMarks : secRules.incorrectMarks;
 
-                {/* Question text content */}
-                <div className="active-q-body-text">
-                  <MathRenderer text={activeItem.q.questionText} />
-                </div>
+                return (
+                  <div 
+                    key={item.qNum} 
+                    id={`q-card-${item.qNum}`} 
+                    className="active-question-card"
+                    style={{
+                      borderLeft: item.status === 'correct' ? '6px solid #16a34a' : item.status === 'incorrect' ? '6px solid #dc2626' : '6px solid #64748b'
+                    }}
+                  >
+                    {/* Header (Section & Marks) */}
+                    <div className="active-q-header">
+                      <span className="section-badge">
+                        {item.q.subjectName ? `${item.q.subjectName} - ${item.q.sectionName}` : (item.q.sectionName || 'General Test')} • Q.{item.qNum}
+                      </span>
+                      
+                      <span className={`marks-earned-badge ${item.status === 'correct' ? 'positive' : item.status === 'incorrect' ? 'negative' : 'zero'}`}>
+                        {item.status === 'correct' && `Correct (+${secRules?.correctMarks || 4} Marks)`}
+                        {item.status === 'incorrect' && `Incorrect (${secRules?.incorrectMarks || -1} Marks)`}
+                        {item.status === 'skipped' && `Skipped (${earnedMarks >= 0 ? '+' : ''}${earnedMarks} Marks)`}
+                      </span>
+                    </div>
 
-                {/* Diagram if available */}
-                {activeItem.q.questionImage && (
-                  <div style={{ alignSelf: 'flex-start', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px', background: '#f8fafc', maxWidth: '100%' }}>
-                    <img src={activeItem.q.questionImage} alt={`Question ${activeItem.qNum} illustration`} style={{ maxHeight: '250px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }} />
-                  </div>
-                )}
+                    {/* Question text content */}
+                    <div className="active-q-body-text">
+                      <MathRenderer text={item.q.questionText} />
+                    </div>
 
-                {/* Option Rows */}
-                <div className="options-review-list">
-                  {activeItem.q.options.map((optText, optIdx) => {
-                    const letter = OPTIONS_LETTERS[optIdx];
-                    const isCorrectKey = letter === activeItem.correctAns;
-                    const isSelectedWrong = (letter === activeItem.studentAns) && (activeItem.studentAns !== activeItem.correctAns);
-
-                    let itemClass = '';
-                    if (isCorrectKey) itemClass = 'correct-key';
-                    else if (isSelectedWrong) itemClass = 'wrong-selected';
-
-                    return (
-                      <div key={optIdx} className={`option-review-item ${itemClass}`}>
-                        <span className="option-badge-circle">{letter}</span>
-                        <span style={{ flex: 1 }}><MathRenderer text={optText} /></span>
-                        {isCorrectKey && <Check size={18} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
-                        {isSelectedWrong && <X size={18} style={{ color: '#dc2626', marginLeft: 'auto', flexShrink: 0 }} />}
+                    {/* Diagram if available */}
+                    {item.q.questionImage && (
+                      <div style={{ alignSelf: 'flex-start', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px', background: '#f8fafc', maxWidth: '100%' }}>
+                        <img src={item.q.questionImage} alt={`Question ${item.qNum} illustration`} style={{ maxHeight: '250px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }} />
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
 
-                {/* Bottom Match Comparison Widget */}
-                <div className="match-widget-card">
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    Correct Answer: <strong style={{ color: '#16a34a', fontSize: '1rem' }}>{activeItem.correctAns}</strong>
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    Student Answer: 
-                    <strong style={{ 
-                      color: activeItem.status === 'correct' ? '#16a34a' : activeItem.status === 'incorrect' ? '#dc2626' : '#64748b',
-                      fontSize: '1rem'
-                    }}>
-                      {activeItem.studentAns || 'Skipped (No Option)'}
-                    </strong>
-                  </span>
-                </div>
+                    {/* Option Rows */}
+                    <div className="options-review-list">
+                      {item.q.options.map((optText, optIdx) => {
+                        const letter = OPTIONS_LETTERS[optIdx];
+                        const isCorrectKey = letter === item.correctAns;
+                        const isSelectedWrong = (letter === item.studentAns) && (item.studentAns !== item.correctAns);
 
-                {/* Explanation Markdown Box */}
-                {activeItem.q.explanation && (
-                  <div className="explanation-drawer-box">
-                    <div className="explanation-title">
-                      <AlertCircle size={15} /> Explanation & Solution Detail
+                        let itemClass = '';
+                        if (isCorrectKey) itemClass = 'correct-key';
+                        else if (isSelectedWrong) itemClass = 'wrong-selected';
+
+                        return (
+                          <div key={optIdx} className={`option-review-item ${itemClass}`}>
+                            <span className="option-badge-circle">{letter}</span>
+                            <span style={{ flex: 1 }}><MathRenderer text={optText} /></span>
+                            {isCorrectKey && <Check size={18} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
+                            {isSelectedWrong && <X size={18} style={{ color: '#dc2626', marginLeft: 'auto', flexShrink: 0 }} />}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div style={{ fontSize: '0.92rem', color: '#0f766e', lineHeight: 1.6 }}>
-                      <MathRenderer text={activeItem.q.explanation} />
+
+                    {/* Bottom Match Comparison Widget */}
+                    <div className="match-widget-card">
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        Correct Answer: <strong style={{ color: '#16a34a', fontSize: '1rem' }}>{item.correctAns}</strong>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        Student Answer: 
+                        <strong style={{ 
+                          color: item.status === 'correct' ? '#16a34a' : item.status === 'incorrect' ? '#dc2626' : '#64748b',
+                          fontSize: '1rem'
+                        }}>
+                          {item.studentAns || 'Skipped (No Option)'}
+                        </strong>
+                      </span>
                     </div>
+
+                    {/* Explanation Markdown Box */}
+                    {item.q.explanation && (
+                      <div className="explanation-drawer-box">
+                        <div className="explanation-title">
+                          <AlertCircle size={15} /> Explanation & Solution Detail
+                        </div>
+                        <div style={{ fontSize: '0.92rem', color: '#0f766e', lineHeight: 1.6 }}>
+                          <MathRenderer text={item.q.explanation} />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })
             ) : (
               <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                Select a question from the navigator to view details.
+                No questions match this filter.
               </div>
             )}
           </div>

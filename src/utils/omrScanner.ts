@@ -303,18 +303,23 @@ export async function scanOMRSheet(
       const isSolid = solidity >= 0.65;
 
       if (isCorrectSize && isSquare && isSolid) {
-        const M = cv.moments(cnt);
         let center;
-        if (M.m00 !== 0) {
-          center = {
-            x: M.m10 / M.m00,
-            y: M.m01 / M.m00
-          };
-        } else {
-          center = {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2
-          };
+        try {
+          const pts = cnt.data32S;
+          if (pts && pts.length > 0) {
+            let sumX = 0;
+            let sumY = 0;
+            const len = pts.length;
+            for (let idx = 0; idx < len; idx += 2) {
+              sumX += pts[idx];
+              sumY += pts[idx + 1];
+            }
+            center = { x: sumX / (len / 2), y: sumY / (len / 2) };
+          } else {
+            center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+          }
+        } catch {
+          center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
         }
         candidates.push({ center, area, rect });
       }
@@ -346,28 +351,28 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                // Validate that the areas of the 4 markers are similar
-                const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
-                const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                if (minArea === 0 || maxArea / minArea > 1.8) continue;
+                 // Validate that the areas of the 4 markers are similar
+                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
+                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
+                 if (minArea === 0 || maxArea / minArea > 1.45) continue;
 
-                // Side lengths
-                const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
-                const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
-                const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
-                const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
+                 // Side lengths
+                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
+                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
+                 const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
+                 const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
 
-                const avgW = (wTop + wBot) / 2;
-                const avgH = (hLeft + hRight) / 2;
+                 const avgW = (wTop + wBot) / 2;
+                 const avgH = (hLeft + hRight) / 2;
 
-                if (avgW === 0) continue;
-                const ratio = avgH / avgW;
+                 if (avgW === 0) continue;
+                 const ratio = avgH / avgW;
 
-                // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
-                const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
-                const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
+                 // Validate A4-like anchor ratio (~1.41 portrait or ~0.71 landscape) and parallelism of opposite sides
+                 const isRatioValid = (ratio >= 0.60 && ratio <= 0.85) || (ratio >= 1.18 && ratio <= 1.62);
+                 const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.22;
+                 const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.22;
+                 const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
                 // Strict constraints:
                 // 1. Minimum sheet size check: detected quad must cover at least 15% of the page
@@ -436,18 +441,23 @@ export async function scanOMRSheet(
         const isSolid = solidity >= 0.65;
 
         if (isCorrectSize && isSquare && isSolid) {
-          const M = cv.moments(cnt);
           let center;
-          if (M.m00 !== 0) {
-            center = {
-              x: M.m10 / M.m00,
-              y: M.m01 / M.m00
-            };
-          } else {
-            center = {
-              x: rect.x + rect.width / 2,
-              y: rect.y + rect.height / 2
-            };
+          try {
+            const pts = cnt.data32S;
+            if (pts && pts.length > 0) {
+              let sumX = 0;
+              let sumY = 0;
+              const len = pts.length;
+              for (let idx = 0; idx < len; idx += 2) {
+                sumX += pts[idx];
+                sumY += pts[idx + 1];
+              }
+              center = { x: sumX / (len / 2), y: sumY / (len / 2) };
+            } else {
+              center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+            }
+          } catch {
+            center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
           }
           candidates.push({ center, area, rect });
         }

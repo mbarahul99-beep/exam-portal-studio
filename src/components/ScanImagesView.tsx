@@ -138,6 +138,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const isScanningRef = useRef<boolean>(false);
   const stableFramesRef = useRef<number>(0);
   const prevCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
+  const cameraStartTimeRef = useRef<number>(0);
 
   // Registered students in this exam's class limit validation
   const [lastScanOverlay, setLastScanOverlay] = useState<{ 
@@ -346,17 +347,23 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             if (isMoving) {
               stableFramesRef.current = 0;
             } else if (!isScanningRef.current) {
-              stableFramesRef.current += 1;
-
-              // Auto-capture after 3 consecutive stable frames (~50ms) for instant snappy scanning
-              if (stableFramesRef.current >= 3) {
+              // Ignore auto-capture during the first 1.2 seconds of camera stream to allow exposure/focus stabilization
+              const streamAge = Date.now() - cameraStartTimeRef.current;
+              if (streamAge < 1200) {
                 stableFramesRef.current = 0;
-                isScanningRef.current = true;
-                setIsScanning(true);
-                // Call capture asynchronously
-                setTimeout(() => {
-                  captureCameraPhoto();
-                }, 0);
+              } else {
+                stableFramesRef.current += 1;
+
+                // Auto-capture after 3 consecutive stable frames (~50ms) for instant snappy scanning
+                if (stableFramesRef.current >= 3) {
+                  stableFramesRef.current = 0;
+                  isScanningRef.current = true;
+                  setIsScanning(true);
+                  // Call capture asynchronously
+                  setTimeout(() => {
+                    captureCameraPhoto();
+                  }, 0);
+                }
               }
             } else {
               stableFramesRef.current = 0;
@@ -445,6 +452,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
+        cameraStartTimeRef.current = Date.now();
         
         // Start the frame loop
         if (analysisRequestRef.current) {

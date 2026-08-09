@@ -574,7 +574,7 @@ export async function scanOMRSheet(
     let bookletSet = 'A';
 
     // 5.8. Dynamic White Level Auto-Calibration
-    // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting
+    // Samples the brightest bubble across the first 30 questions and all roll number bubbles to detect the background paper brightness under current lighting
     const samples: number[] = [];
     const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
     for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
@@ -596,8 +596,19 @@ export async function scanOMRSheet(
       }
       if (maxVal > 0) samples.push(maxVal);
     }
+
+    // Add Roll No bubbles to the samples
+    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+      const x = sidConf.xStart + colIdx * sidConf.xStep;
+      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+        if (val > 0) samples.push(val);
+      }
+    }
+
     samples.sort((a, b) => a - b);
-    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
+    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
     const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average

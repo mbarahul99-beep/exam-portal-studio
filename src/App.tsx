@@ -382,6 +382,7 @@ export default function App() {
   const [drawerEmail, setDrawerEmail] = useState('');
   const [drawerPhone, setDrawerPhone] = useState('');
   const [drawerWhatsApp, setDrawerWhatsApp] = useState('');
+  const [drawerClassName, setDrawerClassName] = useState('');
   const [isDrawerSameWhatsApp, setIsDrawerSameWhatsApp] = useState(true);
   const [studentMenuOpenId, setStudentMenuOpenId] = useState<number | null>(null);
 
@@ -689,7 +690,7 @@ export default function App() {
 
   const handleDrawerAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClassName || !drawerRollNo || !drawerName) return;
+    if (!drawerClassName || !drawerRollNo || !drawerName) return;
 
     if (drawerRollNo.length < 1 || drawerRollNo.length > 15 || isNaN(Number(drawerRollNo))) {
       alert('Student Roll ID must be a numeric value up to 15 digits.');
@@ -697,7 +698,7 @@ export default function App() {
     }
 
     try {
-      const targetClass = editingStudentId ? (await db.students.get(editingStudentId))?.className : selectedClassName;
+      const targetClass = drawerClassName;
       const exists = await db.students
         .where('[studentNum+className]')
         .equals([drawerRollNo, targetClass || ''])
@@ -715,6 +716,7 @@ export default function App() {
           name: drawerName.trim(),
           fatherName: drawerFatherName.trim() || undefined,
           studentNum: drawerRollNo,
+          className: drawerClassName,
           email: drawerEmail.trim() || undefined,
           phone: drawerPhone.trim() || undefined,
           whatsappNumber: waClean
@@ -725,7 +727,7 @@ export default function App() {
           name: drawerName.trim(),
           fatherName: drawerFatherName.trim() || undefined,
           studentNum: drawerRollNo,
-          className: selectedClassName,
+          className: drawerClassName,
           email: drawerEmail.trim() || undefined,
           phone: drawerPhone.trim() || undefined,
           whatsappNumber: waClean
@@ -2347,6 +2349,7 @@ export default function App() {
                         setDrawerEmail('');
                         setDrawerPhone('');
                         setDrawerWhatsApp('');
+                        setDrawerClassName(selectedClassName || '');
                         setShowAddStudentDrawer(true);
                       }}
                       style={{
@@ -2481,6 +2484,7 @@ export default function App() {
                                       setDrawerEmail(s.email || '');
                                       setDrawerPhone(s.phone || '');
                                       setDrawerWhatsApp(s.whatsappNumber || '');
+                                      setDrawerClassName(s.className);
                                       setShowAddStudentDrawer(true);
                                     }}
                                     style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, cursor: 'pointer' }}
@@ -2572,6 +2576,7 @@ export default function App() {
                                               setDrawerEmail(s.email || '');
                                               setDrawerPhone(s.phone || '');
                                               setDrawerWhatsApp(s.whatsappNumber || '');
+                                              setDrawerClassName(s.className);
                                               setShowAddStudentDrawer(true);
                                             }}
                                             style={{
@@ -3703,11 +3708,11 @@ export default function App() {
 
       {/* ADD STUDENT SLIDE-OUT DRAWER (Screenshot 2) */}
       {showAddStudentDrawer && (
-        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
+        <div className="drawer-backdrop" onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); setDrawerClassName(''); }}>
           <div className="drawer-panel animate-slide-left" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '450px', background: '#ffffff', height: '100%', position: 'fixed', right: 0, top: 0, zIndex: 1002, boxShadow: '-5px 0 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
             <header style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>{editingStudentId ? 'Edit student' : 'Add student'}</h3>
-              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>
+              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerFatherName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); setDrawerClassName(''); }}>
                 <X size={20} />
               </button>
             </header>
@@ -3715,12 +3720,26 @@ export default function App() {
             <form onSubmit={handleDrawerAddStudent} style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto' }}>
               <div className="form-group">
                 <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Class Name</label>
-                <input 
-                  type="text" 
-                  value={selectedClassName || ''} 
-                  disabled 
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#f7fafc', cursor: 'not-allowed', color: '#4a5568', fontWeight: '600', fontSize: '16px' }}
-                />
+                <select 
+                  value={drawerClassName} 
+                  onChange={(e) => setDrawerClassName(e.target.value)}
+                  style={{ 
+                    width: '100%', 
+                    padding: '10px 12px', 
+                    borderRadius: '6px', 
+                    border: '1px solid var(--border-color)', 
+                    background: '#ffffff', 
+                    color: '#0f172a', 
+                    fontWeight: '600', 
+                    fontSize: '16px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" disabled>Select Class</option>
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.name}>{cls.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -3813,7 +3832,7 @@ export default function App() {
 
               {/* Drawer actions at bottom */}
               <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); }}>Cancel</button>
+                <button type="button" className="btn-secondary" style={{ padding: '10px 20px', borderRadius: '6px' }} onClick={() => { setShowAddStudentDrawer(false); setEditingStudentId(null); setDrawerRollNo(''); setDrawerName(''); setDrawerEmail(''); setDrawerPhone(''); setDrawerWhatsApp(''); setDrawerClassName(''); }}>Cancel</button>
                 <button type="submit" className="btn-primary" style={{ padding: '10px 20px', borderRadius: '6px' }}>Save</button>
               </div>
             </form>

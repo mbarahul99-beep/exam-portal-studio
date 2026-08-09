@@ -1413,11 +1413,11 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                               <div style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: 600, lineHeight: 1.5 }}>
                                 <MathRenderer text={qObj.questionText} />
                               </div>
-                            ) : (
+                            ) : activeAnalysisSub.attemptType === 'Online' ? (
                               <div style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
                                 Question text is not registered. Grading details are shown below.
                               </div>
-                            )}
+                            ) : null}
 
                             {/* Diagram if available */}
                             {qObj && qObj.questionImage && (

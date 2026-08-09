@@ -731,10 +731,9 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-// Upsert Student API
 app.post('/api/students', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
-  const { studentNum, name, fatherName, fathername, father_name, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
+  const { id, studentNum, name, fatherName, fathername, father_name, className, email, phone, whatsappNumber, faceDescriptor, facePhoto } = req.body;
   const resolvedFatherName = fatherName || fathername || father_name || null;
   try {
     if (className) {
@@ -743,21 +742,70 @@ app.post('/api/students', async (req, res) => {
       } catch {}
     }
     const faceJson = faceDescriptor ? (typeof faceDescriptor === 'object' ? JSON.stringify(faceDescriptor) : faceDescriptor) : null;
-    const query = `
-      INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        name = VALUES(name),
-        fatherName = VALUES(fatherName),
-        className = VALUES(className),
-        email = VALUES(email),
-        phone = VALUES(phone),
-        whatsappNumber = VALUES(whatsappNumber),
-        faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor),
-        facePhoto = COALESCE(VALUES(facePhoto), facePhoto);
-    `;
-    const [result] = await pool.query(query, [studentNum, name, resolvedFatherName, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null]);
-    res.json({ success: true, id: result.insertId || result.id });
+    
+    let query = '';
+    let params = [];
+    let existsOnServer = false;
+
+    if (id) {
+      const [rows] = await pool.query('SELECT id FROM students WHERE id = ?', [id]);
+      if (rows && rows.length > 0) {
+        existsOnServer = true;
+      }
+    }
+
+    if (existsOnServer) {
+      query = `
+        UPDATE students SET 
+          studentNum = ?,
+          name = ?,
+          fatherName = ?,
+          className = ?,
+          email = ?,
+          phone = ?,
+          whatsappNumber = ?,
+          faceDescriptor = COALESCE(?, faceDescriptor),
+          facePhoto = COALESCE(?, facePhoto)
+        WHERE id = ?
+      `;
+      params = [studentNum, name, resolvedFatherName, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null, id];
+    } else {
+      if (id) {
+        query = `
+          INSERT INTO students (id, studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            fatherName = VALUES(fatherName),
+            className = VALUES(className),
+            email = VALUES(email),
+            phone = VALUES(phone),
+            whatsappNumber = VALUES(whatsappNumber),
+            faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor),
+            facePhoto = COALESCE(VALUES(facePhoto), facePhoto);
+        `;
+        params = [id, studentNum, name, resolvedFatherName, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null];
+      } else {
+        query = `
+          INSERT INTO students (studentNum, name, fatherName, className, email, phone, whatsappNumber, faceDescriptor, facePhoto)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            fatherName = VALUES(fatherName),
+            className = VALUES(className),
+            email = VALUES(email),
+            phone = VALUES(phone),
+            whatsappNumber = VALUES(whatsappNumber),
+            faceDescriptor = COALESCE(VALUES(faceDescriptor), faceDescriptor),
+            facePhoto = COALESCE(VALUES(facePhoto), facePhoto);
+        `;
+        params = [studentNum, name, resolvedFatherName, className, email || null, phone || null, whatsappNumber || null, faceJson, facePhoto || null];
+      }
+    }
+
+    const [result] = await pool.query(query, params);
+    const savedId = existsOnServer ? id : (id || result.insertId);
+    res.json({ success: true, id: savedId });
   } catch (err) {
     console.error("Student save error:", err);
     res.status(500).json({ error: err.message });

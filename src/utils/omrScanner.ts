@@ -446,16 +446,11 @@ export async function scanOMRSheet(
     }
 
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      throw new Error("Could not locate the OMR sheet. Please make sure the entire sheet (with all 4 black square corner anchors) is flat and fully visible inside the image.");
+      throw new Error("Failed to locate 4 corner anchors. Align sheet inside frame.");
     }
 
-    // 5. Automatic Orientation Auto-Correction (Handles 0°, 90°, 180°, 270° horizontal/vertical photos)
-    const basePts = [
-      tlMarker.center,
-      trMarker.center,
-      brMarker.center,
-      blMarker.center
-    ];
+    // 5. Warp Perspective to align standard grid
+    const basePts = [tlMarker, trMarker, brMarker, blMarker];
 
     // 4 Possible Rotations (0°, 90°, 180°, 270°)
     const candidateRotations = [
@@ -480,10 +475,10 @@ export async function scanOMRSheet(
     for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
       const rot = candidateRotations[rotIdx];
       const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        rot[0].x, rot[0].y,
-        rot[1].x, rot[1].y,
-        rot[2].x, rot[2].y,
-        rot[3].x, rot[3].y
+        rot[0].center.x, rot[0].center.y,
+        rot[1].center.x, rot[1].center.y,
+        rot[2].center.x, rot[2].center.y,
+        rot[3].center.x, rot[3].center.y
       ]);
 
       const M_temp = cv.getPerspectiveTransform(srcPts, dstPts);
@@ -532,12 +527,12 @@ export async function scanOMRSheet(
     cv.imshow(debugWarpedCanvas, warped);
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
-    // Scans range of vertical shifts from -25px to +25px to find the alignment that maximizes bubble darkness contrast
-    let bestDy = -3; // Default systematic vertical offset fallback (3px upward shift)
+    // Scans range of vertical shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
+    let bestDy = 0;
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -25; dy <= 25; dy += 1) {
+    for (let dy = -8; dy <= 8; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -546,7 +541,7 @@ export async function scanOMRSheet(
         let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, dy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
           if (avgGray < colMin) {
             colMin = avgGray;
           }
@@ -570,13 +565,63 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
+    // 5.3. Auto-Calibrate Horizontal Scan Offset
+    // Scans range of horizontal shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
+    let bestDx = 0;
+    let minAvgIntensityDx = 256;
+    for (let dx = -8; dx <= 8; dx += 1) {
+      let totalIntensity = 0;
+      let filledColumnsCount = 0;
+      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+        const x = sidConf.xStart + colIdx * sidConf.xStep + dx;
+        let colMin = 256;
+        let colMax = -1;
+        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+          if (avgGray < colMin) {
+            colMin = avgGray;
+          }
+          if (avgGray > colMax) {
+            colMax = avgGray;
+          }
+        }
+        if (colMax - colMin > 50) {
+          totalIntensity += colMin;
+          filledColumnsCount++;
+        }
+      }
+      if (filledColumnsCount > 0) {
+        const avg = totalIntensity / filledColumnsCount;
+        if (avg < minAvgIntensityDx) {
+          minAvgIntensityDx = avg;
+          bestDx = dx;
+        }
+      }
+    }
+    console.log("[OMR Scanner] Calibrated horizontal offset:", bestDx, "px");
+
     // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
 
+    // Load custom OMR layout settings from storage to match printed sheet configuration
+    let customCols: number | undefined = undefined;
+    let layoutDensity: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto';
+    try {
+      const storedJson = window.localStorage.getItem('omr_custom_settings');
+      if (storedJson) {
+        const parsed = JSON.parse(storedJson);
+        if (parsed.customCols !== undefined) customCols = parsed.customCols;
+        if (parsed.density) layoutDensity = parsed.density;
+      }
+    } catch (e) {
+      console.warn("Failed loading custom OMR settings inside scanner:", e);
+    }
+
     // 5.8. Dynamic White Level Auto-Calibration
-    // Samples the brightest bubble across the first 30 questions to detect the background paper brightness under current lighting
+    // Samples the brightest bubble across the first 30 questions and all roll number bubbles to detect the background paper brightness under current lighting
     const samples: number[] = [];
-    const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
+    const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
     for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
       let colConf = null;
       for (const col of qConf.columns) {
@@ -590,47 +635,54 @@ export async function scanOMRSheet(
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       let maxVal = -1;
       for (let o = 0; o < 4; o++) {
-        const x = colConf.xOptions[o];
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
+        const x = colConf.xOptions[o] + bestDx;
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
         if (val > maxVal) maxVal = val;
       }
       if (maxVal > 0) samples.push(maxVal);
     }
-    samples.sort((a, b) => a - b);
-    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.7)] : 220;
-    console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
-    const fillDiffThreshold = 32; // Bubble must be at least 32 gray levels darker than local average
-    const maxAbsoluteFillVal = whitePaperLevel - 40; // Bubble must be at least 40 gray levels darker than page white paper
+    // Add Roll No bubbles to the samples
+    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
+      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+        const val = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+        if (val > 0) samples.push(val);
+      }
+    }
+
+    samples.sort((a, b) => a - b);
+    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
+    console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep;
+      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
       const intensities: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        // Inner radius 3.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
+        // Inner radius 5.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
         intensities.push(avgGray);
       }
 
-      // Calculate column average intensity
-      let colSum = 0;
-      for (let r = 0; r < 10; r++) {
-        colSum += intensities[r];
-      }
-      const colAvg = colSum / 10;
+      // Calculate column statistics
+      const colMax = Math.max(...intensities);
+      const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
 
-      // Find all rows in this column that are significantly darker than the column average
+      // Find all rows in this column that are significantly darker than the column average and column max
       const filledRows: number[] = [];
-      const colDiffThreshold = Math.max(fillDiffThreshold + 5, colAvg * 0.18); // Adaptive threshold for roll numbers
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        if (colAvg - val > colDiffThreshold && val < maxAbsoluteFillVal) {
+        const isLocalContrastValid = colMax - val > 42;
+        const isAvgContrastValid = colAvg - val > 26;
+        const isAbsoluteValid = val < whitePaperLevel - 48;
+        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledRows.push(r);
         }
       }
@@ -676,25 +728,25 @@ export async function scanOMRSheet(
       
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
-        // Inner radius 2.5px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
+        const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
+        // Inner radius 4.0px to cover the bubble interior (immune to outline shift)
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
         intensities.push(avgGray);
       }
 
-      // Calculate row average intensity
-      let rowSum = 0;
-      for (let o = 0; o < numOptions; o++) {
-        rowSum += intensities[o];
-      }
+      // Calculate row statistics
+      const rowMax = Math.max(...intensities);
+      const rowSum = intensities.reduce((sum, v) => sum + v, 0);
       const rowAvg = rowSum / numOptions;
 
-      // Detect all filled options for this question using row-average contrast
+      // Detect all filled options for this question using local, average, and absolute thresholds
       const filledOptions: number[] = [];
-      const rowDiffThreshold = Math.max(fillDiffThreshold, rowAvg * 0.15); // Adaptive threshold for questions
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteFillVal) {
+        const isLocalContrastValid = rowMax - val > 42;
+        const isAvgContrastValid = rowAvg - val > 26;
+        const isAbsoluteValid = val < whitePaperLevel - 48;
+        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledOptions.push(o);
         }
       }

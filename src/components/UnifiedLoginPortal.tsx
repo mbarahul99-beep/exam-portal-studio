@@ -6,7 +6,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967
 import { db } from '../db';
 
 interface UnifiedLoginPortalProps {
-  onLoginSuccess: (role: 'admin' | 'teacher' | 'student', studentId?: number, teacherId?: number) => void;
+  onLoginSuccess: (role: 'admin' | 'teacher' | 'student', studentId?: number, teacherId?: number, email?: string, isOwner?: boolean, idToken?: string) => void;
 }
 
 export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginSuccess }) => {
@@ -110,9 +110,9 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       }
 
       if (data.role === 'admin') {
-        onLoginSuccess('admin');
+        onLoginSuccess('admin', undefined, undefined, data.user?.email, data.user?.isOwner, idToken);
       } else if (data.role === 'teacher') {
-        onLoginSuccess('teacher', undefined, data.teacher?.id);
+        onLoginSuccess('teacher', undefined, data.teacher?.id, data.teacher?.email, false, idToken);
       }
     } catch (err: any) {
       alert(err.message);

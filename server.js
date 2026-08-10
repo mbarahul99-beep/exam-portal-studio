@@ -485,6 +485,45 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+app.post('/api/settings/owner', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { idToken, clientId, settings } = req.body;
+  if (!idToken) return res.status(400).json({ error: 'Missing Google ID Token' });
+  if (!settings) return res.status(400).json({ error: 'Missing settings payload' });
+
+  try {
+    const { OAuth2Client } = await import('google-auth-library');
+    const googleClient = new OAuth2Client();
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: clientId
+    });
+    
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ error: 'Invalid Google token payload' });
+    }
+    
+    const email = payload.email.toLowerCase();
+    if (email !== 'rahulpandeyji392@gmail.com') {
+      return res.status(403).json({ error: 'Access Denied: Only the application owner/developer can access these controls.' });
+    }
+
+    for (const key of Object.keys(settings)) {
+      const val = settings[key];
+      await pool.query(
+        'INSERT INTO app_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
+        [key, val, val]
+      );
+    }
+    res.json({ success: true, message: 'Developer settings updated successfully!' });
+  } catch (err) {
+    console.error("Owner Settings Action Failed:", err);
+    res.status(500).json({ error: `Action failed: ${err.message}` });
+  }
+});
+
 // QUESTION BANK API ROUTES
 app.get('/api/question-banks', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
@@ -689,8 +728,9 @@ app.post('/api/auth/google', async (req, res) => {
     }
 
     const allAdminEmails = new Set([...adminGoogleEmailsEnv, ...adminGoogleEmailsDb]);
+    const isOwner = email === 'rahulpandeyji392@gmail.com';
 
-    if (allAdminEmails.has(email)) {
+    if (isOwner || allAdminEmails.has(email)) {
       return res.json({
         success: true,
         role: 'admin',
@@ -698,7 +738,8 @@ app.post('/api/auth/google', async (req, res) => {
           id: 'admin',
           userId: 'admin',
           name: name,
-          email: email
+          email: email,
+          isOwner: isOwner
         }
       });
     }

@@ -101,7 +101,7 @@ class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, t
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'general-settings'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'general-settings' | 'system-controls'>(
     () => {
       const stored = localStorage.getItem('appex_active_tab');
       return (stored && stored !== 'student-portal-setup') ? (stored as any) : 'dashboard';
@@ -131,6 +131,17 @@ export default function App() {
       return val ? Number(val) : null;
     }
   );
+
+  const [sessionEmail, setSessionEmail] = useState<string | null>(
+    () => localStorage.getItem('appex_session_email') || null
+  );
+  const [sessionIsOwner, setSessionIsOwner] = useState<boolean>(
+    () => localStorage.getItem('appex_session_is_owner') === 'true'
+  );
+  const [sessionIdToken, setSessionIdToken] = useState<string | null>(
+    () => localStorage.getItem('appex_session_id_token') || null
+  );
+  const [pdfImportEnabled, setPdfImportEnabled] = useState<boolean>(true);
 
   const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
@@ -169,10 +180,16 @@ export default function App() {
     localStorage.removeItem('appex_session_role');
     localStorage.removeItem('appex_session_student_id');
     localStorage.removeItem('appex_session_teacher_id');
+    localStorage.removeItem('appex_session_email');
+    localStorage.removeItem('appex_session_is_owner');
+    localStorage.removeItem('appex_session_id_token');
     localStorage.removeItem('appex_active_tab');
     setSessionRole(null);
     setSessionStudentId(null);
     setSessionTeacherId(null);
+    setSessionEmail(null);
+    setSessionIsOwner(false);
+    setSessionIdToken(null);
     setActiveTab('dashboard');
   };
 
@@ -392,6 +409,24 @@ export default function App() {
   const [templateName, setTemplateName] = useState('exam_report_notification');
   const [templateType, setTemplateType] = useState<'body_link' | 'button_link'>('body_link');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
+
+  // Load global feature flags from Cloud MySQL on mount
+  useEffect(() => {
+    const fetchFeatureFlags = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const settings = await res.json();
+          if (settings.pdfImportEnabled !== undefined) {
+            setPdfImportEnabled(settings.pdfImportEnabled === 'true');
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load feature flags from Cloud:", err);
+      }
+    };
+    fetchFeatureFlags();
+  }, []);
 
   // Load WhatsApp settings from IndexedDB (with Cloud MySQL fallback)
   useEffect(() => {
@@ -1784,13 +1819,28 @@ export default function App() {
   if (sessionRole === null) {
     return (
       <UnifiedLoginPortal 
-        onLoginSuccess={(role, studId, tId) => {
+        onLoginSuccess={(role, studId, tId, email, isOwner, idToken) => {
           localStorage.setItem('appex_session_role', role);
           if (studId) {
             localStorage.setItem('appex_session_student_id', String(studId));
           }
           if (tId) {
             localStorage.setItem('appex_session_teacher_id', String(tId));
+          }
+          if (email) {
+            localStorage.setItem('appex_session_email', email);
+            setSessionEmail(email);
+          }
+          if (isOwner) {
+            localStorage.setItem('appex_session_is_owner', 'true');
+            setSessionIsOwner(true);
+          } else {
+            localStorage.setItem('appex_session_is_owner', 'false');
+            setSessionIsOwner(false);
+          }
+          if (idToken) {
+            localStorage.setItem('appex_session_id_token', idToken);
+            setSessionIdToken(idToken);
           }
           setSessionRole(role);
           setSessionStudentId(studId || null);
@@ -1976,7 +2026,18 @@ export default function App() {
               <Settings size={18} /> General Settings
             </button>
 
-
+            {sessionIsOwner && (
+              <button 
+                className={`nav-item ${activeTab === 'system-controls' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('system-controls');
+                  setMobileMenuOpen(false);
+                }}
+                style={{ background: activeTab === 'system-controls' ? 'rgba(59, 130, 246, 0.08)' : 'transparent', color: activeTab === 'system-controls' ? '#2563eb' : 'inherit' }}
+              >
+                <Sliders size={18} color={activeTab === 'system-controls' ? '#2563eb' : 'currentColor'} /> System Controls
+              </button>
+            )}
 
             <button 
               className="nav-item"
@@ -3626,7 +3687,7 @@ export default function App() {
           )}
 
           {activeTab === 'questions-bank' && (
-            <QuestionBankManager onBack={() => setActiveTab('dashboard')} />
+            <QuestionBankManager onBack={() => setActiveTab('dashboard')} pdfImportEnabled={pdfImportEnabled} />
           )}
 
           {activeTab === 'omr-settings' && (
@@ -3635,6 +3696,127 @@ export default function App() {
 
           {activeTab === 'general-settings' && (
             <BrandingSettingsView />
+          )}
+
+          {activeTab === 'system-controls' && sessionIsOwner && (
+            <div className="tab-pane animate-fade-in" style={{ padding: '24px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+              <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <div>
+                    <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>System Controls</h1>
+                    <p style={{ color: '#64748b', marginTop: '4px' }}>Application developer & feature flag configurations</p>
+                  </div>
+                </div>
+
+                {/* Developer Info Card */}
+                <div className="glass-card" style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Shield size={24} color="#2563eb" />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 700, color: '#1e293b' }}>{sessionEmail}</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', background: '#dbeafe', color: '#1e40af' }}>Developer & Owner</span>
+                      </div>
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0 0' }}>Status: Cloud MySQL Connected</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feature Controls List */}
+                <div className="glass-card" style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '16px' }}>Feature Toggles</h2>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ flex: 1, paddingRight: '24px' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>AI PDF Question Import Tab</div>
+                      <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0 }}>
+                        Enable or disable the "Import PDF (AI)" sub-tab under Question Banks for all other administrators and teachers.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: 600, 
+                        padding: '4px 10px', 
+                        borderRadius: '20px', 
+                        background: pdfImportEnabled ? '#ecfdf5' : '#fef2f2', 
+                        color: pdfImportEnabled ? '#047857' : '#b91c1c' 
+                      }}>
+                        {pdfImportEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                      <label style={{ position: 'relative', display: 'inline-block', width: '52px', height: '28px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={pdfImportEnabled}
+                          onChange={async (e) => {
+                            const newStatus = e.target.checked;
+                            setPdfImportEnabled(newStatus);
+                            
+                            // Send sync to server securely with Google idToken
+                            try {
+                              const res = await fetch('/api/settings/owner', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  idToken: sessionIdToken,
+                                  clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com',
+                                  settings: {
+                                    pdfImportEnabled: String(newStatus)
+                                  }
+                                })
+                              });
+                              if (!res.ok) {
+                                const errData = await res.json();
+                                throw new Error(errData.error || 'Failed to update owner settings');
+                              }
+                              // Success toast or alert
+                              const toast = document.createElement('div');
+                              toast.innerText = `Settings successfully saved to Hostinger MySQL Database!`;
+                              toast.style.position = 'fixed';
+                              toast.style.bottom = '24px';
+                              toast.style.right = '24px';
+                              toast.style.background = '#047857';
+                              toast.style.color = '#fff';
+                              toast.style.padding = '12px 24px';
+                              toast.style.borderRadius = '8px';
+                              toast.style.zIndex = '9999';
+                              toast.style.fontFamily = 'sans-serif';
+                              toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                              document.body.appendChild(toast);
+                              setTimeout(() => toast.remove(), 3000);
+                            } catch (err: any) {
+                              setPdfImportEnabled(!newStatus); // Revert switch on failure
+                              alert(`Failed to save settings: ${err.message}`);
+                            }
+                          }}
+                          style={{ opacity: 0, width: 0, height: 0 }} 
+                        />
+                        <span style={{
+                          position: 'absolute',
+                          top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: pdfImportEnabled ? '#3b82f6' : '#cbd5e1',
+                          transition: '.3s',
+                          borderRadius: '34px'
+                        }}>
+                          <span style={{
+                            position: 'absolute',
+                            content: '""',
+                            height: '20px', width: '20px',
+                            left: pdfImportEnabled ? '28px' : '4px',
+                            bottom: '4px',
+                            backgroundColor: 'white',
+                            transition: '.3s',
+                            borderRadius: '50%'
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </main>
 

@@ -28,6 +28,7 @@ import {
 
 interface QuestionBankManagerProps {
   onBack?: () => void;
+  pdfImportEnabled?: boolean;
 }
 
 function cropCanvasRegion(
@@ -69,7 +70,7 @@ function cropCanvasRegion(
   }
 }
 
-export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
+export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack, pdfImportEnabled = true }) => {
   // Navigation states
   const [selectedBank, setSelectedBank] = useState<QuestionBank | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -81,6 +82,12 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
   // Selected Bank management sub-tab states
   const [subTab, setSubTab] = useState<'browse' | 'add' | 'csv' | 'pdf'>('browse');
+
+  React.useEffect(() => {
+    if (!pdfImportEnabled && subTab === 'pdf') {
+      setSubTab('browse');
+    }
+  }, [pdfImportEnabled, subTab]);
 
   // Question editing states
   const [editingQuestion, setEditingQuestion] = useState<BankQuestion | null>(null);
@@ -768,13 +775,25 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       {!selectedBank ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', textAlign: 'left' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Database className="text-indigo" size={24} /> Question Banks
-              </h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Select a Question Bank to add/edit questions or click the button to create a new one.
-              </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {onBack && (
+                <button 
+                  onClick={onBack}
+                  className="btn-outlined" 
+                  style={{ padding: '6px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+              )}
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Database className="text-indigo" size={24} /> Question Banks
+                </h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Select a Question Bank to add/edit questions or click the button to create a new one.
+                </p>
+              </div>
             </div>
             
             <button 
@@ -890,12 +909,14 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               >
                 Import CSV
               </button>
-              <button 
-                onClick={() => setSubTab('pdf')}
-                style={{ padding: '6px 14px', border: 'none', background: subTab === 'pdf' ? 'var(--primary)' : 'transparent', color: subTab === 'pdf' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                Import PDF (AI)
-              </button>
+              {pdfImportEnabled && (
+                <button 
+                  onClick={() => setSubTab('pdf')}
+                  style={{ padding: '6px 14px', border: 'none', background: subTab === 'pdf' ? 'var(--primary)' : 'transparent', color: subTab === 'pdf' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Import PDF (AI)
+                </button>
+              )}
             </div>
           </div>
 

@@ -30,34 +30,16 @@ interface QuestionBankManagerProps {
   onBack?: () => void;
 }
 
-async function cropPDFRegion(
-  pdfDoc: any,
-  pageNumber: number,
+function cropCanvasRegion(
+  canvas: HTMLCanvasElement,
   ymin: number,
   xmin: number,
   ymax: number,
   xmax: number
-): Promise<string | null> {
+): string | null {
   try {
-    if (pageNumber < 1 || pageNumber > pdfDoc.numPages) return null;
-    const page = await pdfDoc.getPage(pageNumber);
-    const scale = 2.0;
-    const viewport = page.getViewport({ scale });
-
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    await page.render({
-      canvasContext: context,
-      viewport: viewport
-    }).promise;
-
-    const pageW = viewport.width;
-    const pageH = viewport.height;
+    const pageW = canvas.width;
+    const pageH = canvas.height;
 
     let x = (xmin / 1000) * pageW;
     let y = (ymin / 1000) * pageH;
@@ -82,7 +64,7 @@ async function cropPDFRegion(
 
     return cropCanvas.toDataURL('image/png');
   } catch (err) {
-    console.error("cropPDFRegion error:", err);
+    console.error("cropCanvasRegion error:", err);
     return null;
   }
 }
@@ -111,6 +93,10 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
   const [selectedParsedIndexes, setSelectedParsedIndexes] = useState<Record<number, boolean>>({});
+  const [pdfPageCount, setPdfPageCount] = useState<number>(0);
+  const [pdfFromPage, setPdfFromPage] = useState<number>(2);
+  const [pdfToPage, setPdfToPage] = useState<number>(3);
+  const [pdfFileObject, setPdfFileObject] = useState<File | null>(null);
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -332,7 +318,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
     }
   };
 
-  const handlePdfFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -342,8 +328,46 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
       return;
     }
 
+    setPdfParseError(null);
+    setPdfParseStatus("Loading PDF document to calculate pages...");
+    setIsParsingPdf(true);
+    setParsedQuestions([]);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const typedArray = new Uint8Array(arrayBuffer);
+      const pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
+      
+      setPdfPageCount(pdfDoc.numPages);
+      setPdfFileObject(file);
+      
+      // Default to extract pages 2 to 3 (or 1 to 1 if only 1 page exists)
+      setPdfFromPage(pdfDoc.numPages >= 2 ? 2 : 1);
+      setPdfToPage(pdfDoc.numPages >= 3 ? 3 : pdfDoc.numPages);
+      
+      setPdfParseStatus(`PDF "${file.name}" loaded successfully (${pdfDoc.numPages} pages). Select range below to extract.`);
+    } catch (err: any) {
+      console.error("PDF upload error:", err);
+      setPdfParseError(err.message || "Failed to load PDF file.");
+    } finally {
+      setIsParsingPdf(false);
+    }
+  };
+
+  const handlePdfParse = async () => {
+    const file = pdfFileObject;
+    if (!file) {
+      setPdfParseError("Please select a PDF file first.");
+      return;
+    }
+
     if (!geminiApiKey.trim()) {
       setPdfParseError("Please provide a Gemini API Key to proceed.");
+      return;
+    }
+
+    if (pdfFromPage < 1 || pdfToPage < pdfFromPage || pdfToPage > pdfPageCount) {
+      setPdfParseError(`Invalid page range. Must be between 1 and ${pdfPageCount}.`);
       return;
     }
 
@@ -352,23 +376,53 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
     setIsParsingPdf(true);
     setPdfParseError(null);
-    setPdfParseStatus("Reading PDF file...");
     setParsedQuestions([]);
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const base64Data = (evt.target?.result as string).split(',')[1];
-        if (!base64Data) {
-          throw new Error("Failed to read PDF file binary data.");
-        }
+    try {
+      setPdfParseStatus("Loading PDF document...");
+      const arrayBuffer = await file.arrayBuffer();
+      const typedArray = new Uint8Array(arrayBuffer);
+      const pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
 
-        setPdfParseStatus("Analyzing PDF structure and transcribing questions (this may take up to a minute)...");
+      const pageCanvases: HTMLCanvasElement[] = [];
+      const pageImagesData: string[] = [];
 
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+      // Render only the selected page range
+      for (let pNum = pdfFromPage; pNum <= pdfToPage; pNum++) {
+        setPdfParseStatus(`Rendering page ${pNum} of ${pdfPageCount}...`);
+        const page = await pdfDoc.getPage(pNum);
         
-        const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided PDF document.
-Identify all multiple choice questions (MCQs) in the document.
+        // Render at 1.5x scale. This is more than enough for clear formulas, keeps API payload small.
+        const scale = 1.5;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error(`Failed to create 2d context for page ${pNum}`);
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+          canvas: canvas
+        }).promise;
+
+        pageCanvases.push(canvas);
+
+        // Convert page to compressed JPEG
+        const jpegBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+        pageImagesData.push(jpegBase64);
+      }
+
+      setPdfParseStatus("Sending page images to Gemini for question extraction (this may take up to a minute)...");
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+
+      // In the prompt, explain that pageIndex 0 refers to the first page image in the parts list, index 1 refers to the second, etc.
+      const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided page images of a question paper.
+You are given a list of page images.
+Identify all multiple choice questions (MCQs) in the images.
 For each question:
 1. Extract the question text.
 2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
@@ -377,12 +431,12 @@ For each question:
 5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
 6. CRITICAL - Diagram Bounding Boxes:
    If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:
-   - Identify the 1-based page number where it is located.
+   - Identify the 0-based pageIndex of the page image where the diagram is visible.
    - Detect its bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000 where 0 is top/left, 1000 is bottom/right).
    - Return this in the "diagramBox" field.
 7. CRITICAL - Option Diagram Bounding Boxes:
    If the options themselves are diagrams, chemical structures, or equations rendered as images (rather than standard plain text):
-   - For each option that is an image, identify its 1-based page number and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
+   - For each option that is an image, identify its 0-based pageIndex and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
    - Return these in the "optionDiagramBoxes" array of objects, containing "optionIdx" (0-based) and the bounding "box".
 
 Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
@@ -393,7 +447,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
     "correctOptionIdx": 0,
     "explanation": "Explanation here",
     "diagramBox": {
-      "pageNumber": 2,
+      "pageIndex": 0,
       "ymin": 410,
       "xmin": 120,
       "ymax": 530,
@@ -403,7 +457,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       {
         "optionIdx": 0,
         "box": {
-          "pageNumber": 9,
+          "pageIndex": 1,
           "ymin": 280,
           "xmin": 100,
           "ymax": 360,
@@ -414,133 +468,121 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
   }
 ]`;
 
-        const response = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: systemPrompt },
-                  {
-                    inlineData: {
-                      mimeType: 'application/pdf',
-                      data: base64Data
-                    }
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json'
-            }
-          })
+      const promptParts: any[] = [{ text: systemPrompt }];
+      for (const jpegBase64 of pageImagesData) {
+        promptParts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: jpegBase64
+          }
         });
+      }
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
-        }
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: promptParts
+            }
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json'
+          }
+        })
+      });
 
-        const resData = await response.json();
-        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
+      }
+
+      const resData = await response.json();
+      const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!rawText) {
+        throw new Error("Gemini API returned an empty response. Verify your API key.");
+      }
+
+      let cleanedJson = rawText.trim();
+      if (cleanedJson.startsWith("```")) {
+        cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+      }
+
+      const parsed = JSON.parse(cleanedJson);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error("No questions could be structured from the page images. Make sure the pages contain clear questions.");
+      }
+
+      // Crop the diagrams directly from the rendered canvases in memory!
+      setPdfParseStatus("Cropping diagrams and chemical structures...");
+      let croppedCount = 0;
+
+      for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
+        const q = parsed[qIdx];
         
-        if (!rawText) {
-          throw new Error("Gemini API returned an empty response. Verify your API key or the input PDF.");
-        }
-
-        let cleanedJson = rawText.trim();
-        if (cleanedJson.startsWith("```")) {
-          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-        }
-
-        const parsed = JSON.parse(cleanedJson);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error("No questions could be structured from the PDF contents. Make sure it contains clear text and questions.");
-        }
-
-        // Load the PDF client-side to crop any images
-        setPdfParseStatus("Loading PDF locally for image extraction...");
-        const arrayBuffer = await file.arrayBuffer();
-        const typedArray = new Uint8Array(arrayBuffer);
-        const pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
-
-        // Iterate and crop
-        let croppedCount = 0;
-        for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
-          const q = parsed[qIdx];
-          
-          setPdfParseStatus(`Rendering and cropping diagrams: question ${qIdx + 1} of ${parsed.length}...`);
-
-          // 1. Crop question diagram if diagramBox is provided
-          if (q.diagramBox && typeof q.diagramBox.pageNumber === 'number' && typeof q.diagramBox.ymin === 'number') {
-            try {
-              const base64Crop = await cropPDFRegion(
-                pdfDoc,
-                q.diagramBox.pageNumber,
-                q.diagramBox.ymin,
-                q.diagramBox.xmin,
-                q.diagramBox.ymax,
-                q.diagramBox.xmax
-              );
-              if (base64Crop) {
-                q.questionImage = base64Crop;
-                croppedCount++;
-              }
-            } catch (cropErr) {
-              console.error(`Failed to crop diagram for question ${qIdx + 1}:`, cropErr);
+        // 1. Crop question diagram
+        if (q.diagramBox && typeof q.diagramBox.pageIndex === 'number' && typeof q.diagramBox.ymin === 'number') {
+          const pIdx = q.diagramBox.pageIndex;
+          if (pIdx >= 0 && pIdx < pageCanvases.length) {
+            const canvas = pageCanvases[pIdx];
+            const cropped = cropCanvasRegion(
+              canvas,
+              q.diagramBox.ymin,
+              q.diagramBox.xmin,
+              q.diagramBox.ymax,
+              q.diagramBox.xmax
+            );
+            if (cropped) {
+              q.questionImage = cropped;
+              croppedCount++;
             }
           }
+        }
 
-          // 2. Crop option diagrams if optionDiagramBoxes is provided
-          if (Array.isArray(q.optionDiagramBoxes)) {
-            for (const optBox of q.optionDiagramBoxes) {
-              const optIdx = optBox.optionIdx;
-              const box = optBox.box;
-              if (typeof optIdx === 'number' && box && typeof box.pageNumber === 'number' && typeof box.ymin === 'number') {
-                try {
-                  const base64Crop = await cropPDFRegion(
-                    pdfDoc,
-                    box.pageNumber,
-                    box.ymin,
-                    box.xmin,
-                    box.ymax,
-                    box.xmax
-                  );
-                  if (base64Crop) {
-                    q.options[optIdx] = base64Crop;
-                    croppedCount++;
-                  }
-                } catch (cropErr) {
-                  console.error(`Failed to crop option diagram for question ${qIdx + 1}, option ${optIdx}:`, cropErr);
+        // 2. Crop option diagrams
+        if (Array.isArray(q.optionDiagramBoxes)) {
+          for (const optBox of q.optionDiagramBoxes) {
+            const optIdx = optBox.optionIdx;
+            const box = optBox.box;
+            if (typeof optIdx === 'number' && box && typeof box.pageIndex === 'number' && typeof box.ymin === 'number') {
+              const pIdx = box.pageIndex;
+              if (pIdx >= 0 && pIdx < pageCanvases.length) {
+                const canvas = pageCanvases[pIdx];
+                const cropped = cropCanvasRegion(
+                  canvas,
+                  box.ymin,
+                  box.xmin,
+                  box.ymax,
+                  box.xmax
+                );
+                if (cropped) {
+                  q.options[optIdx] = cropped;
+                  croppedCount++;
                 }
               }
             }
           }
         }
-
-        const initialIndexes: Record<number, boolean> = {};
-        parsed.forEach((_, idx) => {
-          initialIndexes[idx] = true;
-        });
-        setSelectedParsedIndexes(initialIndexes);
-        setParsedQuestions(parsed);
-        setPdfParseStatus(`Successfully parsed ${parsed.length} questions and cropped ${croppedCount} diagrams! Review and import them below.`);
-      } catch (err: any) {
-        console.error("PDF Parsing error:", err);
-        setPdfParseError(err.message || "Failed to upload or parse PDF file.");
-      } finally {
-        setIsParsingPdf(false);
       }
-    };
-    reader.onerror = () => {
-      setPdfParseError("Failed to read local file bytes.");
+
+      const initialIndexes: Record<number, boolean> = {};
+      parsed.forEach((_, idx) => {
+        initialIndexes[idx] = true;
+      });
+      setSelectedParsedIndexes(initialIndexes);
+      setParsedQuestions(parsed);
+      setPdfParseStatus(`Successfully parsed ${parsed.length} questions and cropped ${croppedCount} diagrams from pages ${pdfFromPage}–${pdfToPage}!`);
+    } catch (err: any) {
+      console.error("PDF Parsing error:", err);
+      setPdfParseError(err.message || "Failed to process PDF page range.");
+    } finally {
       setIsParsingPdf(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleImportSelectedQuestionsToBank = async () => {
@@ -561,10 +603,11 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
           correctOptionIdx: typeof q.correctOptionIdx === 'number' ? q.correctOptionIdx : 0,
           difficulty: q.difficulty || 'medium',
           explanation: q.explanation || undefined,
+          questionImage: q.questionImage || undefined,
           createdAt: new Date()
         };
 
-        // Extract diagrams if parsed
+        // Extract diagrams if parsed inside HTML fallback
         const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
         if (imgMatch && imgMatch[1]) {
           item.questionImage = imgMatch[1];
@@ -1219,46 +1262,127 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                 </div>
                 
                 <div style={{ textAlign: 'center' }}>
-                  <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import PDF Question Paper</h4>
+                  <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>
+                    {pdfFileObject ? `Selected File: ${pdfFileObject.name}` : "Import PDF Question Paper"}
+                  </h4>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
-                    Upload a PDF document containing text, math equations, or printed questions. Gemini AI will OCR and structure the paper into LaTeX questions.
+                    {pdfFileObject 
+                      ? `Total pages: ${pdfPageCount}. Choose page range to process. Recommended: 2 to 3 pages at a time to prevent timeout/API truncation.` 
+                      : "Upload a PDF document. You can extract questions incrementally by choosing page ranges (e.g. pages 2-3, then 4-5)."
+                    }
                   </p>
                 </div>
 
-                <label style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '11px 22px',
-                  borderRadius: '8px',
-                  background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
-                  color: '#fff',
-                  fontWeight: 'bold',
-                  cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: '0.88rem',
-                  boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
-                }}>
-                  <Upload size={16} /> Choose PDF File
-                  {geminiApiKey.trim() && (
-                    <input 
-                      type="file" 
-                      accept=".pdf" 
-                      style={{ display: 'none' }} 
-                      onChange={handlePdfFileUpload}
-                      disabled={isParsingPdf}
-                    />
+                <div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <label style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '11px 22px',
+                    borderRadius: '8px',
+                    background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '0.88rem',
+                    boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
+                  }}>
+                    <Upload size={16} /> {pdfFileObject ? "Change PDF File" : "Choose PDF File"}
+                    {geminiApiKey.trim() && (
+                      <input 
+                        type="file" 
+                        accept=".pdf" 
+                        style={{ display: 'none' }} 
+                        onChange={handlePdfFileUpload}
+                        disabled={isParsingPdf}
+                      />
+                    )}
+                  </label>
+
+                  {pdfFileObject && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPdfFileObject(null);
+                        setPdfPageCount(0);
+                        setParsedQuestions([]);
+                        setPdfParseStatus('');
+                      }}
+                      style={{
+                        padding: '11px 22px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#64748b',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.88rem'
+                      }}
+                    >
+                      Clear File
+                    </button>
                   )}
-                </label>
+                </div>
+
+                {pdfFileObject && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>FROM PAGE</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={pdfPageCount}
+                          value={pdfFromPage}
+                          onChange={(e) => setPdfFromPage(Math.max(1, Math.min(pdfPageCount, parseInt(e.target.value) || 1)))}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>TO PAGE</span>
+                        <input
+                          type="number"
+                          min={pdfFromPage}
+                          max={pdfPageCount}
+                          value={pdfToPage}
+                          onChange={(e) => setPdfToPage(Math.max(pdfFromPage, Math.min(pdfPageCount, parseInt(e.target.value) || pdfFromPage)))}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePdfParse}
+                      disabled={isParsingPdf || !geminiApiKey.trim()}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: (isParsingPdf || !geminiApiKey.trim()) ? '#94a3b8' : 'var(--primary)',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        cursor: (isParsingPdf || !geminiApiKey.trim()) ? 'not-allowed' : 'pointer',
+                        fontSize: '0.88rem',
+                        marginTop: '8px',
+                        transition: 'background 0.2s'
+                      }}
+                    >
+                      {isParsingPdf ? "Processing Pages..." : `Extract Questions from Pages ${pdfFromPage} to ${pdfToPage}`}
+                    </button>
+                  </div>
+                )}
 
                 {isParsingPdf && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600, marginTop: '8px' }}>
                     <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                     <span>{pdfParseStatus}</span>
                   </div>
                 )}
 
                 {pdfParseError && (
-                  <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600, marginTop: '8px' }}>
                     ⚠️ {pdfParseError}
                   </div>
                 )}

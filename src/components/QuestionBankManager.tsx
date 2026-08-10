@@ -19,7 +19,10 @@ import {
   Database,
   PlusCircle,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
+  Upload,
+  FileText,
+  Brain
 } from 'lucide-react';
 
 interface QuestionBankManagerProps {
@@ -37,7 +40,19 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
   const [topic, setTopic] = useState('');
 
   // Selected Bank management sub-tab states
-  const [subTab, setSubTab] = useState<'browse' | 'add' | 'csv'>('browse');
+  const [subTab, setSubTab] = useState<'browse' | 'add' | 'csv' | 'pdf'>('browse');
+
+  // Question editing states
+  const [editingQuestion, setEditingQuestion] = useState<BankQuestion | null>(null);
+
+  // PDF AI Parser States
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-2.5-flash');
+  const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
+  const [pdfParseError, setPdfParseError] = useState<string | null>(null);
+  const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
+  const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
+  const [selectedParsedIndexes, setSelectedParsedIndexes] = useState<Record<number, boolean>>({});
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -259,6 +274,198 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
     }
   };
 
+  const handlePdfFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSizeBytes = 20 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setPdfParseError("File is too large. Please select a PDF file smaller than 20MB.");
+      return;
+    }
+
+    if (!geminiApiKey.trim()) {
+      setPdfParseError("Please provide a Gemini API Key to proceed.");
+      return;
+    }
+
+    localStorage.setItem('gemini_api_key', geminiApiKey);
+    localStorage.setItem('gemini_model', geminiModel);
+
+    setIsParsingPdf(true);
+    setPdfParseError(null);
+    setPdfParseStatus("Reading PDF file...");
+    setParsedQuestions([]);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const base64Data = (evt.target?.result as string).split(',')[1];
+        if (!base64Data) {
+          throw new Error("Failed to read PDF file binary data.");
+        }
+
+        setPdfParseStatus("Analyzing PDF structure and transcribing questions (this may take up to a minute)...");
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+        
+        const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided PDF document.
+Identify all multiple choice questions (MCQs) in the document.
+For each question:
+1. Extract the question text.
+2. Extract the options. If there are options like A, B, C, D, parse them. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings or reconstruct if logical.
+3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D). If not clearly indicated, choose the most likely correct answer or default to 0.
+4. Provide a brief step-by-step explanation or solution if applicable.
+5. Critical: Transcribe all mathematical expressions, equations, and physics formulas into clean inline LaTeX (enclosed in single '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
+6. Critical: If the question refers to a diagram, graph, or pulley setup in the PDF, insert a placeholder tag '[Diagram Required: <short description>]' in the question text.
+
+Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
+[
+  {
+    "questionText": "Question text here with LaTeX and optional [Diagram Required: description] tags",
+    "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+    "correctOptionIdx": 0,
+    "explanation": "Explanation here"
+  }
+]`;
+
+        const response = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      mimeType: 'application/pdf',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
+        }
+
+        const resData = await response.json();
+        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!rawText) {
+          throw new Error("Gemini API returned an empty response. Verify your API key or the input PDF.");
+        }
+
+        let cleanedJson = rawText.trim();
+        if (cleanedJson.startsWith("```")) {
+          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+        }
+
+        const parsed = JSON.parse(cleanedJson);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("No questions could be structured from the PDF contents. Make sure it contains clear text and questions.");
+        }
+
+        const initialIndexes: Record<number, boolean> = {};
+        parsed.forEach((_, idx) => {
+          initialIndexes[idx] = true;
+        });
+        setSelectedParsedIndexes(initialIndexes);
+        setParsedQuestions(parsed);
+        setPdfParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
+      } catch (err: any) {
+        console.error("PDF Parsing error:", err);
+        setPdfParseError(err.message || "Failed to upload or parse PDF file.");
+      } finally {
+        setIsParsingPdf(false);
+      }
+    };
+    reader.onerror = () => {
+      setPdfParseError("Failed to read local file bytes.");
+      setIsParsingPdf(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImportSelectedQuestionsToBank = async () => {
+    if (!selectedBank) return;
+    const toImport = parsedQuestions.filter((_, idx) => selectedParsedIndexes[idx]);
+    if (toImport.length === 0) {
+      alert("No questions selected for import.");
+      return;
+    }
+
+    try {
+      let importCount = 0;
+      for (const q of toImport) {
+        const item: BankQuestion = {
+          bankId: selectedBank.id!,
+          questionText: q.questionText,
+          options: Array.isArray(q.options) ? q.options.filter(Boolean) : ['', '', '', ''],
+          correctOptionIdx: typeof q.correctOptionIdx === 'number' ? q.correctOptionIdx : 0,
+          difficulty: q.difficulty || 'medium',
+          explanation: q.explanation || undefined,
+          createdAt: new Date()
+        };
+
+        // Extract diagrams if parsed
+        const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
+        if (imgMatch && imgMatch[1]) {
+          item.questionImage = imgMatch[1];
+          item.questionText = q.questionText.replace(/<img[^>]+>/g, '').trim();
+        }
+
+        const insertedId = await db.questionBank.add(item);
+        item.id = insertedId;
+        await syncBankQuestionToCloud(item);
+        importCount++;
+      }
+
+      alert(`Successfully imported ${importCount} questions into bank: ${selectedBank?.name}!`);
+      setParsedQuestions([]);
+      setSelectedParsedIndexes({});
+      setPdfParseStatus('');
+      setSubTab('browse');
+    } catch (err: any) {
+      alert(`Failed to import questions: ${err.message}`);
+    }
+  };
+
+  const handleUpdateQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+
+    if (!editingQuestion.questionText.trim()) {
+      alert("Question text is required.");
+      return;
+    }
+
+    try {
+      const updatedItem: BankQuestion = {
+        ...editingQuestion,
+        options: editingQuestion.options.filter(Boolean)
+      };
+
+      await db.questionBank.put(updatedItem);
+      await syncBankQuestionToCloud(updatedItem);
+
+      alert("Question updated successfully!");
+      setEditingQuestion(null);
+    } catch (err: any) {
+      alert(`Error updating question: ${err.message}`);
+    }
+  };
 
   // Add question from bank to exam
   const handleAddQuestionToExam = async () => {
@@ -452,7 +659,6 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
           )}
         </div>
       ) : (
-        
         /* 2. DASHBOARD VIEW: MANAGE A SINGLE SELECTED QUESTION BANK */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Breadcrumbs & Header */}
@@ -495,6 +701,12 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                 style={{ padding: '6px 14px', border: 'none', background: subTab === 'csv' ? 'var(--primary)' : 'transparent', color: subTab === 'csv' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 Import CSV
+              </button>
+              <button 
+                onClick={() => setSubTab('pdf')}
+                style={{ padding: '6px 14px', border: 'none', background: subTab === 'pdf' ? 'var(--primary)' : 'transparent', color: subTab === 'pdf' ? '#fff' : '#4a5568', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Import PDF (AI)
               </button>
             </div>
           </div>
@@ -568,6 +780,13 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
                           style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px' }}
                         >
                           Add to Exam
+                        </button>
+                        <button 
+                          onClick={() => setEditingQuestion(q)}
+                          className="btn-outlined" 
+                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px', border: '1px solid var(--primary)', color: 'var(--primary)', background: '#fff', cursor: 'pointer' }}
+                        >
+                          Edit
                         </button>
                         <button 
                           onClick={async () => {
@@ -779,8 +998,168 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
               </button>
             </div>
           )}
+          {/* SUB-TAB 4: IMPORT PDF (AI) */}
+          {subTab === 'pdf' && (
+            <div className="glass-card animate-fade-in" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '750px', margin: '0 auto', width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Brain size={20} color="var(--primary)" /> Import Questions via PDF (AI)
+              </h3>
+              
+              {/* Configuration block */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ background: '#eff6ff', padding: '6px', borderRadius: '8px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    🔑
+                  </span>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>Gemini API Key Configuration</h4>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Required for AI question paper extraction. Obtain a free key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Google AI Studio</a>.
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="Paste your AI Studio API Key here..."
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
+                />
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Model Version:</span>
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
+                  >
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended / Fast)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
+                  </select>
+                </div>
+              </div>
 
+              {/* Upload zone */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '30px', boxSizing: 'border-box' }}>
+                <div style={{ background: 'rgba(37,99,235,0.08)', padding: '18px', borderRadius: '50%', color: '#2563eb' }}>
+                  <FileText size={40} />
+                </div>
+                
+                <div style={{ textAlign: 'center' }}>
+                  <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import PDF Question Paper</h4>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
+                    Upload a PDF document containing text, math equations, or printed questions. Gemini AI will OCR and structure the paper into LaTeX questions.
+                  </p>
+                </div>
 
+                <label style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '11px 22px',
+                  borderRadius: '8px',
+                  background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '0.88rem',
+                  boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
+                }}>
+                  <Upload size={16} /> Choose PDF File
+                  {geminiApiKey.trim() && (
+                    <input 
+                      type="file" 
+                      accept=".pdf" 
+                      style={{ display: 'none' }} 
+                      onChange={handlePdfFileUpload}
+                      disabled={isParsingPdf}
+                    />
+                  )}
+                </label>
+
+                {isParsingPdf && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
+                    <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span>{pdfParseStatus}</span>
+                  </div>
+                )}
+
+                {pdfParseError && (
+                  <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
+                    ⚠️ {pdfParseError}
+                  </div>
+                )}
+              </div>
+
+              {/* Preview zone */}
+              {parsedQuestions.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                      Parsed Questions List ({parsedQuestions.length} Found)
+                    </h4>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Select the questions to import into bank: <strong>{selectedBank?.name}</strong>.
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {parsedQuestions.map((q, idx) => {
+                      return (
+                        <div key={idx} style={{ display: 'flex', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!selectedParsedIndexes[idx]}
+                            onChange={(e) => setSelectedParsedIndexes(prev => ({ ...prev, [idx]: e.target.checked }))}
+                            style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
+                          />
+                          <div style={{ flex: 1, fontSize: '0.85rem' }}>
+                            <div style={{ fontWeight: 800, color: '#0f172a' }}>Question {idx + 1}</div>
+                            <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
+                              <MathRenderer text={q.questionText} />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
+                              {q.options.map((opt: string, oIdx: number) => (
+                                <div key={oIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '4px', background: q.correctOptionIdx === oIdx ? '#dcfce7' : '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                  <span style={{ fontWeight: 800 }}>{String.fromCharCode(65 + oIdx)}.</span>
+                                  <span>{opt}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleImportSelectedQuestionsToBank}
+                    style={{
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: 'fit-content',
+                      alignSelf: 'flex-end'
+                    }}
+                  >
+                    <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -919,6 +1298,232 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 5. MODAL DIALOG: EDIT QUESTION IN BANK */}
+      {editingQuestion && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <form onSubmit={handleUpdateQuestion} className="glass-card animate-scale-up" style={{ background: '#ffffff', width: '90%', maxWidth: '650px', padding: '24px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box', textAlign: 'left', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Edit Question</h3>
+              <button type="button" onClick={() => setEditingQuestion(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: 'var(--text-muted)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Question Text */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION TEXT *</label>
+                <textarea
+                  value={editingQuestion.questionText}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditingQuestion(prev => prev ? { ...prev, questionText: val } : null);
+                  }}
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (items) {
+                      for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                          const file = items[i].getAsFile();
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const base64 = reader.result as string;
+                              setEditingQuestion(prev => prev ? { ...prev, questionImage: base64 } : null);
+                            };
+                            reader.readAsDataURL(file);
+                            e.preventDefault();
+                          }
+                        }
+                      }
+                    }
+                  }}
+                  placeholder="Type question content here... You can also directly paste an image (Ctrl+V) from screenshots or Word here." 
+                  required 
+                  rows={4} 
+                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontFamily: 'inherit' }} 
+                />
+                {editingQuestion.questionText.trim() && (
+                  <div style={{ marginTop: '4px', padding: '8px 12px', background: '#f8fafc', border: '1px solid #edf2f7', borderRadius: '6px', fontSize: '0.85rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>LIVE PREVIEW</span>
+                    <MathRenderer text={editingQuestion.questionText} />
+                  </div>
+                )}
+              </div>
+
+              {/* Options */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>OPTIONS & CORRECT ANSWER *</label>
+                {editingQuestion.options.map((opt, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem', width: '20px' }}>{['A', 'B', 'C', 'D', 'E'][idx]}</span>
+                    <input 
+                      type="text" 
+                      value={opt} 
+                      onChange={e => {
+                        const updated = [...editingQuestion.options];
+                        updated[idx] = e.target.value;
+                        setEditingQuestion(prev => prev ? { ...prev, options: updated } : null);
+                      }}
+                      placeholder={`Option ${['A', 'B', 'C', 'D', 'E'][idx]} text`}
+                      required={idx < 4}
+                      style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }} 
+                    />
+                    <input 
+                      type="radio" 
+                      name="editCorrectIdx" 
+                      checked={editingQuestion.correctOptionIdx === idx}
+                      onChange={() => setEditingQuestion(prev => prev ? { ...prev, correctOptionIdx: idx } : null)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
+                  </div>
+                ))}
+                
+                <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                  {editingQuestion.options.length < 5 && (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        const updated = [...editingQuestion.options, ''];
+                        setEditingQuestion(prev => prev ? { ...prev, options: updated } : null);
+                      }} 
+                      className="btn-link" 
+                      style={{ fontSize: '0.75rem', padding: 0, border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      + Add Option E
+                    </button>
+                  )}
+                  {editingQuestion.options.length > 4 && (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        const updated = editingQuestion.options.slice(0, 4);
+                        const nextCorrect = editingQuestion.correctOptionIdx >= 4 ? 0 : editingQuestion.correctOptionIdx;
+                        setEditingQuestion(prev => prev ? { ...prev, options: updated, correctOptionIdx: nextCorrect } : null);
+                      }} 
+                      className="btn-link" 
+                      style={{ fontSize: '0.75rem', padding: 0, border: 'none', background: 'transparent', color: 'var(--warning)', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      - Remove Option E
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Difficulty */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>DIFFICULTY *</label>
+                <select
+                  value={editingQuestion.difficulty}
+                  onChange={(e) => {
+                    const val = e.target.value as 'easy' | 'medium' | 'hard';
+                    setEditingQuestion(prev => prev ? { ...prev, difficulty: val } : null);
+                  }}
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', background: '#fff' }}
+                >
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+
+              {/* Explanation */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>EXPLANATION (OPTIONAL)</label>
+                <textarea
+                  value={editingQuestion.explanation || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditingQuestion(prev => prev ? { ...prev, explanation: val } : null);
+                  }}
+                  placeholder="Enter solution explanation... (use $...$ for formulas)"
+                  rows={2}
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              {/* Question Image */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>QUESTION IMAGE / DIAGRAM (OPTIONAL)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label 
+                    className="btn-secondary" 
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: '#fff', 
+                      color: 'var(--text-secondary)', 
+                      fontSize: '0.8rem', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px' 
+                    }}
+                  >
+                    <span>Upload Image</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const base64 = reader.result as string;
+                            setEditingQuestion(prev => prev ? { ...prev, questionImage: base64 } : null);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {editingQuestion.questionImage && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <img 
+                        src={editingQuestion.questionImage} 
+                        alt="Preview" 
+                        style={{ width: '40px', height: '40px', objectFit: 'contain', borderRadius: '4px', border: '1px solid var(--border-color)', background: '#fff' }} 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => setEditingQuestion(prev => prev ? { ...prev, questionImage: '' } : null)}
+                        style={{ background: 'transparent', border: 'none', color: '#e53e3e', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
+              <button 
+                type="button" 
+                onClick={() => setEditingQuestion(null)} 
+                className="btn-secondary" 
+                style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold' }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                style={{ padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold' }}
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

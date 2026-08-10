@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Calendar, X, HelpCircle, Upload, FileText, Check, Copy, Eye } from 'lucide-react';
-import * as mammoth from 'mammoth';
 // @ts-ignore
 import * as wmf from 'wmf';
 import { db } from '../db';
@@ -8,41 +7,6 @@ import { type ClassEntity, type ExamSection, type ExamSubject } from '../db';
 import { MathRenderer } from './MathRenderer';
 import { syncExamToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 
-function drawWmfSafely(bytes: Uint8Array, canvas: HTMLCanvasElement) {
-  // Parse actions
-  const actions = wmf.get_actions(bytes);
-  
-  // Patch actions to prevent crashes due to missing properties
-  actions.forEach((act: any) => {
-    if (act.s) {
-      if (!act.s.Font) {
-        act.s.Font = { Angle: 0, Name: 'Calibri', Height: 12, Italic: false, Weight: 400 };
-      } else {
-        if (act.s.Font.Angle === undefined) act.s.Font.Angle = 0;
-        if (act.s.Font.Name === undefined) act.s.Font.Name = 'Calibri';
-        if (act.s.Font.Height === undefined) act.s.Font.Height = 12;
-        if (act.s.Font.Italic === undefined) act.s.Font.Italic = false;
-        if (act.s.Font.Weight === undefined) act.s.Font.Weight = 400;
-      }
-      
-      if (!act.s.Pen) {
-        act.s.Pen = { Color: 0, Width: 1, Style: 0 };
-      }
-      if (!act.s.Brush) {
-        act.s.Brush = { Color: 0xFFFFFF, Style: 0 };
-      }
-    }
-  });
-  
-  // Call render_canvas
-  wmf.render_canvas(actions, canvas);
-  
-  // Sanitize dimensions to prevent browser crashes or empty data URIs
-  if (canvas.width > 2048) canvas.width = 2048;
-  if (canvas.height > 2048) canvas.height = 2048;
-  if (canvas.width <= 0) canvas.width = 300;
-  if (canvas.height <= 0) canvas.height = 150;
-}
 
 interface ExamWizardProps {
   classes: ClassEntity[];
@@ -124,23 +88,9 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
   // Online Questions Composer States
   const [questionsState, setQuestionsState] = useState<any[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library' | 'word' | 'pdf'>('manual');
+  const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library'>('manual');
   const [showAddedQuestionsModal, setShowAddedQuestionsModal] = useState(false);
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
-
-  // PDF AI Parser States
-  const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
-  const [pdfParseError, setPdfParseError] = useState<string | null>(null);
-  const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
-
-  // Word AI Parser States
-  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
-  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-3.6-flash');
-  const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
-  const [wordParseError, setWordParseError] = useState<string | null>(null);
-  const [wordParseStatus, setWordParseStatus] = useState<string>('');
-  const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
-  const [selectedParsedIndexes, setSelectedParsedIndexes] = useState<Record<number, boolean>>({});
 
   // Library filters
   const [selectedLibBankId, setSelectedLibBankId] = useState<string>('All');
@@ -616,533 +566,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
       }
     };
     reader.readAsText(file);
-  };
 
-  const handlePdfFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const maxSizeBytes = 20 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      setPdfParseError("File is too large. Please select a PDF file smaller than 20MB.");
-      return;
-    }
-
-    if (!geminiApiKey.trim()) {
-      setPdfParseError("Please provide a Gemini API Key to proceed.");
-      return;
-    }
-
-    localStorage.setItem('gemini_api_key', geminiApiKey);
-    localStorage.setItem('gemini_model', geminiModel);
-
-    setIsParsingPdf(true);
-    setPdfParseError(null);
-    setPdfParseStatus("Reading PDF file...");
-    setParsedQuestions([]);
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const base64Data = (evt.target?.result as string).split(',')[1];
-        if (!base64Data) {
-          throw new Error("Failed to read PDF file binary data.");
-        }
-
-        setPdfParseStatus("Analyzing PDF structure and transcribing questions (this may take up to a minute)...");
-
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
-        
-        const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided PDF document.
-Identify all multiple choice questions (MCQs) in the document.
-For each question:
-1. Extract the question text.
-2. Extract the options. If there are options like A, B, C, D, parse them. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings or reconstruct if logical.
-3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D). If not clearly indicated, choose the most likely correct answer or default to 0.
-4. Provide a brief step-by-step explanation or solution if applicable.
-5. Critical: Transcribe all mathematical expressions, equations, and physics formulas into clean inline LaTeX (enclosed in single '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
-6. Critical: If the question refers to a diagram, graph, or pulley setup in the PDF, insert a placeholder tag '[Diagram Required: <short description>]' in the question text.
-
-Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
-[
-  {
-    "questionText": "Question text here with LaTeX and optional [Diagram Required: description] tags",
-    "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
-    "correctOptionIdx": 0,
-    "explanation": "Explanation here"
-  }
-]`;
-
-        const response = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: systemPrompt },
-                  {
-                    inlineData: {
-                      mimeType: 'application/pdf',
-                      data: base64Data
-                    }
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json'
-            }
-          })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
-        }
-
-        const resData = await response.json();
-        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!rawText) {
-          throw new Error("Gemini API returned an empty response. Verify your API key or the input PDF.");
-        }
-
-        let cleanedJson = rawText.trim();
-        if (cleanedJson.startsWith("```")) {
-          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-        }
-
-        const parsed = JSON.parse(cleanedJson);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error("No questions could be structured from the PDF contents. Make sure it contains clear text and questions.");
-        }
-
-        const initialIndexes: Record<number, boolean> = {};
-        parsed.forEach((_, idx) => {
-          initialIndexes[idx] = true;
-        });
-        setSelectedParsedIndexes(initialIndexes);
-        setParsedQuestions(parsed);
-        setPdfParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
-      } catch (err: any) {
-        console.error("PDF Parsing error:", err);
-        setPdfParseError(err.message || "Failed to upload or parse PDF file.");
-      } finally {
-        setIsParsingPdf(false);
-      }
-    };
-    reader.onerror = () => {
-      setPdfParseError("Failed to read local file bytes.");
-      setIsParsingPdf(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleWordFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!geminiApiKey.trim()) {
-      setWordParseError("Please enter your Gemini API Key first.");
-      return;
-    }
-
-    // Save key locally
-    localStorage.setItem('gemini_api_key', geminiApiKey.trim());
-    localStorage.setItem('gemini_model', geminiModel);
-
-    setIsParsingWord(true);
-    setWordParseError(null);
-    setWordParseStatus("Reading document content...");
-    setParsedQuestions([]);
-    setSelectedParsedIndexes({});
-
-    try {
-      const reader = new FileReader();
-      
-      const fileLoaded = new Promise<ArrayBuffer>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = reject;
-      });
-      reader.readAsArrayBuffer(file);
-      const arrayBuffer = await fileLoaded;
-
-      setWordParseStatus("Extracting images and text formatting...");
-
-      // Cache mapping to keep heavy base64 strings out of LLM inputs, preventing quota/token size overflows
-      const imageMap: Record<string, string> = {};
-      let imageCounter = 0;
-      
-      const options = {
-        convertImage: mammoth.images.imgElement((image) => {
-          return image.read("base64").then((imageBuffer) => {
-            let base64Data = '';
-            
-            const contentType = (image.contentType || '').toLowerCase();
-            const cleanBase64 = imageBuffer.replace(/\s/g, '');
-            const isWmf = contentType.includes('wmf') || contentType.includes('metafile') ||
-                          cleanBase64.startsWith('183Gmg') || cleanBase64.startsWith('183G');
-
-            if (isWmf) {
-              try {
-                const binaryString = atob(cleanBase64);
-                const len = binaryString.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
-                const canvas = document.createElement('canvas');
-                drawWmfSafely(bytes, canvas);
-                if (canvas.width > 0 && canvas.height > 0) {
-                  base64Data = canvas.toDataURL('image/png');
-                } else {
-                  throw new Error("Invalid canvas dimensions: " + canvas.width + "x" + canvas.height);
-                }
-              } catch (err) {
-                console.error("Failed to convert WMF to PNG:", err);
-                base64Data = `data:image/x-wmf;base64,${cleanBase64}`;
-              }
-            } else {
-              base64Data = `data:${image.contentType};base64,${cleanBase64}`;
-            }
-
-            const refId = `img_ref_${imageCounter++}`;
-            imageMap[refId] = base64Data;
-            return {
-              src: refId
-            };
-          });
-        })
-      };
-
-      const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
-      const htmlContent = result.value;
-
-      if (!htmlContent.trim()) {
-        throw new Error("No text or content could be parsed from the Word document.");
-      }
-
-      setWordParseStatus("Analyzing document structure...");
-
-      // Split the document into lines/paragraphs/tables to chunk it safely
-      const paragraphs = htmlContent.match(/<p[^>]*>.*?<\/p>|<table[^>]*>.*?<\/table>|<h\d[^>]*>.*?<\/h\d>/gi) || [htmlContent];
-      
-      const questionBlocks: string[][] = [];
-      let currentBlock: string[] = [];
-      
-      paragraphs.forEach((p) => {
-        // Strip HTML tags to verify plain text content
-        const textContent = p.replace(/<[^>]+>/g, '').trim();
-        // Check if paragraph starts with a question marker (e.g. Q1., 1., Q 1.)
-        const isNewQuestion = /^(?:Q(?:uestion)?[\s\.]*\d+|\d+\s*[\.\)\-]\s*)/i.test(textContent);
-        
-        if (isNewQuestion && currentBlock.length > 0) {
-          questionBlocks.push(currentBlock);
-          currentBlock = [p];
-        } else {
-          currentBlock.push(p);
-        }
-      });
-      if (currentBlock.length > 0) {
-        questionBlocks.push(currentBlock);
-      }
-
-      // Group question blocks into chunks (12 questions per chunk to guarantee safe outputs/inputs)
-      const questionChunks: string[] = [];
-      const questionsPerChunk = 12;
-      for (let i = 0; i < questionBlocks.length; i += questionsPerChunk) {
-        const chunk = questionBlocks.slice(i, i + questionsPerChunk).map(block => block.join('\n')).join('\n');
-        questionChunks.push(chunk);
-      }
-
-      const allParsed: any[] = [];
-      const totalChunks = questionChunks.length;
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey.trim()}`;
-      
-      const systemPrompt = `You are a professional examiner. Extract all Multiple Choice Questions (MCQs) from the provided HTML document. 
-Return ONLY a valid JSON array of objects representing the questions. Do not include any markdown styling, \`\`\`json blocks, or explanation text.
-The JSON structure MUST follow this format strictly:
-[
-  {
-    "questionText": "string containing question. If it contains formula, preserve LaTeX notation. If it contains a diagram like <img src=\\\"img_ref_0\\\" />, keep the exact image tag intact inside the text.",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correctOptionIdx": number (0 for A, 1 for B, 2 for C, 3 for D)
-  }
-]
-
-IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
-- You are provided with referenced images labeled as "img_ref_X".
-- If a referenced image represents a mathematical equation, formula, variable, fraction, square root, or math symbol, you MUST transcribe it into LaTeX notation (enclosed in single $ for inline, e.g. $\\frac{9.8}{\\sqrt{2}}$ or $\\sqrt{3}$) and insert it directly into the text/option, completely replacing the corresponding <img src="img_ref_X" /> tag.
-- If a referenced image is a diagram, illustration, graph, or physics experiment setup (e.g. blocks, pulleys, circuits, drawings), you MUST keep the exact <img src="img_ref_X" /> tag intact inside the text/option so it can render as an image.
-- Verify that every question has exactly 4 options (unless it is a 5-option format, then 5 options).
-- Find the correct answer key in the text (often marked as "Answer: A" or similar) and translate it to the 0-based index. If no answer is mentioned, default to 0.
-- Do NOT alter the ref values inside the img tag src attributes (e.g., img_ref_0). Preserve them exactly where they were located in the questions.`;
-
-      for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
-        setWordParseStatus(`Processing questions ${cIdx * questionsPerChunk + 1} to ${Math.min((cIdx + 1) * questionsPerChunk, questionBlocks.length)} (${cIdx + 1} of ${totalChunks} chunks) with Gemini AI...`);
-        
-        const chunkHtml = questionChunks[cIdx];
-        
-        // Find all img_ref_X in this chunk
-        const chunkImageRefs = Array.from(chunkHtml.matchAll(/img_ref_\d+/g)).map(m => m[0]);
-        const uniqueRefs = Array.from(new Set(chunkImageRefs));
-        
-        const requestParts: any[] = [
-          { text: systemPrompt }
-        ];
-
-        // Add each referenced image to the request parts
-        uniqueRefs.forEach((refId) => {
-          const base64Data = imageMap[refId];
-          if (base64Data) {
-            const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
-            if (match) {
-              const mimeType = match[1].toLowerCase();
-              const rawData = match[2];
-              
-              // Only send supported formats to Gemini API (exclude wmf, emf, etc. that failed to convert)
-              const supportedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif', 'image/gif'];
-              if (supportedTypes.includes(mimeType)) {
-                requestParts.push({ text: `Image reference for tag <img src="${refId}" />:\n` });
-                requestParts.push({
-                  inlineData: {
-                    mimeType: mimeType,
-                    data: rawData
-                  }
-                });
-              } else {
-                console.warn(`Skipping image reference ${refId} in Gemini request: unsupported MIME type "${mimeType}"`);
-              }
-            }
-          }
-        });
-
-        // Add the HTML text as the final part
-        requestParts.push({ text: `Here is the HTML document containing the questions:\n\n${chunkHtml}` });
-        
-        try {
-          const response = await fetch(geminiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: 'user',
-                  parts: requestParts
-                }
-              ],
-              generationConfig: {
-                responseMimeType: 'application/json'
-              }
-            })
-          });
-
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData?.error?.message || `HTTP error! status: ${response.status}`);
-          }
-
-          const resData = await response.json();
-          const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          
-          if (!rawText) {
-            throw new Error("Gemini API returned an empty response. Verify your API key or the input text.");
-          }
-
-          let cleanedJson = rawText.trim();
-          if (cleanedJson.startsWith("```")) {
-            cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-          }
-
-          const parsed = JSON.parse(cleanedJson);
-          if (Array.isArray(parsed)) {
-            allParsed.push(...parsed);
-          }
-        } catch (err: any) {
-          console.warn(`Error parsing chunk ${cIdx + 1}:`, err);
-          // If we have parsed some questions already, we will let them review what succeeded so far
-          if (allParsed.length === 0) {
-            throw err;
-          } else {
-            setWordParseError(`Partial failure at chunk ${cIdx + 1}: ${err.message || err}. Loaded ${allParsed.length} questions successfully.`);
-            break;
-          }
-        }
-
-        // Add short delay between requests to prevent hitting concurrent request rate limits
-        await new Promise(r => setTimeout(r, 600));
-      }
-
-      if (allParsed.length === 0) {
-        throw new Error("No questions could be successfully parsed from the document.");
-      }
-
-      setWordParseStatus("Restoring diagrams and formulas...");
-
-      // Restore base64 source representations from cache
-      const restoredQuestions = allParsed.map((q: any) => {
-        let text = q.questionText || '';
-        text = text.replace(/<img[^>]+src=["'](img_ref_\d+)["'][^>]*>/gi, (match: string, refId: string) => {
-          const originalBase64 = imageMap[refId];
-          return originalBase64 ? `<img src="${originalBase64}" />` : match;
-        });
-
-        const options = (q.options || []).map((opt: string) => {
-          return opt.replace(/<img[^>]+src=["'](img_ref_\d+)["'][^>]*>/gi, (match: string, refId: string) => {
-            const originalBase64 = imageMap[refId];
-            return originalBase64 ? `<img src="${originalBase64}" />` : match;
-          });
-        });
-
-        return {
-          ...q,
-          questionText: text,
-          options
-        };
-      });
-
-      setParsedQuestions(restoredQuestions);
-      
-      // Auto-select all by default
-      const initialIndexes: Record<number, boolean> = {};
-      restoredQuestions.forEach((_, idx) => {
-        initialIndexes[idx] = true;
-      });
-      setSelectedParsedIndexes(initialIndexes);
-      setWordParseStatus(`Successfully parsed ${restoredQuestions.length} questions! Review and import them below.`);
-    } catch (err: any) {
-      console.error(err);
-      setWordParseError(err.message || "Failed to upload or parse MS Word file.");
-    } finally {
-      setIsParsingWord(false);
-    }
-  };
-
-  const handleImportSelectedQuestions = () => {
-    // Find current subject and section limits
-    const sectionConfig = sectionsList.find(s => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
-    if (!sectionConfig) return;
-
-    // Filter only selected parsed questions
-    const toImport = parsedQuestions.filter((_, idx) => selectedParsedIndexes[idx]);
-    if (toImport.length === 0) {
-      alert("No questions selected for import.");
-      return;
-    }
-
-    const currentSectionQuestions = questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
-    const existingCount = currentSectionQuestions.filter(q => q.questionText.trim()).length;
-
-    // Calculate new required qCount if we need more slots
-    const requiredCount = Math.max(sectionConfig.qCount, existingCount + toImport.length);
-    const needsGrow = requiredCount > sectionConfig.qCount;
-
-    // Update sectionsList state so it persists
-    const updatedSecs = sectionsList.map(s => {
-      if (s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName) {
-        return {
-          ...s,
-          qCount: requiredCount,
-          maxAttempts: Math.max(s.maxAttempts || 0, requiredCount)
-        };
-      }
-      return s;
-    });
-
-    if (needsGrow) {
-      setSectionsList(updatedSecs);
-    }
-
-    // Locally compute synced sections with ranges to immediately sync questionsState without waiting for next render tick
-    let runningStart = 1;
-    const syncedSectionsWithRanges = updatedSecs.map(sec => {
-      const start = runningStart;
-      const end = runningStart + sec.qCount - 1;
-      runningStart = end + 1;
-      return { ...sec, qStart: start, qEnd: end };
-    });
-
-    setQuestionsState(prev => {
-      const synced: any[] = [];
-      syncedSectionsWithRanges.forEach(sec => {
-        const existing = prev.filter(q => q.subjectName === sec.subjectName && q.sectionName === sec.sectionName);
-        for (let i = 0; i < sec.qCount; i++) {
-          const qNum = sec.qStart + i;
-          if (existing[i]) {
-            synced.push({
-              ...existing[i],
-              qNum,
-              subjectName: sec.subjectName,
-              sectionName: sec.sectionName
-            });
-          } else {
-            synced.push({
-              qNum,
-              sectionName: sec.sectionName,
-              subjectName: sec.subjectName,
-              questionText: '',
-              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
-              correctOptionIdx: 0,
-              explanation: '',
-              questionImage: ''
-            });
-          }
-        }
-      });
-      const updated = synced.sort((a, b) => a.qNum - b.qNum);
-      let importCount = 0;
-
-      // Find indices in the global questionsState corresponding to the active subject and section
-      const sectionIndices = updated
-        .map((q, idx) => ({ q, idx }))
-        .filter(item => item.q.subjectName === selectedSubjectName && item.q.sectionName === selectedSectionName);
-
-      for (let i = 0; i < sectionIndices.length; i++) {
-        if (importCount >= toImport.length) break;
-
-        const targetIdx = sectionIndices[i].idx;
-        const importedQ = toImport[importCount];
-        updated[targetIdx].questionText = importedQ.questionText;
-        
-        // Make sure options matches the expected count
-        const nextOpts = [...updated[targetIdx].options];
-        for (let o = 0; o < nextOpts.length; o++) {
-          nextOpts[o] = importedQ.options[o] || '';
-        }
-        updated[targetIdx].options = nextOpts;
-        updated[targetIdx].correctOptionIdx = typeof importedQ.correctOptionIdx === 'number' ? importedQ.correctOptionIdx : 0;
-        updated[targetIdx].explanation = importedQ.explanation || '';
-        
-        // Handle images if any are inside the question text
-        const imgMatch = importedQ.questionText.match(/<img[^>]+src="([^">]+)"/);
-        if (imgMatch && imgMatch[1]) {
-          updated[targetIdx].questionImage = imgMatch[1];
-          // Remove the raw img tag from text so it renders cleanly via our existing UI questionImage rendering
-          updated[targetIdx].questionText = importedQ.questionText.replace(/<img[^>]+>/g, '').trim();
-        } else {
-          updated[targetIdx].questionImage = '';
-        }
-
-        importCount++;
-      }
-
-      alert(`Successfully imported ${importCount} questions into section ${selectedSectionName}!`);
-      return updated;
-    });
-
-    // Reset Word Import View
-    setParsedQuestions([]);
-    setSelectedParsedIndexes({});
-    setWordParseStatus('');
-    // Go to manual view to see imported results
-    setQuestionSetupTab('manual');
-  };
 
   const handleSubmit = async () => {
     try {
@@ -1848,20 +1272,7 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                       >
                         Question Bank
                       </button>
-                       <button 
-                        className={`btn-seed ${questionSetupTab === 'word' ? 'active-tab' : ''}`} 
-                        onClick={() => setQuestionSetupTab('word')}
-                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'word' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'word' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
-                      >
-                        Import MS Word (AI)
-                      </button>
-                      <button 
-                        className={`btn-seed ${questionSetupTab === 'pdf' ? 'active-tab' : ''}`} 
-                        onClick={() => setQuestionSetupTab('pdf')}
-                        style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', background: questionSetupTab === 'pdf' ? 'var(--primary)' : '#fff', color: questionSetupTab === 'pdf' ? '#fff' : '#4a5568', fontSize: '0.85rem', fontWeight: 'bold' }}
-                      >
-                        Import PDF (AI)
-                      </button>
+
                     </div>
 
                     <div className="qsetup-stats-group">
@@ -2330,331 +1741,6 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                         </div>
                       )}
                     </div>
-                  ) : questionSetupTab === 'word' ? (
-                    /* MS Word AI Parser Panel */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, padding: '16px', boxSizing: 'border-box' }}>
-                      {/* Configuration block */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ background: '#eff6ff', padding: '6px', borderRadius: '8px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            🔑
-                          </span>
-                          <div>
-                            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>Gemini API Key Configuration</h4>
-                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              Required for AI question paper extraction. Obtain a free key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Google AI Studio</a>.
-                            </span>
-                          </div>
-                        </div>
-                        <input
-                          type="password"
-                          value={geminiApiKey}
-                          onChange={(e) => setGeminiApiKey(e.target.value)}
-                          placeholder="Paste your AI Studio API Key here..."
-                          style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
-                        />
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
-                          <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Model Version:</span>
-                          <select
-                            value={geminiModel}
-                            onChange={(e) => setGeminiModel(e.target.value)}
-                            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
-                          >
-                            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Recommended / New Stable)</option>
-                            <option value="gemini-3.5-flash">Gemini 3.5 Flash (Stable)</option>
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Legacy / Restricted to older keys)</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Upload zone */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '30px', boxSizing: 'border-box' }}>
-                        <div style={{ background: 'rgba(37,99,235,0.08)', padding: '18px', borderRadius: '50%', color: '#2563eb' }}>
-                          <FileText size={40} />
-                        </div>
-                        
-                        <div style={{ textAlign: 'center' }}>
-                          <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import Word (.docx) Question Paper</h4>
-                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
-                            Upload a MS Word document containing text, math formatting, and embedded diagrams. Gemini AI will structure the paper into online exam questions.
-                          </p>
-                        </div>
-
-                        <label style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '11px 22px',
-                          borderRadius: '8px',
-                          background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
-                          color: '#fff',
-                          fontWeight: 'bold',
-                          cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
-                          fontSize: '0.88rem',
-                          boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
-                        }}>
-                          <Upload size={16} /> Choose Word File
-                          {geminiApiKey.trim() && (
-                            <input 
-                              type="file" 
-                              accept=".docx" 
-                              style={{ display: 'none' }} 
-                              onChange={handleWordFileUpload}
-                              disabled={isParsingWord}
-                            />
-                          )}
-                        </label>
-
-                        {isParsingWord && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
-                            <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            <span>{wordParseStatus}</span>
-                          </div>
-                        )}
-
-                        {wordParseError && (
-                          <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
-                            ⚠️ {wordParseError}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Preview zone */}
-                      {parsedQuestions.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
-                              Parsed Questions List ({parsedQuestions.length} Found)
-                            </h4>
-                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              Select the questions to import into section <strong>{selectedSectionName}</strong>.
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
-                            {parsedQuestions.map((q, idx) => {
-                              // Extract diagram image data if embedded
-                              const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
-                              const hasDiagram = !!imgMatch;
-                              const cleanText = q.questionText.replace(/<img[^>]+>/g, '').trim();
-
-                              return (
-                                <div key={idx} style={{ display: 'flex', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!selectedParsedIndexes[idx]}
-                                    onChange={(e) => setSelectedParsedIndexes(prev => ({ ...prev, [idx]: e.target.checked }))}
-                                    style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
-                                  />
-                                  <div style={{ flex: 1, fontSize: '0.85rem' }}>
-                                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Question {idx + 1}</div>
-                                    <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
-                                      <MathRenderer text={cleanText} />
-                                    </div>
-                                    
-                                    {hasDiagram && imgMatch && (
-                                      <div style={{ marginTop: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                                        <img src={imgMatch[1]} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
-                                      </div>
-                                    )}
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
-                                      {q.options.map((opt: string, oIdx: number) => (
-                                        <div key={oIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '4px', background: q.correctOptionIdx === oIdx ? '#dcfce7' : '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                          <span style={{ fontWeight: 800 }}>{String.fromCharCode(65 + oIdx)}.</span>
-                                          <span>{opt}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleImportSelectedQuestions}
-                            style={{
-                              padding: '12px 24px',
-                              borderRadius: '8px',
-                              border: 'none',
-                              background: 'linear-gradient(135deg, #10b981, #059669)',
-                              color: '#fff',
-                              fontWeight: 'bold',
-                              fontSize: '0.88rem',
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
-                              textAlign: 'center',
-                              alignSelf: 'flex-end',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : questionSetupTab === 'pdf' ? (
-                    /* PDF AI Parser Panel */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, padding: '16px', boxSizing: 'border-box' }}>
-                      {/* Configuration block */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ background: '#eff6ff', padding: '6px', borderRadius: '8px', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            🔑
-                          </span>
-                          <div>
-                            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>Gemini API Key Configuration</h4>
-                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              Required for AI question paper extraction. Obtain a free key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Google AI Studio</a>.
-                            </span>
-                          </div>
-                        </div>
-                        <input
-                          type="password"
-                          value={geminiApiKey}
-                          onChange={(e) => setGeminiApiKey(e.target.value)}
-                          placeholder="Paste your AI Studio API Key here..."
-                          style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', background: '#ffffff', color: '#0f172a', fontWeight: 'bold' }}
-                        />
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
-                          <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Model Version:</span>
-                          <select
-                            value={geminiModel}
-                            onChange={(e) => setGeminiModel(e.target.value)}
-                            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
-                          >
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended / Fast)</option>
-                            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Upload zone */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'center', alignItems: 'center', flex: 1, border: '2px dashed var(--border-color)', borderRadius: '12px', background: '#f8fafc', padding: '30px', boxSizing: 'border-box' }}>
-                        <div style={{ background: 'rgba(37,99,235,0.08)', padding: '18px', borderRadius: '50%', color: '#2563eb' }}>
-                          <FileText size={40} />
-                        </div>
-                        
-                        <div style={{ textAlign: 'center' }}>
-                          <h4 style={{ margin: '0 0 6px 0', fontSize: '1.02rem', fontWeight: 800, color: '#1e293b' }}>Import PDF Question Paper</h4>
-                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '400px', lineHeight: '1.4' }}>
-                            Upload a PDF document containing text, math equations, or printed questions. Gemini AI will OCR and structure the paper into LaTeX questions.
-                          </p>
-                        </div>
-
-                        <label style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '11px 22px',
-                          borderRadius: '8px',
-                          background: geminiApiKey.trim() ? '#2563eb' : '#94a3b8',
-                          color: '#fff',
-                          fontWeight: 'bold',
-                          cursor: geminiApiKey.trim() ? 'pointer' : 'not-allowed',
-                          fontSize: '0.88rem',
-                          boxShadow: '0 2px 4px rgba(37,99,235,0.1)'
-                        }}>
-                          <Upload size={16} /> Choose PDF File
-                          {geminiApiKey.trim() && (
-                            <input 
-                              type="file" 
-                              accept=".pdf" 
-                              style={{ display: 'none' }} 
-                              onChange={handlePdfFileUpload}
-                              disabled={isParsingPdf}
-                            />
-                          )}
-                        </label>
-
-                        {isParsingPdf && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600 }}>
-                            <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            <span>{pdfParseStatus}</span>
-                          </div>
-                        )}
-
-                        {pdfParseError && (
-                          <div style={{ fontSize: '0.8rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', padding: '10px 14px', borderRadius: '8px', maxWidth: '400px', textAlign: 'left', fontWeight: 600 }}>
-                            ⚠️ {pdfParseError}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Preview zone */}
-                      {parsedQuestions.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
-                              Parsed Questions List ({parsedQuestions.length} Found)
-                            </h4>
-                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              Select the questions to import into section <strong>{selectedSectionName}</strong>.
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
-                            {parsedQuestions.map((q, idx) => {
-                              return (
-                                <div key={idx} style={{ display: 'flex', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!selectedParsedIndexes[idx]}
-                                    onChange={(e) => setSelectedParsedIndexes(prev => ({ ...prev, [idx]: e.target.checked }))}
-                                    style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
-                                  />
-                                  <div style={{ flex: 1, fontSize: '0.85rem' }}>
-                                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Question {idx + 1}</div>
-                                    <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
-                                      <MathRenderer text={q.questionText} />
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
-                                      {q.options.map((opt: string, oIdx: number) => (
-                                        <div key={oIdx} style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '4px', background: q.correctOptionIdx === oIdx ? '#dcfce7' : '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                          <span style={{ fontWeight: 800 }}>{String.fromCharCode(65 + oIdx)}.</span>
-                                          <span>{opt}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleImportSelectedQuestions}
-                            style={{
-                              padding: '12px 24px',
-                              borderRadius: '8px',
-                              border: 'none',
-                              background: 'linear-gradient(135deg, #10b981, #059669)',
-                              color: '#fff',
-                              fontWeight: 'bold',
-                              fontSize: '0.88rem',
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
-                              textAlign: 'center',
-                              alignSelf: 'flex-end',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
-                          </button>
-                        </div>
-                      )}
-                    </div>
                   ) : (
                     /* QUESTION BANK LIBRARY DISPLAY */
                     <div className="qbank-library-wrapper">
@@ -3010,39 +2096,61 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
                       </div>
                     )}
                     
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuestionsState(prev => {
-                          const updated = [...prev];
-                          const idxInState = updated.findIndex(item => item.qNum === q.qNum);
-                          if (idxInState !== -1) {
-                            updated[idxInState] = {
-                              ...updated[idxInState],
-                              questionText: '',
-                              options: updated[idxInState].options.map(() => ''),
-                              correctOptionIdx: 0,
-                              explanation: '',
-                              questionImage: ''
-                            };
+                    <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubjectName(q.subjectName);
+                          setSelectedSectionName(q.sectionName);
+                          setQuestionSetupTab('manual');
+                          const globalIdx = questionsState.findIndex(qs => qs.qNum === q.qNum);
+                          if (globalIdx !== -1) {
+                            setActiveQuestionIndex(globalIdx);
                           }
-                          return updated;
-                        });
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: '12px',
-                        right: '12px',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        color: '#e53e3e',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      Remove
-                    </button>
+                          setShowAddedQuestionsModal(false);
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          color: 'var(--primary)',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuestionsState(prev => {
+                            const updated = [...prev];
+                            const idxInState = updated.findIndex(item => item.qNum === q.qNum);
+                            if (idxInState !== -1) {
+                              updated[idxInState] = {
+                                ...updated[idxInState],
+                                questionText: '',
+                                options: updated[idxInState].options.map(() => ''),
+                                correctOptionIdx: 0,
+                                explanation: '',
+                                questionImage: ''
+                              };
+                            }
+                            return updated;
+                          });
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          color: '#e53e3e',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ));
               })()}
@@ -3053,3 +2161,4 @@ IMPORTANT IMAGE & FORMULA INSTRUCTIONS:
     </div>
   );
 };
+}

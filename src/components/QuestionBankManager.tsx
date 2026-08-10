@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { db, type BankQuestion, type QuestionBank } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MathRenderer } from './MathRenderer';
+import { pdfjsLib } from '../utils/pdfWorker';
 import { 
   syncQuestionBankToCloud, 
   deleteQuestionBankFromCloud, 
@@ -27,6 +28,63 @@ import {
 
 interface QuestionBankManagerProps {
   onBack?: () => void;
+}
+
+async function cropPDFRegion(
+  pdfDoc: any,
+  pageNumber: number,
+  ymin: number,
+  xmin: number,
+  ymax: number,
+  xmax: number
+): Promise<string | null> {
+  try {
+    if (pageNumber < 1 || pageNumber > pdfDoc.numPages) return null;
+    const page = await pdfDoc.getPage(pageNumber);
+    const scale = 2.0;
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport
+    }).promise;
+
+    const pageW = viewport.width;
+    const pageH = viewport.height;
+
+    let x = (xmin / 1000) * pageW;
+    let y = (ymin / 1000) * pageH;
+    let w = ((xmax - xmin) / 1000) * pageW;
+    let h = ((ymax - ymin) / 1000) * pageH;
+
+    const padding = 15;
+    x = Math.max(0, x - padding);
+    y = Math.max(0, y - padding);
+    w = Math.min(pageW - x, w + padding * 2);
+    h = Math.min(pageH - y, h + padding * 2);
+
+    if (w <= 0 || h <= 0) return null;
+
+    const cropCanvas = document.createElement('canvas');
+    const cropContext = cropCanvas.getContext('2d');
+    if (!cropContext) return null;
+
+    cropCanvas.width = w;
+    cropCanvas.height = h;
+    cropContext.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+
+    return cropCanvas.toDataURL('image/png');
+  } catch (err) {
+    console.error("cropPDFRegion error:", err);
+    return null;
+  }
 }
 
 export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
@@ -313,19 +371,46 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 Identify all multiple choice questions (MCQs) in the document.
 For each question:
 1. Extract the question text.
-2. Extract the options. If there are options like A, B, C, D, parse them. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings or reconstruct if logical.
-3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D). If not clearly indicated, choose the most likely correct answer or default to 0.
-4. Provide a brief step-by-step explanation or solution if applicable.
-5. Critical: Transcribe all mathematical expressions, equations, and physics formulas into clean inline LaTeX (enclosed in single '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
-6. Critical: If the question refers to a diagram, graph, or pulley setup in the PDF, insert a placeholder tag '[Diagram Required: <short description>]' in the question text.
+2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
+3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D).
+4. Provide a brief explanation or solution.
+5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
+6. CRITICAL - Diagram Bounding Boxes:
+   If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:
+   - Identify the 1-based page number where it is located.
+   - Detect its bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000 where 0 is top/left, 1000 is bottom/right).
+   - Return this in the "diagramBox" field.
+7. CRITICAL - Option Diagram Bounding Boxes:
+   If the options themselves are diagrams, chemical structures, or equations rendered as images (rather than standard plain text):
+   - For each option that is an image, identify its 1-based page number and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
+   - Return these in the "optionDiagramBoxes" array of objects, containing "optionIdx" (0-based) and the bounding "box".
 
 Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
 [
   {
-    "questionText": "Question text here with LaTeX and optional [Diagram Required: description] tags",
+    "questionText": "Question text here with LaTeX",
     "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
     "correctOptionIdx": 0,
-    "explanation": "Explanation here"
+    "explanation": "Explanation here",
+    "diagramBox": {
+      "pageNumber": 2,
+      "ymin": 410,
+      "xmin": 120,
+      "ymax": 530,
+      "xmax": 480
+    },
+    "optionDiagramBoxes": [
+      {
+        "optionIdx": 0,
+        "box": {
+          "pageNumber": 9,
+          "ymin": 280,
+          "xmin": 100,
+          "ymax": 360,
+          "xmax": 240
+        }
+      }
+    ]
   }
 ]`;
 
@@ -377,13 +462,73 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
           throw new Error("No questions could be structured from the PDF contents. Make sure it contains clear text and questions.");
         }
 
+        // Load the PDF client-side to crop any images
+        setPdfParseStatus("Loading PDF locally for image extraction...");
+        const arrayBuffer = await file.arrayBuffer();
+        const typedArray = new Uint8Array(arrayBuffer);
+        const pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
+
+        // Iterate and crop
+        let croppedCount = 0;
+        for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
+          const q = parsed[qIdx];
+          
+          setPdfParseStatus(`Rendering and cropping diagrams: question ${qIdx + 1} of ${parsed.length}...`);
+
+          // 1. Crop question diagram if diagramBox is provided
+          if (q.diagramBox && typeof q.diagramBox.pageNumber === 'number' && typeof q.diagramBox.ymin === 'number') {
+            try {
+              const base64Crop = await cropPDFRegion(
+                pdfDoc,
+                q.diagramBox.pageNumber,
+                q.diagramBox.ymin,
+                q.diagramBox.xmin,
+                q.diagramBox.ymax,
+                q.diagramBox.xmax
+              );
+              if (base64Crop) {
+                q.questionImage = base64Crop;
+                croppedCount++;
+              }
+            } catch (cropErr) {
+              console.error(`Failed to crop diagram for question ${qIdx + 1}:`, cropErr);
+            }
+          }
+
+          // 2. Crop option diagrams if optionDiagramBoxes is provided
+          if (Array.isArray(q.optionDiagramBoxes)) {
+            for (const optBox of q.optionDiagramBoxes) {
+              const optIdx = optBox.optionIdx;
+              const box = optBox.box;
+              if (typeof optIdx === 'number' && box && typeof box.pageNumber === 'number' && typeof box.ymin === 'number') {
+                try {
+                  const base64Crop = await cropPDFRegion(
+                    pdfDoc,
+                    box.pageNumber,
+                    box.ymin,
+                    box.xmin,
+                    box.ymax,
+                    box.xmax
+                  );
+                  if (base64Crop) {
+                    q.options[optIdx] = base64Crop;
+                    croppedCount++;
+                  }
+                } catch (cropErr) {
+                  console.error(`Failed to crop option diagram for question ${qIdx + 1}, option ${optIdx}:`, cropErr);
+                }
+              }
+            }
+          }
+        }
+
         const initialIndexes: Record<number, boolean> = {};
         parsed.forEach((_, idx) => {
           initialIndexes[idx] = true;
         });
         setSelectedParsedIndexes(initialIndexes);
         setParsedQuestions(parsed);
-        setPdfParseStatus(`Successfully parsed ${parsed.length} questions! Review and import them below.`);
+        setPdfParseStatus(`Successfully parsed ${parsed.length} questions and cropped ${croppedCount} diagrams! Review and import them below.`);
       } catch (err: any) {
         console.error("PDF Parsing error:", err);
         setPdfParseError(err.message || "Failed to upload or parse PDF file.");

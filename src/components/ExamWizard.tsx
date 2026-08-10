@@ -119,6 +119,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   const [selectedSubjectName, setSelectedSubjectName] = useState<string>('');
   const [selectedSectionName, setSelectedSectionName] = useState<string>('');
 
+
   React.useEffect(() => {
     if (sectionsList.length > 0 && (!selectedSubjectName || !selectedSectionName)) {
       setSelectedSubjectName(sectionsList[0].subjectName);
@@ -566,7 +567,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
       }
     };
     reader.readAsText(file);
-
+  };
 
   const handleSubmit = async () => {
     try {
@@ -744,7 +745,6 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   };
 
   const isLibraryTab = questionSetupTab === 'library' && step === 4;
-
   return (
     <div className="wizard-overlay animate-fade-in">
       <div className="wizard-container" style={isLibraryTab ? { width: '1200px', maxWidth: '96vw', height: '90vh' } : {}}>
@@ -2185,4 +2185,4 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
     </div>
   );
 };
-}
+

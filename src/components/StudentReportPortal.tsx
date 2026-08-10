@@ -502,7 +502,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       <FullScreenOmrViewer
         imageUrl={activeAnalysisSub.omrImageUrl}
         title={`Scanned OMR Sheet - ${student?.name || 'Student'}`}
-        subtitle={`Roll Number: ${student?.studentNum || ''}`}
+        subtitle={`Roll Number: ${student?.studentNum || ''}${student?.fatherName ? ` | Father: ${student.fatherName}` : ''}`}
         onClose={() => setShowOmrModal(false)}
         scoreInfo={{
           score: activeAnalysisSub.score || 0,
@@ -2336,7 +2336,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
         <OnlineSubmissionViewer
           exam={activeAnalysisSub.exam}
           submission={activeAnalysisSub}
-          studentName={student.name}
+          studentName={student.fatherName ? `${student.name} (Father: ${student.fatherName})` : student.name}
           onClose={() => setShowOnlineViewer(false)}
         />
       )}

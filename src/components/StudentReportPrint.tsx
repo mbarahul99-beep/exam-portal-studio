@@ -576,7 +576,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 <span>Institute APEX — NEET Graded Analysis</span>
               </div>
               <div className="candidate-min font-mono">
-                {student.name} | Roll: {student.studentNum}
+                {student.name}{student.fatherName ? ` (F: ${student.fatherName})` : ''} | Roll: {student.studentNum}
               </div>
             </header>
             {renderResponsesGridRange(pageOneCount + 1, totalQuestions, `Question Response Details (Part 2: Q${String(pageOneCount + 1).padStart(2, '0')} - Q${totalQuestions})`, 840)}
@@ -592,7 +592,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
                 <span>Institute APEX — NEET Graded Analysis</span>
               </div>
               <div className="candidate-min font-mono">
-                {student.name} | Roll: {student.studentNum}
+                {student.name}{student.fatherName ? ` (F: ${student.fatherName})` : ''} | Roll: {student.studentNum}
               </div>
             </header>
             {renderPrintSubjectBreakdown()}

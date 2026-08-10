@@ -3379,7 +3379,9 @@ export default function App() {
                       <div className="student-profile-view animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                         {student && (
                           <div className="profile-header mb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
-                            <h4 style={{ fontSize: '1.4rem', margin: 0 }}>{student.name}</h4>
+                            <h4 style={{ fontSize: '1.4rem', margin: 0 }}>
+                              {student.name}{student.fatherName ? ` (Father: ${student.fatherName})` : ''}
+                            </h4>
                             <p className="subtitle" style={{ fontSize: '0.85rem', margin: '4px 0 0 0', opacity: 0.7 }}>
                               Roll Number: <code>{student.studentNum}</code> • Class: {student.className}
                             </p>

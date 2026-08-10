@@ -619,7 +619,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>{exam.title}</h3>
               </div>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Candidate: <strong>{student.name} ({student.studentNum})</strong>
+                Candidate: <strong>{student.name} ({student.studentNum}){student.fatherName ? ` | Father: ${student.fatherName}` : ''}</strong>
               </p>
             </div>
 

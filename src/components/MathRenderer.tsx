@@ -16,6 +16,30 @@ interface MathRendererProps {
 export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
   if (!text) return null;
 
+  if (text.startsWith('data:image/') || text.startsWith('http://') || text.startsWith('https://') || text.includes('base64,')) {
+    const isBase64 = text.startsWith('data:image/') || text.includes('base64,');
+    if (isBase64 || text.endsWith('.png') || text.endsWith('.jpg') || text.endsWith('.jpeg') || text.endsWith('.gif') || text.endsWith('.webp')) {
+      return (
+        <img 
+          src={text} 
+          alt="Option Diagram" 
+          style={{ 
+            maxHeight: '120px', 
+            maxWidth: '100%', 
+            objectFit: 'contain', 
+            display: 'inline-block', 
+            verticalAlign: 'middle',
+            margin: '4px 0', 
+            borderRadius: '4px', 
+            border: '1px solid #edf2f7', 
+            background: '#fff', 
+            padding: '2px' 
+          }} 
+        />
+      );
+    }
+  }
+
   if (!window.katex || (!text.includes('$') && !text.includes('$$'))) {
     return <span style={style} dangerouslySetInnerHTML={{ __html: text }} />;
   }

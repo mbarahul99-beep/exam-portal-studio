@@ -861,28 +861,55 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>OPTIONS *</label>
                 {newOptions.map((opt, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem', width: '20px' }}>{['A', 'B', 'C', 'D', 'E'][idx]}</span>
-                    <input 
-                      type="text" 
-                      value={opt} 
-                      onChange={e => {
-                        const updated = [...newOptions];
-                        updated[idx] = e.target.value;
-                        setNewOptions(updated);
-                      }}
-                      placeholder={`Option ${['A', 'B', 'C', 'D', 'E'][idx]} text`}
-                      required={idx < 4}
-                      style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }} 
-                    />
-                    <input 
-                      type="radio" 
-                      name="correctIdx" 
-                      checked={newCorrectIdx === idx}
-                      onChange={() => setNewCorrectIdx(idx)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '0.9rem', width: '20px' }}>{['A', 'B', 'C', 'D', 'E'][idx]}</span>
+                      <input 
+                        type="text" 
+                        value={opt} 
+                        onChange={e => {
+                          const updated = [...newOptions];
+                          updated[idx] = e.target.value;
+                          setNewOptions(updated);
+                        }}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (items) {
+                            for (let i = 0; i < items.length; i++) {
+                              if (items[i].type.indexOf('image') !== -1) {
+                                const file = items[i].getAsFile();
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    const updated = [...newOptions];
+                                    updated[idx] = reader.result as string;
+                                    setNewOptions(updated);
+                                  };
+                                  reader.readAsDataURL(file);
+                                  e.preventDefault();
+                                }
+                              }
+                            }
+                          }
+                        }}
+                        placeholder={`Option ${['A', 'B', 'C', 'D', 'E'][idx]} text`}
+                        required={idx < 4}
+                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }} 
+                      />
+                      <input 
+                        type="radio" 
+                        name="correctIdx" 
+                        checked={newCorrectIdx === idx}
+                        onChange={() => setNewCorrectIdx(idx)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
+                    </div>
+                    {opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
+                      <div style={{ marginLeft: '28px', fontSize: '0.8rem', color: '#4a5568' }}>
+                        <MathRenderer text={opt} />
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
@@ -1359,28 +1386,55 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>OPTIONS & CORRECT ANSWER *</label>
                 {editingQuestion.options.map((opt, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem', width: '20px' }}>{['A', 'B', 'C', 'D', 'E'][idx]}</span>
-                    <input 
-                      type="text" 
-                      value={opt} 
-                      onChange={e => {
-                        const updated = [...editingQuestion.options];
-                        updated[idx] = e.target.value;
-                        setEditingQuestion(prev => prev ? { ...prev, options: updated } : null);
-                      }}
-                      placeholder={`Option ${['A', 'B', 'C', 'D', 'E'][idx]} text`}
-                      required={idx < 4}
-                      style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }} 
-                    />
-                    <input 
-                      type="radio" 
-                      name="editCorrectIdx" 
-                      checked={editingQuestion.correctOptionIdx === idx}
-                      onChange={() => setEditingQuestion(prev => prev ? { ...prev, correctOptionIdx: idx } : null)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '0.9rem', width: '20px' }}>{['A', 'B', 'C', 'D', 'E'][idx]}</span>
+                      <input 
+                        type="text" 
+                        value={opt} 
+                        onChange={e => {
+                          const updated = [...editingQuestion.options];
+                          updated[idx] = e.target.value;
+                          setEditingQuestion(prev => prev ? { ...prev, options: updated } : null);
+                        }}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (items) {
+                            for (let i = 0; i < items.length; i++) {
+                              if (items[i].type.indexOf('image') !== -1) {
+                                const file = items[i].getAsFile();
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    const updated = [...editingQuestion.options];
+                                    updated[idx] = reader.result as string;
+                                    setEditingQuestion(prev => prev ? { ...prev, options: updated } : null);
+                                  };
+                                  reader.readAsDataURL(file);
+                                  e.preventDefault();
+                                }
+                              }
+                            }
+                          }
+                        }}
+                        placeholder={`Option ${['A', 'B', 'C', 'D', 'E'][idx]} text`}
+                        required={idx < 4}
+                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }} 
+                      />
+                      <input 
+                        type="radio" 
+                        name="editCorrectIdx" 
+                        checked={editingQuestion.correctOptionIdx === idx}
+                        onChange={() => setEditingQuestion(prev => prev ? { ...prev, correctOptionIdx: idx } : null)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
+                    </div>
+                    {opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
+                      <div style={{ marginLeft: '28px', fontSize: '0.8rem', color: '#4a5568' }}>
+                        <MathRenderer text={opt} />
+                      </div>
+                    )}
                   </div>
                 ))}
                 

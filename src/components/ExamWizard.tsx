@@ -1589,10 +1589,34 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                             return updated;
                                           });
                                         }}
+                                        onPaste={(e) => {
+                                          const items = e.clipboardData?.items;
+                                          if (items) {
+                                            for (let i = 0; i < items.length; i++) {
+                                              if (items[i].type.indexOf('image') !== -1) {
+                                                const file = items[i].getAsFile();
+                                                if (file) {
+                                                  const reader = new FileReader();
+                                                  reader.onloadend = () => {
+                                                    setQuestionsState(prev => {
+                                                      const updated = [...prev];
+                                                      const nextOpts = [...updated[activeQuestionIndex].options];
+                                                      nextOpts[optIdx] = reader.result as string;
+                                                      updated[activeQuestionIndex].options = nextOpts;
+                                                      return updated;
+                                                    });
+                                                  };
+                                                  reader.readAsDataURL(file);
+                                                  e.preventDefault();
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }}
                                         style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
                                       />
                                     </div>
-                                    {optValue.trim() && (optValue.includes('$') || optValue.includes('$$')) && (
+                                    {optValue.trim() && (optValue.includes('$') || optValue.includes('$$') || optValue.startsWith('data:image/')) && (
                                       <div style={{ marginLeft: '38px', fontSize: '0.8rem', color: '#4a5568' }}>
                                         <MathRenderer text={optValue} />
                                       </div>

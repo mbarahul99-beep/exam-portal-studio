@@ -14,7 +14,7 @@ interface MathRendererProps {
 }
 
 export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
-  if (!text) return null;
+  if (!text || typeof text !== 'string') return null;
 
   if (text.startsWith('data:image/') || text.startsWith('http://') || text.startsWith('https://') || text.includes('base64,')) {
     const isBase64 = text.startsWith('data:image/') || text.includes('base64,');

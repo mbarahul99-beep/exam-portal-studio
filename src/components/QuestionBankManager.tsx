@@ -1093,7 +1093,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                       />
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
                     </div>
-                    {opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
+                    {opt && typeof opt === 'string' && opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
                       <div style={{ marginLeft: '28px', fontSize: '0.8rem', color: '#4a5568' }}>
                         <MathRenderer text={opt} />
                       </div>
@@ -1699,7 +1699,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                       />
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Correct</span>
                     </div>
-                    {opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
+                    {opt && typeof opt === 'string' && opt.trim() && (opt.includes('$') || opt.includes('$$') || opt.startsWith('data:image/')) && (
                       <div style={{ marginLeft: '28px', fontSize: '0.8rem', color: '#4a5568' }}>
                         <MathRenderer text={opt} />
                       </div>

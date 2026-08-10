@@ -27,7 +27,7 @@ interface SectionState {
   maxAttempts: number;
 }
 
-export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose, onSuccess }) => {
+export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, onClose, onSuccess }) => {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   const getStepName = (s: number) => {
@@ -1616,7 +1616,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes, examId, onClose
                                         style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}
                                       />
                                     </div>
-                                    {optValue.trim() && (optValue.includes('$') || optValue.includes('$$') || optValue.startsWith('data:image/')) && (
+                                    {optValue && typeof optValue === 'string' && optValue.trim() && (optValue.includes('$') || optValue.includes('$$') || optValue.startsWith('data:image/')) && (
                                       <div style={{ marginLeft: '38px', fontSize: '0.8rem', color: '#4a5568' }}>
                                         <MathRenderer text={optValue} />
                                       </div>

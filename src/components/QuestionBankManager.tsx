@@ -47,7 +47,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = () => {
 
   // PDF AI Parser States
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
-  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-2.5-flash');
+  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem('gemini_model') || 'gemini-3.6-flash');
   const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
   const [pdfParseError, setPdfParseError] = useState<string | null>(null);
   const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
@@ -1032,10 +1032,10 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                     onChange={(e) => setGeminiModel(e.target.value)}
                     style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', color: '#1e293b', fontWeight: 'bold' }}
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended / Fast)</option>
-                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning / High Accuracy)</option>
+                    <option value="gemini-3.6-flash">Gemini 3.6 Flash (Recommended / Newest)</option>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Fast)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Stable)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Advanced Reasoning)</option>
                   </select>
                 </div>
               </div>

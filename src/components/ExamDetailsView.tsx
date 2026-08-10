@@ -21,7 +21,6 @@ import {
   MoreVertical,
   Send,
   Printer,
-  Download,
   UserX,
   Eye,
   BookOpen,
@@ -47,7 +46,7 @@ interface ExamDetailsViewProps {
   onClose: () => void;
   onEdit: (examId: number) => void;
   onPrintRedirect: (exam: Exam) => void;
-  onDownloadJPG: (exam: Exam) => void;
+  onDownloadJPG?: (exam: Exam) => void;
   onViewAnalysis: (submission: any) => void;
 }
 
@@ -58,7 +57,6 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onClose,
   onEdit,
   onPrintRedirect,
-  onDownloadJPG,
   onViewAnalysis
 }) => {
   // Local auto-healing for numQuestions and answerKey (creating a copy to avoid mutating readonly prop)
@@ -1303,12 +1301,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <span className="action-label">OMR/Bubble Sheet</span>
               </button>
 
-              <button className="circular-action-card" onClick={() => onDownloadJPG(exam)}>
-                <div className="circle-icon-box">
-                  <Download size={22} color="#1058ca" />
-                </div>
-                <span className="action-label">Download OMR JPG</span>
-              </button>
+
 
               <button className="circular-action-card" onClick={() => setActiveView('manage-questions')}>
                 <div className="circle-icon-box">

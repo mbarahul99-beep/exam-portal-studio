@@ -41,7 +41,6 @@ import {
   RefreshCw, 
   TrendingUp,
   Link,
-  Copy,
   Trash2,
   Edit2,
   QrCode,
@@ -403,7 +402,6 @@ export default function App() {
   const [drawerClassName, setDrawerClassName] = useState('');
   const [isDrawerSameWhatsApp, setIsDrawerSameWhatsApp] = useState(true);
   const [studentMenuOpenId, setStudentMenuOpenId] = useState<number | null>(null);
-  const [examMenuOpenId, setExamMenuOpenId] = useState<number | null>(null);
 
   // WhatsApp API Configuration States
   const [metaAccessToken, setMetaAccessToken] = useState('');
@@ -1446,6 +1444,9 @@ export default function App() {
           console.warn("MySQL copied questions sync warning:", err);
         }
       }
+
+      // Redirect to the exam list
+      setSelectedExamId(null);
 
       // Show temporary successful toast
       const toast = document.createElement('div');
@@ -2868,6 +2869,7 @@ export default function App() {
                       onPrintRedirect={(exam) => triggerPrint(exam)}
                       onDownloadJPG={(exam) => handleDownloadJPG(exam)}
                       onViewAnalysis={(sub) => setViewingStudentAnalysisSub({ studentId: sub.studentId, preSelectedExamId: examObj.id })}
+                      onCopy={handleCopyExam}
                     />
                   );
                 })()
@@ -2935,7 +2937,6 @@ export default function App() {
                               <th>Student Appeared</th>
                               <th>State</th>
                               <th>Status</th>
-                              <th style={{ width: '60px', textAlign: 'center' }}>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2970,63 +2971,6 @@ export default function App() {
                                         🔒 Draft
                                       </span>
                                     )}
-                                  </td>
-                                  <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                                    <div style={{ position: 'relative', display: 'inline-block' }}>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setExamMenuOpenId(examMenuOpenId === exam.id ? null : exam.id!);
-                                        }}
-                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', display: 'flex', margin: '0 auto' }}
-                                      >
-                                        <MoreVertical size={18} color="#4a5568" />
-                                      </button>
-                                      
-                                      {examMenuOpenId === exam.id && (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            right: 0,
-                                            top: '28px',
-                                            background: '#ffffff',
-                                            borderRadius: '8px',
-                                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                                            border: '1px solid #e2e8f0',
-                                            zIndex: 999,
-                                            minWidth: '130px',
-                                            overflow: 'hidden',
-                                            padding: '4px 0',
-                                            textAlign: 'left'
-                                          }}
-                                        >
-                                          <button
-                                            onClick={async (e) => {
-                                              e.stopPropagation();
-                                              setExamMenuOpenId(null);
-                                              if (window.confirm(`Are you sure you want to duplicate "${exam.title}"?`)) {
-                                                await handleCopyExam(exam);
-                                              }
-                                            }}
-                                            style={{
-                                              width: '100%',
-                                              padding: '10px 16px',
-                                              border: 'none',
-                                              background: 'transparent',
-                                              textAlign: 'left',
-                                              cursor: 'pointer',
-                                              fontSize: '0.85rem',
-                                              color: '#1a202c',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '8px'
-                                            }}
-                                          >
-                                            <Copy size={14} /> Copy Exam
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -3064,74 +3008,15 @@ export default function App() {
                             <div className="mobile-card-content">
                               <div className="mobile-card-header">
                                 <h3 className="mobile-card-title">{exam.title}</h3>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
-                                  {exam.status === 'public' ? (
-                                    <span className="mobile-badge public">
-                                      <Globe size={11} /> Public
-                                    </span>
-                                  ) : (
-                                    <span className="mobile-badge draft">
-                                      <Lock size={11} /> Draft
-                                    </span>
-                                  )}
-                                  
-                                  {/* Mobile Actions Dropdown */}
-                                  <div style={{ position: 'relative' }}>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setExamMenuOpenId(examMenuOpenId === exam.id ? null : exam.id!);
-                                      }}
-                                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
-                                    >
-                                      <MoreVertical size={16} color="#4a5568" />
-                                    </button>
-                                    
-                                    {examMenuOpenId === exam.id && (
-                                      <div
-                                        style={{
-                                          position: 'absolute',
-                                          right: 0,
-                                          top: '24px',
-                                          background: '#ffffff',
-                                          borderRadius: '8px',
-                                          boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                                          border: '1px solid #e2e8f0',
-                                          zIndex: 999,
-                                          minWidth: '120px',
-                                          overflow: 'hidden',
-                                          padding: '4px 0',
-                                          textAlign: 'left'
-                                        }}
-                                      >
-                                        <button
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setExamMenuOpenId(null);
-                                            if (window.confirm(`Are you sure you want to duplicate "${exam.title}"?`)) {
-                                              await handleCopyExam(exam);
-                                            }
-                                          }}
-                                          style={{
-                                            width: '100%',
-                                            padding: '8px 12px',
-                                            border: 'none',
-                                            background: 'transparent',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.8rem',
-                                            color: '#1a202c',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                          }}
-                                        >
-                                          <Copy size={12} /> Copy Exam
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
+                                {exam.status === 'public' ? (
+                                  <span className="mobile-badge public">
+                                    <Globe size={11} /> Public
+                                  </span>
+                                ) : (
+                                  <span className="mobile-badge draft">
+                                    <Lock size={11} /> Draft
+                                  </span>
+                                )}
                               </div>
 
                               <div className="mobile-card-meta">

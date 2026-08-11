@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Trash2, 
+  Copy,
   TrendingUp, 
   Users, 
   Camera, 
@@ -48,6 +49,7 @@ interface ExamDetailsViewProps {
   onPrintRedirect: (exam: Exam) => void;
   onDownloadJPG?: (exam: Exam) => void;
   onViewAnalysis: (submission: any) => void;
+  onCopy?: (exam: Exam) => void;
 }
 
 export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ 
@@ -57,7 +59,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onClose,
   onEdit,
   onPrintRedirect,
-  onViewAnalysis
+  onViewAnalysis,
+  onCopy
 }) => {
   // Local auto-healing for numQuestions and answerKey (creating a copy to avoid mutating readonly prop)
   const exam = useMemo(() => {
@@ -1195,6 +1198,20 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             </div>
 
             <div className="hub-top-actions">
+              {onCopy && (
+                <button 
+                  className="hub-action-icon" 
+                  onClick={async () => {
+                    if (confirm(`Are you sure you want to duplicate "${exam.title}"?`)) {
+                      await onCopy(exam);
+                    }
+                  }} 
+                  title="Copy Exam"
+                  style={{ color: '#4a5568' }}
+                >
+                  <Copy size={20} />
+                </button>
+              )}
               <button className="hub-action-icon text-error" onClick={handleDeleteExam} title="Delete Exam">
                 <Trash2 size={20} />
               </button>

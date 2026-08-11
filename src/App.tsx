@@ -22,7 +22,7 @@ import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView, DEFAULT_OMR_SETTINGS } from './components/OmrSettingsView';
 import { BrandingSettingsView } from './components/BrandingSettingsView';
-import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud, renameClassOnCloud } from './utils/cloudSync';
+import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud, renameClassOnCloud, syncExamToCloud } from './utils/cloudSync';
 import { 
   Sliders,
   LayoutDashboard,
@@ -41,6 +41,7 @@ import {
   RefreshCw, 
   TrendingUp,
   Link,
+  Copy,
   Trash2,
   Edit2,
   QrCode,
@@ -402,6 +403,7 @@ export default function App() {
   const [drawerClassName, setDrawerClassName] = useState('');
   const [isDrawerSameWhatsApp, setIsDrawerSameWhatsApp] = useState(true);
   const [studentMenuOpenId, setStudentMenuOpenId] = useState<number | null>(null);
+  const [examMenuOpenId, setExamMenuOpenId] = useState<number | null>(null);
 
   // WhatsApp API Configuration States
   const [metaAccessToken, setMetaAccessToken] = useState('');
@@ -1389,6 +1391,80 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleCopyExam = async (exam: Exam) => {
+    try {
+      const copiedExam: Exam = {
+        title: `${exam.title} (Copy)`,
+        className: exam.className,
+        date: exam.date,
+        status: 'private', // Duplicate as draft
+        isResultsPublished: false,
+        numQuestions: exam.numQuestions,
+        answerKey: { ...exam.answerKey },
+        correctMarks: exam.correctMarks,
+        incorrectMarks: exam.incorrectMarks,
+        unansweredMarks: exam.unansweredMarks,
+        createdAt: new Date(),
+        startsAt: exam.startsAt,
+        durationMins: exam.durationMins,
+        sectionsMarking: exam.sectionsMarking ? { ...exam.sectionsMarking } : undefined,
+        rollNoDigits: exam.rollNoDigits,
+        examSetsCount: exam.examSetsCount,
+        showResultsToStudent: exam.showResultsToStudent,
+        subjects: exam.subjects ? JSON.parse(JSON.stringify(exam.subjects)) : undefined,
+        sections: exam.sections ? JSON.parse(JSON.stringify(exam.sections)) : undefined,
+        answerKeys: exam.answerKeys ? JSON.parse(JSON.stringify(exam.answerKeys)) : undefined,
+        difficulties: exam.difficulties ? { ...exam.difficulties } : undefined,
+        loginOption: exam.loginOption,
+        passcode: exam.passcode
+      };
+
+      const newExamId = await db.exams.add(copiedExam);
+      
+      // Sync the new copied exam to Hostinger MySQL Cloud
+      await syncExamToCloud({ ...copiedExam, id: newExamId });
+
+      // Copy MCQ questions associated with the original exam (for online exams)
+      const originalQuestions = await db.questions.where('examId').equals(exam.id!).toArray();
+      if (originalQuestions.length > 0) {
+        const newQuestions = originalQuestions.map(({ id, ...qFields }) => ({
+          ...qFields,
+          examId: newExamId
+        }));
+        await db.questions.bulkAdd(newQuestions);
+
+        // Sync questions to Hostinger MySQL
+        try {
+          await fetch('/api/questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ examId: newExamId, questions: newQuestions })
+          });
+        } catch (err) {
+          console.warn("MySQL copied questions sync warning:", err);
+        }
+      }
+
+      // Show temporary successful toast
+      const toast = document.createElement('div');
+      toast.innerText = `Exam "${exam.title}" successfully duplicated!`;
+      toast.style.position = 'fixed';
+      toast.style.bottom = '24px';
+      toast.style.right = '24px';
+      toast.style.background = '#2b6cb0';
+      toast.style.color = '#fff';
+      toast.style.padding = '12px 24px';
+      toast.style.borderRadius = '8px';
+      toast.style.zIndex = '9999';
+      toast.style.fontFamily = 'sans-serif';
+      toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch (err: any) {
+      alert(`Failed to duplicate exam: ${err.message}`);
+    }
   };
 
   // Scanner File Upload & Capture Processing
@@ -2859,6 +2935,7 @@ export default function App() {
                               <th>Student Appeared</th>
                               <th>State</th>
                               <th>Status</th>
+                              <th style={{ width: '60px', textAlign: 'center' }}>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2893,6 +2970,63 @@ export default function App() {
                                         🔒 Draft
                                       </span>
                                     )}
+                                  </td>
+                                  <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setExamMenuOpenId(examMenuOpenId === exam.id ? null : exam.id!);
+                                        }}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', display: 'flex', margin: '0 auto' }}
+                                      >
+                                        <MoreVertical size={18} color="#4a5568" />
+                                      </button>
+                                      
+                                      {examMenuOpenId === exam.id && (
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            right: 0,
+                                            top: '28px',
+                                            background: '#ffffff',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                            border: '1px solid #e2e8f0',
+                                            zIndex: 999,
+                                            minWidth: '130px',
+                                            overflow: 'hidden',
+                                            padding: '4px 0',
+                                            textAlign: 'left'
+                                          }}
+                                        >
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              setExamMenuOpenId(null);
+                                              if (window.confirm(`Are you sure you want to duplicate "${exam.title}"?`)) {
+                                                await handleCopyExam(exam);
+                                              }
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 16px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              textAlign: 'left',
+                                              cursor: 'pointer',
+                                              fontSize: '0.85rem',
+                                              color: '#1a202c',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px'
+                                            }}
+                                          >
+                                            <Copy size={14} /> Copy Exam
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -2930,15 +3064,74 @@ export default function App() {
                             <div className="mobile-card-content">
                               <div className="mobile-card-header">
                                 <h3 className="mobile-card-title">{exam.title}</h3>
-                                {exam.status === 'public' ? (
-                                  <span className="mobile-badge public">
-                                    <Globe size={11} /> Public
-                                  </span>
-                                ) : (
-                                  <span className="mobile-badge draft">
-                                    <Lock size={11} /> Draft
-                                  </span>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                                  {exam.status === 'public' ? (
+                                    <span className="mobile-badge public">
+                                      <Globe size={11} /> Public
+                                    </span>
+                                  ) : (
+                                    <span className="mobile-badge draft">
+                                      <Lock size={11} /> Draft
+                                    </span>
+                                  )}
+                                  
+                                  {/* Mobile Actions Dropdown */}
+                                  <div style={{ position: 'relative' }}>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExamMenuOpenId(examMenuOpenId === exam.id ? null : exam.id!);
+                                      }}
+                                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                                    >
+                                      <MoreVertical size={16} color="#4a5568" />
+                                    </button>
+                                    
+                                    {examMenuOpenId === exam.id && (
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          right: 0,
+                                          top: '24px',
+                                          background: '#ffffff',
+                                          borderRadius: '8px',
+                                          boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                          border: '1px solid #e2e8f0',
+                                          zIndex: 999,
+                                          minWidth: '120px',
+                                          overflow: 'hidden',
+                                          padding: '4px 0',
+                                          textAlign: 'left'
+                                        }}
+                                      >
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setExamMenuOpenId(null);
+                                            if (window.confirm(`Are you sure you want to duplicate "${exam.title}"?`)) {
+                                              await handleCopyExam(exam);
+                                            }
+                                          }}
+                                          style={{
+                                            width: '100%',
+                                            padding: '8px 12px',
+                                            border: 'none',
+                                            background: 'transparent',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.8rem',
+                                            color: '#1a202c',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                          }}
+                                        >
+                                          <Copy size={12} /> Copy Exam
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
 
                               <div className="mobile-card-meta">

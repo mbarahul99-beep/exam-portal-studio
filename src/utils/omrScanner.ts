@@ -666,8 +666,8 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        // Inner radius 5.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+        // Inner radius 5.0px to cover the bubble interior with local snap alignment
+        const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 5.0);
         intensities.push(avgGray);
       }
 
@@ -679,9 +679,9 @@ export async function scanOMRSheet(
       const filledRows: number[] = [];
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        const isLocalContrastValid = colMax - val > 42;
-        const isAvgContrastValid = colAvg - val > 26;
-        const isAbsoluteValid = val < whitePaperLevel - 48;
+        const isLocalContrastValid = colMax - val > 28;
+        const isAvgContrastValid = colAvg - val > 18;
+        const isAbsoluteValid = val < whitePaperLevel - 32;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledRows.push(r);
         }
@@ -729,8 +729,8 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        // Inner radius 4.0px to cover the bubble interior (immune to outline shift)
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
+        // Inner radius 4.0px to cover the bubble interior with local snap alignment
+        const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 4.0);
         intensities.push(avgGray);
       }
 
@@ -743,9 +743,9 @@ export async function scanOMRSheet(
       const filledOptions: number[] = [];
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        const isLocalContrastValid = rowMax - val > 42;
-        const isAvgContrastValid = rowAvg - val > 26;
-        const isAbsoluteValid = val < whitePaperLevel - 48;
+        const isLocalContrastValid = rowMax - val > 28;
+        const isAvgContrastValid = rowAvg - val > 18;
+        const isAbsoluteValid = val < whitePaperLevel - 32;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledOptions.push(o);
         }
@@ -819,6 +819,30 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
     }
   }
   return count > 0 ? sum / count : 255;
+}
+
+/**
+ * Calculates the average grayscale intensity inside a circular bubble ROI,
+ * dynamically checking a 5-point local search neighborhood to snap to the darkest center.
+ * This compensates for local warping skew and hand-held camera shaking.
+ */
+function calculateBubbleAverageGrayWithSnap(grayMatrix: any, cx: number, cy: number, r: number): number {
+  let minGray = 256;
+  const offsets = [
+    { dx: 0, dy: 0 },
+    { dx: -2, dy: 0 },
+    { dx: 2, dy: 0 },
+    { dx: 0, dy: -2 },
+    { dx: 0, dy: 2 }
+  ];
+
+  for (let i = 0; i < offsets.length; i++) {
+    const val = calculateBubbleAverageGray(grayMatrix, cx + offsets[i].dx, cy + offsets[i].dy, r);
+    if (val < minGray) {
+      minGray = val;
+    }
+  }
+  return minGray;
 }
 
 let smallCanvas: HTMLCanvasElement | null = null;

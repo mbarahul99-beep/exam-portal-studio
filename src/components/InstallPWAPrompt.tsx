@@ -121,7 +121,13 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       }
       setDeferredPrompt(null);
     } else {
-      alert("To install APEX on your home screen:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
+      const inIframe = window.self !== window.top;
+      if (inIframe) {
+        alert("PWA Installation is restricted inside masked domain frames (p.instituteapex.in).\n\nWe will now open the direct portal link (app.instituteapex.in) in a new tab. Please click 'Download & Install App' on that page to install directly!");
+        window.open('https://app.instituteapex.in' + window.location.search, '_blank');
+      } else {
+        alert("To install APEX on your home screen:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
+      }
     }
   };
 

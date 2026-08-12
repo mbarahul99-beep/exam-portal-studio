@@ -292,8 +292,14 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
                       }
                     });
                   } else {
-                    setShowInstructions(true);
-                    alert("To install APEX on your home screen:\n\n1. Tap the browser menu (3 dots in top-right for Android/Chrome, or Share button for iOS/Safari)\n2. Select 'Install App' or 'Add to Home screen'");
+                    const inIframe = window.self !== window.top;
+                    if (inIframe) {
+                      alert("PWA Installation is restricted inside masked domain frames (p.instituteapex.in).\n\nWe will now open the direct portal link (app.instituteapex.in) in a new tab. Please click 'Download & Install App' on that page to install directly!");
+                      window.open('https://app.instituteapex.in' + window.location.search, '_blank');
+                    } else {
+                      setShowInstructions(true);
+                      alert("To install APEX on your home screen:\n\n1. Tap the browser menu (3 dots in top-right for Android/Chrome, or Share button for iOS/Safari)\n2. Select 'Install App' or 'Add to Home screen'");
+                    }
                   }
                 }}
                 style={{

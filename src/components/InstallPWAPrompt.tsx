@@ -29,6 +29,12 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       return;
     }
 
+    const isDismissed = localStorage.getItem('apex_pwa_prompt_dismissed') === 'true';
+    if (isDismissed && !forceShow) {
+      setShowPrompt(false);
+      return;
+    }
+
     // Check iOS Safari
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
@@ -85,6 +91,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       const { outcome } = await activePrompt.userChoice;
       if (outcome === 'accepted') {
         setShowPrompt(false);
+        localStorage.setItem('apex_pwa_prompt_dismissed', 'true');
         (window as any).deferredAppInstallPrompt = null;
       }
       setDeferredPrompt(null);
@@ -95,6 +102,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
 
   const handleDismiss = () => {
     setShowPrompt(false);
+    localStorage.setItem('apex_pwa_prompt_dismissed', 'true');
     if (onClose) onClose();
   };
 

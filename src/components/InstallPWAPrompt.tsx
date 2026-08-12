@@ -34,7 +34,25 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIosDevice);
 
-    // Listen for browser install prompt event (Android / Desktop Chrome / Edge)
+    // Check if the prompt was already globally captured by index.html before React mounted
+    const globallyCapturedPrompt = (window as any).deferredAppInstallPrompt;
+    if (globallyCapturedPrompt) {
+      setDeferredPrompt(globallyCapturedPrompt);
+      if (!inStandaloneMode) {
+        setShowPrompt(true);
+      }
+    }
+
+    // Listen to custom event dispatched by index.html when beforeinstallprompt fires
+    const handleCustomPromptAvailable = (e: Event) => {
+      const promptEvent = (e as CustomEvent).detail;
+      setDeferredPrompt(promptEvent);
+      if (!inStandaloneMode) {
+        setShowPrompt(true);
+      }
+    };
+
+    // Listen for standard browser event (fallback)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -43,6 +61,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       }
     };
 
+    window.addEventListener('pwa-prompt-available', handleCustomPromptAvailable as EventListener);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // Auto-show prompt on browser after 500ms delay if app is not added to home screen
@@ -53,17 +72,20 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
     }, 500);
 
     return () => {
+      window.removeEventListener('pwa-prompt-available', handleCustomPromptAvailable as EventListener);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       clearTimeout(timer);
     };
   }, [forceShow]);
 
   const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+    const activePrompt = deferredPrompt || (window as any).deferredAppInstallPrompt;
+    if (activePrompt) {
+      activePrompt.prompt();
+      const { outcome } = await activePrompt.userChoice;
       if (outcome === 'accepted') {
         setShowPrompt(false);
+        (window as any).deferredAppInstallPrompt = null;
       }
       setDeferredPrompt(null);
     } else {

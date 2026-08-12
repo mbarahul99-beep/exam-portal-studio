@@ -402,6 +402,7 @@ export default function App() {
   const [drawerClassName, setDrawerClassName] = useState('');
   const [isDrawerSameWhatsApp, setIsDrawerSameWhatsApp] = useState(true);
   const [studentMenuOpenId, setStudentMenuOpenId] = useState<number | null>(null);
+  const [studentSortOrder, setStudentSortOrder] = useState<'alphabetical' | 'rollNo'>('alphabetical');
 
   // WhatsApp API Configuration States
   const [metaAccessToken, setMetaAccessToken] = useState('');
@@ -2511,10 +2512,23 @@ export default function App() {
                       s.studentNum.includes(searchQuery)
                     );
 
+                    const sortedStudents = [...filteredStudents].sort((a, b) => {
+                      if (studentSortOrder === 'alphabetical') {
+                        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                      } else {
+                        const numA = parseInt(a.studentNum, 10);
+                        const numB = parseInt(b.studentNum, 10);
+                        if (!isNaN(numA) && !isNaN(numB)) {
+                          return numA - numB;
+                        }
+                        return a.studentNum.localeCompare(b.studentNum, undefined, { numeric: true });
+                      }
+                    });
+
                     return (
                       <>
                         <div style={{
-                          padding: '14px 20px',
+                          padding: '14px 20px 8px 20px',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -2588,14 +2602,72 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* Mobile-friendly Sort selector and query indicator */}
+                        <div style={{
+                          padding: '0 20px 12px 20px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          background: '#ffffff',
+                          borderBottom: '1px solid #f1f5f9',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#64748b' }}>
+                            <span>Sort by:</span>
+                            <button
+                              onClick={() => setStudentSortOrder(studentSortOrder === 'alphabetical' ? 'rollNo' : 'alphabetical')}
+                              style={{
+                                background: '#f1f5f9',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                color: '#2563eb',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease',
+                                outline: 'none'
+                              }}
+                            >
+                              {studentSortOrder === 'alphabetical' ? '🔤 Name (A-Z)' : '🔢 Roll No (Asc)'}
+                            </button>
+                          </div>
+
+                          {searchQuery && (
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              fontSize: '0.8rem',
+                              fontWeight: 600
+                            }}>
+                              <span>Query: "{searchQuery}"</span>
+                              <button 
+                                onClick={() => setSearchQuery('')}
+                                style={{ background: 'transparent', border: 'none', color: '#1d4ed8', cursor: 'pointer', fontSize: '0.9rem', padding: '0 2px', display: 'flex' }}
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Students List matching Screenshot 1 */}
                         <div style={{ flex: 1 }}>
-                          {filteredStudents.length === 0 ? (
+                          {sortedStudents.length === 0 ? (
                             <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
                               No students found in {selectedClassName}. Click "+ Add Student" to start.
                             </div>
                           ) : (
-                            filteredStudents.map((s) => {
+                            sortedStudents.map((s) => {
                               const initial = s.name.trim().charAt(0).toUpperCase() || 'S';
                               const isMenuOpen = studentMenuOpenId === s.id;
 

@@ -46,10 +46,6 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
     window.matchMedia('(display-mode: fullscreen)').matches ||
     window.matchMedia('(display-mode: minimal-ui)').matches ||
     (window.navigator as any).standalone;
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  const isInstallable = !!deferredPrompt || isIOS;
-
   React.useEffect(() => {
     // Read the globally captured prompt if already fired on page load
     if ((window as any).deferredAppInstallPrompt) {
@@ -61,9 +57,17 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       setDeferredPrompt(e.detail);
     };
 
+    // Listen for standard browser event fallback
+    const handleNativePrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
     window.addEventListener('pwa-prompt-available', handlePromptAvailable);
+    window.addEventListener('beforeinstallprompt', handleNativePrompt);
     return () => {
       window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
+      window.removeEventListener('beforeinstallprompt', handleNativePrompt);
     };
   }, []);
 
@@ -234,7 +238,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '32px', maxWidth: '440px', width: '100%', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', boxSizing: 'border-box' }}>
         
         {/* Dynamic PWA Student/Staff App Install Banner before login */}
-        {!isStandalone && showBanner && isInstallable && (
+        {!isStandalone && showBanner && (
           <div style={{
             background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
             borderRadius: '12px',

@@ -1896,44 +1896,50 @@ export default function App() {
 
   if (sessionRole === null) {
     return (
-      <UnifiedLoginPortal 
-        onLoginSuccess={(role, studId, tId, email, isOwner, idToken) => {
-          localStorage.setItem('appex_session_role', role);
-          if (studId) {
-            localStorage.setItem('appex_session_student_id', String(studId));
-          }
-          if (tId) {
-            localStorage.setItem('appex_session_teacher_id', String(tId));
-          }
-          if (email) {
-            localStorage.setItem('appex_session_email', email);
-            setSessionEmail(email);
-          }
-          if (isOwner) {
-            localStorage.setItem('appex_session_is_owner', 'true');
-            setSessionIsOwner(true);
-          } else {
-            localStorage.setItem('appex_session_is_owner', 'false');
-            setSessionIsOwner(false);
-          }
-          if (idToken) {
-            localStorage.setItem('appex_session_id_token', idToken);
-            setSessionIdToken(idToken);
-          }
-          setSessionRole(role);
-          setSessionStudentId(studId || null);
-          setSessionTeacherId(tId || null);
-        }}
-      />
+      <>
+        <UnifiedLoginPortal 
+          onLoginSuccess={(role, studId, tId, email, isOwner, idToken) => {
+            localStorage.setItem('appex_session_role', role);
+            if (studId) {
+              localStorage.setItem('appex_session_student_id', String(studId));
+            }
+            if (tId) {
+              localStorage.setItem('appex_session_teacher_id', String(tId));
+            }
+            if (email) {
+              localStorage.setItem('appex_session_email', email);
+              setSessionEmail(email);
+            }
+            if (isOwner) {
+              localStorage.setItem('appex_session_is_owner', 'true');
+              setSessionIsOwner(true);
+            } else {
+              localStorage.setItem('appex_session_is_owner', 'false');
+              setSessionIsOwner(false);
+            }
+            if (idToken) {
+              localStorage.setItem('appex_session_id_token', idToken);
+              setSessionIdToken(idToken);
+            }
+            setSessionRole(role);
+            setSessionStudentId(studId || null);
+            setSessionTeacherId(tId || null);
+          }}
+        />
+        <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
+      </>
     );
   }
 
   if (sessionRole === 'student') {
     return (
-      <StudentReportPortal 
-        studentId={sessionStudentId!} 
-        onLogout={handleLogout}
-      />
+      <>
+        <StudentReportPortal 
+          studentId={sessionStudentId!} 
+          onLogout={handleLogout}
+        />
+        <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
+      </>
     );
   }
 
@@ -5637,9 +5643,7 @@ export default function App() {
       )}
 
       {/* PWA Add to Home Screen Prompt Modal / Banner */}
-      {sessionRole === null && (
-        <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
-      )}
+      <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
     </div>
   );
 }

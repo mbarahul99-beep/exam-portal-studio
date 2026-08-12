@@ -29,23 +29,7 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       return;
     }
 
-    // Check if prompt was dismissed within the last 24 hours
-    const dismissedTimeStr = localStorage.getItem('apex_pwa_prompt_dismissed_time');
-    let isDismissed = false;
-    if (dismissedTimeStr) {
-      const dismissedTime = parseInt(dismissedTimeStr, 10);
-      if (!isNaN(dismissedTime) && (Date.now() - dismissedTime <= 24 * 60 * 60 * 1000)) {
-        isDismissed = true;
-      } else {
-        localStorage.removeItem('apex_pwa_prompt_dismissed_time');
-      }
-    }
-
-    // Also support backward compatibility override, but allow forceShow
-    if (localStorage.getItem('apex_pwa_prompt_dismissed') === 'true' && !forceShow) {
-      isDismissed = true;
-    }
-
+    const isDismissed = localStorage.getItem('apex_pwa_prompt_dismissed') === 'true';
     if (isDismissed && !forceShow) {
       setShowPrompt(false);
       return;
@@ -83,15 +67,8 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       }
     };
 
-    const handleAppInstalled = () => {
-      setShowPrompt(false);
-      localStorage.removeItem('apex_pwa_prompt_dismissed');
-      localStorage.removeItem('apex_pwa_prompt_dismissed_time');
-    };
-
     window.addEventListener('pwa-prompt-available', handleCustomPromptAvailable as EventListener);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
 
     // Auto-show prompt on browser after 500ms delay if app is not added to home screen
     const timer = setTimeout(() => {
@@ -103,7 +80,6 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
     return () => {
       window.removeEventListener('pwa-prompt-available', handleCustomPromptAvailable as EventListener);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
       clearTimeout(timer);
     };
   }, [forceShow]);
@@ -115,26 +91,18 @@ export const InstallPWAPrompt: React.FC<InstallPWAPromptProps> = ({ forceShow = 
       const { outcome } = await activePrompt.userChoice;
       if (outcome === 'accepted') {
         setShowPrompt(false);
-        localStorage.removeItem('apex_pwa_prompt_dismissed');
-        localStorage.removeItem('apex_pwa_prompt_dismissed_time');
+        localStorage.setItem('apex_pwa_prompt_dismissed', 'true');
         (window as any).deferredAppInstallPrompt = null;
       }
       setDeferredPrompt(null);
     } else {
-      const inIframe = window.self !== window.top;
-      if (inIframe) {
-        alert("PWA Installation is restricted inside masked domain frames (p.instituteapex.in).\n\nWe will now open the direct portal link (app.instituteapex.in) in a new tab. Please click 'Download & Install App' on that page to install directly!");
-        window.open('https://app.instituteapex.in' + window.location.search, '_blank');
-      } else {
-        alert("To install APEX on your home screen:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
-      }
+      alert("To install APEX on your home screen:\n\n1. Open browser menu (3 dots or Share button)\n2. Tap 'Add to Home screen' or 'Install App'");
     }
   };
 
   const handleDismiss = () => {
     setShowPrompt(false);
-    localStorage.setItem('apex_pwa_prompt_dismissed_time', String(Date.now()));
-    localStorage.removeItem('apex_pwa_prompt_dismissed'); // Clear old hardcoded flag
+    localStorage.setItem('apex_pwa_prompt_dismissed', 'true');
     if (onClose) onClose();
   };
 

@@ -281,46 +281,34 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             </div>
             
             <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button
-                onClick={() => {
-                  const activePrompt = deferredPrompt || (window as any).deferredAppInstallPrompt;
-                  if (activePrompt) {
-                    activePrompt.prompt();
-                    activePrompt.userChoice.then((choice: any) => {
+              {deferredPrompt ? (
+                <button
+                  onClick={() => {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choice: any) => {
                       if (choice.outcome === 'accepted') {
                         setShowBanner(false);
                       }
                     });
-                  } else {
-                    const inIframe = window.self !== window.top;
-                    if (inIframe) {
-                      alert("PWA Installation is restricted inside masked domain frames (p.instituteapex.in).\n\nWe will now open the direct portal link (app.instituteapex.in) in a new tab. Please click 'Download & Install App' on that page to install directly!");
-                      window.open('https://app.instituteapex.in' + window.location.search, '_blank');
-                    } else {
-                      setShowInstructions(true);
-                      alert("To install APEX on your home screen:\n\n1. Tap the browser menu (3 dots in top-right for Android/Chrome, or Share button for iOS/Safari)\n2. Select 'Install App' or 'Add to Home screen'");
-                    }
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: '#fff',
-                  color: '#065f46',
-                  fontWeight: 'bold',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                }}
-              >
-                Download & Install App
-              </button>
-
-              {!deferredPrompt && !showInstructions && (
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#fff',
+                    color: '#065f46',
+                    fontWeight: 'bold',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  Download & Install App
+                </button>
+              ) : (
                 <button
-                  onClick={() => setShowInstructions(true)}
+                  onClick={() => setShowInstructions(!showInstructions)}
                   style={{
                     width: '100%',
                     padding: '8px 16px',
@@ -333,7 +321,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
                     cursor: 'pointer'
                   }}
                 >
-                  How to Download
+                  {showInstructions ? 'Hide Instructions' : 'How to Download'}
                 </button>
               )}
 

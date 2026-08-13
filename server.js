@@ -1422,8 +1422,7 @@ Return the result as a JSON object matching the requested schema.`;
     // 4. Call Google Gemini API (With self-healing candidate models fallback loop)
     const candidateModels = [
       'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-1.5-flash'
+      'gemini-3.5-flash'
     ];
 
     let response = null;
@@ -1431,7 +1430,7 @@ Return the result as a JSON object matching the requested schema.`;
 
     for (const modelName of candidateModels) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12-second timeout per model request
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout per model request to prevent early cuts on heavy loads
 
       try {
         console.log(`Attempting OMR parse with model: ${modelName}`);

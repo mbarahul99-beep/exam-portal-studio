@@ -1232,6 +1232,7 @@ app.post('/api/scan/ai-verify', async (req, res) => {
     const base64Data = imageDataBase64.replace(/^data:image\/\w+;base64,/, '');
 
     // 3. Construct Gemini Prompt & Schema
+    // 3. Construct Gemini Prompt & Schema
     const promptText = `You are a professional OMR scanning engine.
 Analyze the provided image of an OMR exam sheet.
 The sheet has exactly ${numQuestions} questions.
@@ -1263,9 +1264,16 @@ Return the result as a JSON object matching the requested schema.`;
             studentName: { type: 'STRING', description: 'The transcribed handwritten Name from the sheet header, or "" if not found.' },
             fatherName: { type: 'STRING', description: 'The transcribed handwritten Father\'s Name from the sheet header, or "" if not found.' },
             answers: {
-              type: 'OBJECT',
-              description: `An object mapping question numbers "1" to "${numQuestions}" to their detected option character (A, B, C, D, or "" if empty/blank).`,
-              additionalProperties: { type: 'STRING' }
+              type: 'ARRAY',
+              description: 'List of answers for each question.',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  q: { type: 'INTEGER', description: 'Question number (from 1 to numQuestions).' },
+                  ans: { type: 'STRING', description: 'Detected option character (A, B, C, D, or "" if empty/blank).' }
+                },
+                required: ['q', 'ans']
+              }
             }
           },
           required: ['studentId', 'studentName', 'fatherName', 'answers']
@@ -1293,18 +1301,21 @@ Return the result as a JSON object matching the requested schema.`;
 
     const parsedResult = JSON.parse(candidateText.trim());
     
-    // Normalize keys to integers to match OpenCV result output format
+    // Normalize array of answers to key-value map format matching standard scan output
     const answersMap = {};
-    for (const key of Object.keys(parsedResult.answers || {})) {
-      const qNum = parseInt(key, 10);
-      if (!isNaN(qNum)) {
-        answersMap[qNum] = parsedResult.answers[key];
-      }
+    if (Array.isArray(parsedResult.answers)) {
+      parsedResult.answers.forEach(item => {
+        if (item && item.q !== undefined) {
+          answersMap[item.q] = item.ans || '';
+        }
+      });
     }
 
     res.json({ 
       success: true, 
       studentId: parsedResult.studentId || '', 
+      studentName: parsedResult.studentName || '',
+      fatherName: parsedResult.fatherName || '',
       answers: answersMap 
     });
   } catch (err) {

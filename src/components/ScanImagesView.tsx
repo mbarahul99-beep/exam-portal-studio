@@ -153,6 +153,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     bookletSet: string;
     omrImageUrl: string;
     studentId: number | null;
+    tempStudentId?: number;
+    rawTranscribedName?: string;
+    rawTranscribedFatherName?: string;
   } | null>(null);
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
@@ -675,32 +678,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           ? targetCanvas.toDataURL('image/jpeg', 0.92) 
           : snapCanvas.toDataURL('image/jpeg', 0.92);
 
-        let finalStudentId = studentId;
         const cleanName = (aiResult.studentName || '').trim();
         const cleanFather = (aiResult.fatherName || '').trim();
-
-        if (!finalStudentId && cleanName) {
-          try {
-            const newStudentId = await db.students.add({
-              studentNum: aiResult.studentId || '',
-              name: cleanName,
-              fatherName: cleanFather || '',
-              className: exam.className
-            });
-            finalStudentId = newStudentId;
-
-            // Trigger sync of this new student to the cloud
-            const { syncStudentToCloud } = await import('../utils/cloudSync');
-            const saved = await db.students.get(newStudentId);
-            if (saved) {
-              syncStudentToCloud(saved).catch(console.warn);
-            }
-          } catch (regErr) {
-            console.error("Auto registration in camera flow failed:", regErr);
-          }
-        }
-
-        const targetStudentId = finalStudentId || -(Date.now() + Math.floor(Math.random() * 1000));
+        const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
 
         if (exam.id) {
           try {
@@ -730,7 +710,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         const scanResultName = matchedStudent 
           ? matchedStudent.name 
           : (cleanName 
-              ? (cleanFather ? `${cleanName} f/o ${cleanFather}` : cleanName)
+              ? (cleanFather ? `${cleanName} f/o ${cleanFather} (Unregistered)` : `${cleanName} (Unregistered)`)
               : 'Unknown Candidate');
 
         setLastScanOverlay({
@@ -743,7 +723,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           answers: aiResult.answers,
           bookletSet: detectedSet,
           omrImageUrl: croppedUrl,
-          studentId: finalStudentId
+          studentId: studentId,
+          tempStudentId: targetStudentId,
+          rawTranscribedName: cleanName,
+          rawTranscribedFatherName: cleanFather
         });
 
       } catch (err: any) {
@@ -1662,7 +1645,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>File: {getSelectedFile()?.name}</p>
                     
                     {/* Manual student selector for file mode */}
-                    {activeResult && !activeResult.studentId && (
+                    {activeResult && (!activeResult.studentId || activeResult.studentId < 0) && (
                       <div style={{ marginTop: '4px' }}>
                         <select
                           value={detectedStudentId || ''}
@@ -1710,6 +1693,90 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                             <option key={s.id} value={s.id}>{s.name} (Roll: {s.studentNum})</option>
                           ))}
                         </select>
+                      </div>
+                    )}
+
+                    {detectedStudentId && detectedStudentId < 0 && activeResult && activeResult.rawTranscribedName && (
+                      <div style={{
+                        background: '#f3e8ff',
+                        border: '1px solid #c084fc',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        marginTop: '6px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}>
+                        <div style={{ fontSize: '0.8rem', color: '#6b21a8', fontWeight: 600 }}>
+                          👤 Transcribed Name: "{activeResult.rawTranscribedName}"
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const cleanName = (activeResult.rawTranscribedName || '').trim();
+                            const cleanFather = (activeResult.rawTranscribedFatherName || '').trim();
+                            const studentNum = activeResult.detectedStudentNum || '';
+                            
+                            try {
+                              const newStudentId = await db.students.add({
+                                studentNum,
+                                name: cleanName,
+                                fatherName: cleanFather,
+                                className: exam.className
+                              });
+                              
+                              // Trigger sync of this new student to the cloud
+                              const { syncStudentToCloud } = await import('../utils/cloudSync');
+                              const saved = await db.students.get(newStudentId);
+                              if (saved) {
+                                syncStudentToCloud(saved).catch(console.warn);
+                              }
+
+                              // Update active results and local state selection to link immediately
+                              setDetectedStudentId(newStudentId);
+                              setActiveResult((prev: any) => prev ? {
+                                ...prev,
+                                studentId: newStudentId,
+                                studentName: cleanName
+                              } : null);
+
+                              setFileList((prev: any[]) => prev.map(f => {
+                                if (f.id === selectedFileId) {
+                                  return {
+                                    ...f,
+                                    result: {
+                                      ...f.result,
+                                      studentId: newStudentId,
+                                      studentName: cleanName
+                                    }
+                                  };
+                                }
+                                return f;
+                              }));
+
+                              alert(`Successfully registered: ${cleanName}`);
+                            } catch (err: any) {
+                              alert("Registration failed: " + (err.message || err));
+                            }
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: '#7c3aed',
+                            color: '#ffffff',
+                            fontWeight: 'bold',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            boxShadow: '0 2px 4px rgba(124, 58, 237, 0.2)'
+                          }}
+                        >
+                          📝 Register as New Student
+                        </button>
                       </div>
                     )}
 
@@ -2245,6 +2312,74 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     </div>
 
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      {(!lastScanOverlay.studentId || lastScanOverlay.studentId < 0) && lastScanOverlay.rawTranscribedName && (
+                        <button 
+                          type="button"
+                          onClick={async () => {
+                            const rawName = lastScanOverlay.rawTranscribedName || '';
+                            const rawFather = lastScanOverlay.rawTranscribedFatherName || '';
+                            
+                            try {
+                              const newStudentId = await db.students.add({
+                                studentNum: lastScanOverlay.studentNum,
+                                name: rawName,
+                                fatherName: rawFather,
+                                className: exam.className
+                              });
+                              
+                              // Update studentId in the saved submission in Dexie database!
+                              if (exam.id && lastScanOverlay.tempStudentId) {
+                                const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.tempStudentId]).first();
+                                if (existingSub) {
+                                  await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.tempStudentId]).delete();
+                                  existingSub.studentId = newStudentId;
+                                  const newSubId = await db.submissions.add(existingSub);
+                                  
+                                  const saved = await db.submissions.get(newSubId);
+                                  if (saved) {
+                                    const { syncSubmissionToCloud } = await import('../utils/cloudSync');
+                                    syncSubmissionToCloud(saved).catch(console.warn);
+                                  }
+                                }
+                              }
+                              
+                              // Sync new student to cloud
+                              const { syncStudentToCloud } = await import('../utils/cloudSync');
+                              const savedStudent = await db.students.get(newStudentId);
+                              if (savedStudent) {
+                                syncStudentToCloud(savedStudent).catch(console.warn);
+                              }
+                              
+                              pullCloudUpdatesToIndexedDB();
+                              refreshSubmissions();
+                              
+                              // Update lastScanOverlay state to show registered status
+                              setLastScanOverlay(prev => prev ? {
+                                ...prev,
+                                studentId: newStudentId,
+                                studentName: rawName
+                              } : null);
+                              
+                              alert(`Successfully registered student: ${rawName}`);
+                            } catch (err: any) {
+                              alert("Registration failed: " + (err.message || err));
+                            }
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '8px',
+                            background: '#7c3aed',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            boxShadow: '0 2px 6px rgba(124, 58, 237, 0.2)'
+                          }}
+                        >
+                          📝 Register
+                        </button>
+                      )}
                       <button 
                         type="button"
                         onClick={() => {

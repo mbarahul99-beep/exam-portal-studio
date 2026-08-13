@@ -140,6 +140,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const isScanningRef = useRef<boolean>(false);
   const stableFramesRef = useRef<number>(0);
   const prevCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
+  const prevTinyFrameRef = useRef<Uint8ClampedArray | null>(null);
+  const stableFramesCountRef = useRef<number>(0);
+  const lastStabilityCheckRef = useRef<number>(0);
 
   // Registered students in this exam's class limit validation
   const [lastScanOverlay, setLastScanOverlay] = useState<{ 
@@ -300,6 +303,50 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (ctx) {
         ctx.clearRect(0, 0, vW, vH);
         
+        // 16x16 motion stability detection for AI Scanner mode
+        if (cameraScanMode === 'ai') {
+          const now = Date.now();
+          if (now - lastStabilityCheckRef.current > 250) {
+            lastStabilityCheckRef.current = now;
+            
+            const tinyCanvas = document.createElement('canvas');
+            tinyCanvas.width = 16;
+            tinyCanvas.height = 16;
+            const tinyCtx = tinyCanvas.getContext('2d');
+            if (tinyCtx) {
+              tinyCtx.drawImage(video, 0, 0, 16, 16);
+              const imgData = tinyCtx.getImageData(0, 0, 16, 16).data;
+              
+              if (prevTinyFrameRef.current) {
+                let diff = 0;
+                for (let i = 0; i < imgData.length; i += 4) {
+                  diff += Math.abs(imgData[i] - prevTinyFrameRef.current[i]);
+                  diff += Math.abs(imgData[i+1] - prevTinyFrameRef.current[i+1]);
+                  diff += Math.abs(imgData[i+2] - prevTinyFrameRef.current[i+2]);
+                }
+                
+                const avgDiff = diff / (16 * 16 * 3);
+                
+                if (avgDiff < 9.0) { // Stable threshold
+                  stableFramesCountRef.current += 1;
+                  // If stable for 5 checks (1.25s), auto-capture!
+                  if (stableFramesCountRef.current >= 5 && !isScanningRef.current && !lastScanOverlay) {
+                    stableFramesCountRef.current = 0;
+                    isScanningRef.current = true;
+                    setIsScanning(true);
+                    setTimeout(() => {
+                      captureCameraPhoto();
+                    }, 0);
+                  }
+                } else {
+                  stableFramesCountRef.current = 0;
+                }
+              }
+              prevTinyFrameRef.current = imgData;
+            }
+          }
+        }
+
         // Run corner detection using a lightweight OpenCV helper
         try {
           const corners = findOMRSheetCornersLive(video);
@@ -2192,6 +2239,44 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   🧠 AI Scanner
                 </button>
               </div>
+            )}
+
+            {!lastScanOverlay && (
+              <button
+                type="button"
+                onClick={() => {
+                  isScanningRef.current = true;
+                  setIsScanning(true);
+                  setTimeout(() => {
+                    captureCameraPhoto();
+                  }, 0);
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: '76px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '58px',
+                  height: '58px',
+                  borderRadius: '50%',
+                  background: cameraScanMode === 'ai' ? '#7c3aed' : '#2563eb',
+                  border: '4px solid #ffffff',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+                  cursor: 'pointer',
+                  zIndex: 30,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+                title="Capture & Scan"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </button>
             )}
 
             {/* Dynamic Status Indicator Overlay (Extremely small, clean and mobile friendly) */}

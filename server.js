@@ -1232,11 +1232,11 @@ app.post('/api/scan/ai-verify', async (req, res) => {
     const base64Data = imageDataBase64.replace(/^data:image\/\w+;base64,/, '');
 
     // 3. Construct Gemini Prompt & Schema
-    // 3. Construct Gemini Prompt & Schema
     const promptText = `You are a professional OMR scanning engine.
-Analyze the provided image of an OMR exam sheet.
+Analyze the provided image of an OMR exam sheet. The image may be a warped OMR crop or a full-frame photograph from a mobile camera.
+Locate the OMR sheet in the image (it contains the candidate name header, roll number bubble grid, and the question response bubble columns).
 The sheet has exactly ${numQuestions} questions.
-Read the selected option circles (A, B, C, D, or empty) for each question (from 1 to ${numQuestions}).
+Read the selected option circles (A, B, C, D, or empty/blank) for each question (from 1 to ${numQuestions}).
 Also read the filled digits in the Student ID / Roll No grid columns from left to right.
 In addition, transcribe the student's handwritten Name and Father's Name from the text fields in the sheet header (if present).
 Return the result as a JSON object matching the requested schema.`;

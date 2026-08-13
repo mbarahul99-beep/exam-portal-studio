@@ -117,6 +117,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isAIScanning, setIsAIScanning] = useState(false);
+  const [cameraScanMode, setCameraScanMode] = useState<'standard' | 'ai'>('standard');
   const [cvLoaded, setCvLoaded] = useState(false);
 
   // Scanned Submissions & Full-Screen View Sheets Mode
@@ -528,6 +529,200 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     const sCtx = snapCanvas.getContext('2d');
     if (!sCtx) return;
     sCtx.drawImage(video, 0, 0, vW, vH);
+
+    if (cameraScanMode === 'ai') {
+      try {
+        const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
+        let cvResult: any = null;
+        try {
+          cvResult = await scanOMRSheet(
+            snapCanvas,
+            exam.numQuestions,
+            scannerRollDigits,
+            exam.examSetsCount ?? 1,
+            exam.sections ?? []
+          );
+        } catch (err) {
+          console.warn("Local warp alignment failed inside camera AI handler:", err);
+        }
+
+        let imageDataBase64 = '';
+        let targetCanvas: HTMLCanvasElement | null = null;
+
+        if (cvResult && cvResult.debugWarpedCanvas) {
+          targetCanvas = cvResult.debugWarpedCanvas;
+          imageDataBase64 = cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92);
+        } else {
+          imageDataBase64 = snapCanvas.toDataURL('image/jpeg', 0.92);
+        }
+
+        const response = await fetch('/api/scan/ai-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageDataBase64,
+            numQuestions: exam.numQuestions
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'AI Scan request failed');
+        }
+
+        const aiResult = await response.json();
+
+        const stripLeadingZeros = (val: string) => {
+          const cleaned = val.replace(/^0+/, '');
+          return cleaned === '' ? '0' : cleaned;
+        };
+        const aiRollStripped = stripLeadingZeros(aiResult.studentId);
+        const classStudents = students.filter(s => s.className === exam.className);
+        const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
+        const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
+
+        let score = 0;
+        let correctCount = 0;
+        let wrongCount = 0;
+        let unansweredCount = 0;
+
+        const detectedSet = 'A';
+        let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+        if (!correctKey || Object.keys(correctKey).length === 0) {
+          correctKey = exam.answerKey;
+        }
+
+        if (exam.sections && exam.sections.length > 0) {
+          exam.sections.forEach((sec: any) => {
+            const secCorrectMarks = sec.correctMarks ?? 4;
+            const secIncorrectMarks = sec.incorrectMarks ?? -1;
+            const secUnansweredMarks = sec.unansweredMarks ?? 0;
+            const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
+
+            if (sec.allowOptionalAttempts && sec.maxAttempts) {
+              const attempted: Array<{ q: number; ans: string }> = [];
+              qNums.forEach(q => {
+                const ans = aiResult.answers[q] || '';
+                if (ans !== '') attempted.push({ q, ans });
+              });
+
+              const evaluated = attempted.slice(0, sec.maxAttempts);
+              evaluated.forEach(item => {
+                const correctAns = correctKey[item.q] || '';
+                if (item.ans === correctAns) {
+                  score += secCorrectMarks;
+                  correctCount++;
+                } else {
+                  score += secIncorrectMarks;
+                  wrongCount++;
+                }
+              });
+
+              const unattemptedCount = sec.qCount - evaluated.length;
+              unansweredCount += unattemptedCount;
+              score += unattemptedCount * secUnansweredMarks;
+            } else {
+              qNums.forEach(q => {
+                const studentAns = aiResult.answers[q] || '';
+                const correctAns = correctKey[q] || '';
+                if (studentAns === '') {
+                  score += secUnansweredMarks;
+                  unansweredCount++;
+                } else if (studentAns === correctAns) {
+                  score += secCorrectMarks;
+                  correctCount++;
+                } else {
+                  score += secIncorrectMarks;
+                  wrongCount++;
+                }
+              });
+            }
+          });
+        } else {
+          const cMarks = exam.correctMarks ?? 4;
+          const iMarks = exam.incorrectMarks ?? -1;
+          const uMarks = exam.unansweredMarks ?? 0;
+
+          for (let q = 1; q <= exam.numQuestions; q++) {
+            const studentAns = aiResult.answers[q] || '';
+            const correctAns = correctKey[q] || '';
+
+            if (studentAns === '') {
+              score += uMarks;
+              unansweredCount++;
+            } else if (studentAns === correctAns) {
+              score += cMarks;
+              correctCount++;
+            } else {
+              score += iMarks;
+              wrongCount++;
+            }
+          }
+        }
+
+        if (targetCanvas) {
+          drawOverlayOnWarpedCanvas(
+            targetCanvas,
+            exam.numQuestions,
+            aiResult.answers,
+            correctKey,
+            (cvResult && cvResult.bestDy) || 0,
+            exam.sections ?? []
+          );
+        }
+
+        const croppedUrl = targetCanvas 
+          ? targetCanvas.toDataURL('image/jpeg', 0.92) 
+          : snapCanvas.toDataURL('image/jpeg', 0.92);
+
+        const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+
+        if (exam.id) {
+          try {
+            await db.submissions.where('[examId+studentId]').equals([exam.id, targetStudentId]).delete();
+            const subId = await db.submissions.add({
+              examId: exam.id!,
+              studentId: targetStudentId,
+              score: score,
+              answers: aiResult.answers,
+              bookletSet: detectedSet,
+              omrImageUrl: croppedUrl,
+              scannedAt: new Date(),
+              detectedRollNum: aiResult.studentId || ''
+            });
+
+            const savedSub = await db.submissions.get(subId);
+            if (savedSub && targetStudentId > 0) {
+              syncSubmissionToCloud(savedSub).catch(console.warn);
+            }
+            pullCloudUpdatesToIndexedDB();
+            refreshSubmissions();
+          } catch (saveErr) {
+            console.error("Auto-save error:", saveErr);
+          }
+        }
+
+        setLastScanOverlay({
+          studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+          studentNum: aiResult.studentId || '',
+          score,
+          correctCount,
+          wrongCount,
+          unansweredCount,
+          answers: aiResult.answers,
+          bookletSet: detectedSet,
+          omrImageUrl: croppedUrl,
+          studentId: studentId
+        });
+
+      } catch (err: any) {
+        console.error(err);
+        alert("OMR AI Scan Error: " + (err.message || "Failed to scan sheet."));
+        isScanningRef.current = false;
+        setIsScanning(false);
+      }
+      return;
+    }
 
     try {
       const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
@@ -1798,6 +1993,65 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             {/* Transparent overlay canvas for drawing the detected corners and guide outline */}
             <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', zIndex: 10 }}></canvas>
 
+            {!lastScanOverlay && (
+              <div style={{
+                position: 'absolute',
+                bottom: '16px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 30,
+                background: 'rgba(15, 23, 42, 0.8)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '24px',
+                padding: '4px',
+                display: 'flex',
+                gap: '4px',
+                border: '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setCameraScanMode('standard')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    background: cameraScanMode === 'standard' ? '#2563eb' : 'transparent',
+                    color: '#ffffff',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  ⚡ Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraScanMode('ai')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    background: cameraScanMode === 'ai' ? '#8b5cf6' : 'transparent',
+                    color: '#ffffff',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  🧠 AI Scanner
+                </button>
+              </div>
+            )}
+
             {/* Dynamic Status Indicator Overlay (Extremely small, clean and mobile friendly) */}
             <div style={{ 
               position: 'absolute', 
@@ -1832,6 +2086,37 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </>
               )}
             </div>
+
+            {isScanning && cameraScanMode === 'ai' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 50,
+                background: 'rgba(15, 23, 42, 0.82)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                gap: '16px'
+              }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  border: '4px solid rgba(255,255,255,0.1)',
+                  borderTop: '4px solid #8b5cf6',
+                  animation: 'spin 1s linear infinite'
+                }} className="spin" />
+                <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
+                  🧠 AI Processing...
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
+                  Grading bubble sheet answers via Gemini API
+                </div>
+              </div>
+            )}
 
             {lastScanOverlay && (() => {
               const totalMaxMarks = exam.sections && exam.sections.length > 0

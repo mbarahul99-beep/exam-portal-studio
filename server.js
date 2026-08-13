@@ -1430,20 +1430,28 @@ Return the result as a JSON object matching the requested schema.`;
 
     for (const modelName of candidateModels) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout per model request to prevent early cuts on heavy loads
+      let timerId;
 
       try {
         console.log(`Attempting OMR parse with model: ${modelName}`);
         const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
         
-        response = await fetch(url, {
+        const fetchPromise = fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
           signal: controller.signal
         });
 
-        clearTimeout(timeoutId);
+        const timeoutPromise = new Promise((_, reject) => {
+          timerId = setTimeout(() => {
+            controller.abort();
+            reject(new Error('API request timed out (45s limit exceeded)'));
+          }, 45000);
+        });
+
+        response = await Promise.race([fetchPromise, timeoutPromise]);
+        clearTimeout(timerId);
 
         if (response.ok) {
           console.log(`OMR parse successful with model: ${modelName}`);
@@ -1454,7 +1462,7 @@ Return the result as a JSON object matching the requested schema.`;
           console.warn(lastError.message);
         }
       } catch (err) {
-        clearTimeout(timeoutId);
+        if (timerId) clearTimeout(timerId);
         lastError = err;
         console.warn(`Model ${modelName} request failed:`, err.message);
       }

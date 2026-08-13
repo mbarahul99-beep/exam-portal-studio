@@ -18,6 +18,40 @@ import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 import { FullScreenOmrViewer } from './FullScreenOmrViewer';
 
+// Helper to compress and downscale high-res images before API upload
+async function compressImage(src: HTMLCanvasElement | string, maxLongEdge = 1000, quality = 0.65): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxLongEdge || height > maxLongEdge) {
+        if (width > height) {
+          height = Math.round((height * maxLongEdge) / width);
+          width = maxLongEdge;
+        } else {
+          width = Math.round((width * maxLongEdge) / height);
+          height = maxLongEdge;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } else {
+        resolve(typeof src === 'string' ? src : src.toDataURL('image/jpeg', quality));
+      }
+    };
+    img.onerror = () => {
+      resolve(typeof src === 'string' ? src : src.toDataURL('image/jpeg', quality));
+    };
+    img.src = typeof src === 'string' ? src : src.toDataURL('image/jpeg', 1.0);
+  });
+}
+
 // Helper function to draw green/red overlays on scanned OMR image bubbles
 function drawOverlayOnWarpedCanvas(
   canvas: HTMLCanvasElement,
@@ -596,15 +630,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           console.warn("Local warp alignment failed inside camera AI handler:", err);
         }
 
-        let imageDataBase64 = '';
         let targetCanvas: HTMLCanvasElement | null = null;
-
         if (cvResult && cvResult.debugWarpedCanvas) {
           targetCanvas = cvResult.debugWarpedCanvas;
-          imageDataBase64 = cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92);
-        } else {
-          imageDataBase64 = snapCanvas.toDataURL('image/jpeg', 0.92);
         }
+
+        const imageDataBase64 = await compressImage(targetCanvas || snapCanvas);
 
         const response = await fetch('/api/scan/ai-verify', {
           method: 'POST',
@@ -1209,15 +1240,12 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         console.warn("Local warp alignment failed, falling back to original image:", err);
       }
 
-      let imageDataBase64 = '';
       let targetCanvas: HTMLCanvasElement | null = null;
-
       if (cvResult && cvResult.debugWarpedCanvas) {
         targetCanvas = cvResult.debugWarpedCanvas;
-        imageDataBase64 = cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92);
-      } else {
-        imageDataBase64 = current.previewUrl;
       }
+
+      const imageDataBase64 = await compressImage(targetCanvas || current.previewUrl);
 
       const response = await fetch('/api/scan/ai-verify', {
         method: 'POST',

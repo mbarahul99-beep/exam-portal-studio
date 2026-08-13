@@ -460,7 +460,11 @@ app.get('/api/settings', async (req, res) => {
     const [rows] = await pool.query('SELECT `key`, `value` FROM app_settings');
     const settings = {};
     rows.forEach(r => {
-      settings[r.key] = r.value;
+      if (r.key === 'gemini_api_key') {
+        settings[r.key] = r.value ? '••••••••' : '';
+      } else {
+        settings[r.key] = r.value;
+      }
     });
     res.json(settings);
   } catch (err) {
@@ -1176,6 +1180,113 @@ app.post('/api/upload-omr', async (req, res) => {
     res.json({ success: true, url: publicUrl, filename: fileName });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Gemini AI OMR Scanner verification endpoint
+app.post('/api/scan/ai-verify', async (req, res) => {
+  const { imageDataBase64, numQuestions } = req.body;
+  if (!imageDataBase64) return res.status(400).json({ error: 'No image data provided' });
+  if (!numQuestions) return res.status(400).json({ error: 'Missing numQuestions parameter' });
+
+  try {
+    // 1. Retrieve Gemini API Key from Database
+    let apiKey = '';
+    if (pool) {
+      const [rows] = await pool.query('SELECT `value` FROM app_settings WHERE `key` = "gemini_api_key"');
+      if (rows.length > 0 && rows[0].value) {
+        apiKey = rows[0].value;
+      }
+    }
+    
+    // Fall back to environment variable
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY || '';
+    }
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Gemini API Key is not configured. Please configure it in the System Controls panel.' });
+    }
+
+    // 2. Prepare base64 image data
+    const base64Data = imageDataBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    // 3. Construct Gemini Prompt & Schema
+    const promptText = `You are a professional OMR scanning engine.
+Analyze the provided image of an OMR exam sheet.
+The sheet has exactly ${numQuestions} questions.
+Read the selected option circles (A, B, C, D, or empty) for each question (from 1 to ${numQuestions}).
+Also read the filled digits in the Student ID / Roll No grid columns from left to right.
+Return the result as a JSON object matching the requested schema.`;
+
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            { text: promptText },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Data
+              }
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            studentId: { type: 'STRING', description: 'The detected Student ID (Roll No) digits.' },
+            answers: {
+              type: 'OBJECT',
+              description: `An object mapping question numbers "1" to "${numQuestions}" to their detected option character (A, B, C, D, or "" if empty/blank).`,
+              additionalProperties: { type: 'STRING' }
+            }
+          },
+          required: ['studentId', 'answers']
+        }
+      }
+    };
+
+    // 4. Call Google Gemini API
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API returned status ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!candidateText) {
+      throw new Error('Invalid or empty response from Gemini AI Model.');
+    }
+
+    const parsedResult = JSON.parse(candidateText.trim());
+    
+    // Normalize keys to integers to match OpenCV result output format
+    const answersMap = {};
+    for (const key of Object.keys(parsedResult.answers || {})) {
+      const qNum = parseInt(key, 10);
+      if (!isNaN(qNum)) {
+        answersMap[qNum] = parsedResult.answers[key];
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      studentId: parsedResult.studentId || '', 
+      answers: answersMap 
+    });
+  } catch (err) {
+    console.error("AI Scan Verification Failed:", err);
+    res.status(500).json({ error: `AI Scan failed: ${err.message}` });
   }
 });
 

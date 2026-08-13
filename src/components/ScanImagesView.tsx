@@ -116,6 +116,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [fileList, setFileList] = useState<ScanFileItem[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isAIScanning, setIsAIScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
 
   // Scanned Submissions & Full-Screen View Sheets Mode
@@ -920,6 +921,214 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
   };
 
+  const runAIOMRScan = async () => {
+    const current = getSelectedFile();
+    if (!current) return;
+
+    setIsAIScanning(true);
+    setActiveResult(null);
+
+    try {
+      const img = new Image();
+      img.src = current.previewUrl;
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = rej;
+      });
+
+      setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
+
+      const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
+      
+      let cvResult: any = null;
+      try {
+        cvResult = await scanOMRSheet(
+          img,
+          exam.numQuestions,
+          scannerRollDigits,
+          exam.examSetsCount ?? 1,
+          exam.sections ?? []
+        );
+      } catch (err) {
+        console.warn("Local warp alignment failed, falling back to original image:", err);
+      }
+
+      let imageDataBase64 = '';
+      let targetCanvas: HTMLCanvasElement | null = null;
+
+      if (cvResult && cvResult.debugWarpedCanvas) {
+        targetCanvas = cvResult.debugWarpedCanvas;
+        imageDataBase64 = cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92);
+      } else {
+        imageDataBase64 = current.previewUrl;
+      }
+
+      const response = await fetch('/api/scan/ai-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageDataBase64,
+          numQuestions: exam.numQuestions
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'AI Scan request failed');
+      }
+
+      const aiResult = await response.json();
+      
+      const stripLeadingZeros = (val: string) => {
+        const cleaned = val.replace(/^0+/, '');
+        return cleaned === '' ? '0' : cleaned;
+      };
+      
+      const aiRollStripped = stripLeadingZeros(aiResult.studentId);
+      const classStudents = students.filter(s => s.className === exam.className);
+      const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
+      const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
+
+      let score = 0;
+      let correctCount = 0;
+      let wrongCount = 0;
+      let unansweredCount = 0;
+
+      const detectedSet = 'A';
+      let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
+      if (!correctKey || Object.keys(correctKey).length === 0) {
+        correctKey = exam.answerKey;
+      }
+
+      if (exam.sections && exam.sections.length > 0) {
+        exam.sections.forEach((sec: any) => {
+          const secCorrectMarks = sec.correctMarks ?? 4;
+          const secIncorrectMarks = sec.incorrectMarks ?? -1;
+          const secUnansweredMarks = sec.unansweredMarks ?? 0;
+          const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
+
+          if (sec.allowOptionalAttempts && sec.maxAttempts) {
+            const attempted: Array<{ q: number; ans: string }> = [];
+            qNums.forEach(q => {
+              const ans = aiResult.answers[q] || '';
+              if (ans !== '') attempted.push({ q, ans });
+            });
+
+            const evaluated = attempted.slice(0, sec.maxAttempts);
+            evaluated.forEach(item => {
+              const correctAns = correctKey[item.q] || '';
+              if (item.ans === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
+              } else {
+                score += secIncorrectMarks;
+                wrongCount++;
+              }
+            });
+
+            const unattemptedCount = sec.qCount - evaluated.length;
+            unansweredCount += unattemptedCount;
+            score += unattemptedCount * secUnansweredMarks;
+          } else {
+            qNums.forEach(q => {
+              const studentAns = aiResult.answers[q] || '';
+              const correctAns = correctKey[q] || '';
+              if (studentAns === '') {
+                score += secUnansweredMarks;
+                unansweredCount++;
+              } else if (studentAns === correctAns) {
+                score += secCorrectMarks;
+                correctCount++;
+              } else {
+                score += secIncorrectMarks;
+                wrongCount++;
+              }
+            });
+          }
+        });
+      } else {
+        const cMarks = exam.correctMarks ?? 4;
+        const iMarks = exam.incorrectMarks ?? -1;
+        const uMarks = exam.unansweredMarks ?? 0;
+
+        for (let q = 1; q <= exam.numQuestions; q++) {
+          const studentAns = aiResult.answers[q] || '';
+          const correctAns = correctKey[q] || '';
+
+          if (studentAns === '') {
+            score += uMarks;
+            unansweredCount++;
+          } else if (studentAns === correctAns) {
+            score += cMarks;
+            correctCount++;
+          } else {
+            score += iMarks;
+            wrongCount++;
+          }
+        }
+      }
+
+      if (targetCanvas) {
+        drawOverlayOnWarpedCanvas(
+          targetCanvas,
+          exam.numQuestions,
+          aiResult.answers,
+          correctKey,
+          (cvResult && cvResult.bestDy) || 0,
+          exam.sections ?? []
+        );
+      }
+
+      const scanResultData = {
+        studentId,
+        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+        detectedStudentNum: aiResult.studentId,
+        bookletSet: detectedSet,
+        score,
+        correctCount,
+        wrongCount,
+        unansweredCount,
+        answers: aiResult.answers,
+        warpedCanvas: targetCanvas
+      };
+
+      setFileList(prev => {
+        let updated = prev.map(f => {
+          if (f.id === selectedFileId) {
+            return {
+              ...f,
+              status: 'Scanned' as const,
+              studentNum: aiResult.studentId,
+              score,
+              correctCount,
+              wrongCount,
+              unansweredCount,
+              answers: aiResult.answers,
+              warpedCanvas: targetCanvas || undefined
+            };
+          }
+          return f;
+        });
+        return updated;
+      });
+
+      setDetectedStudentId(studentId);
+      setActiveResult(scanResultData);
+
+    } catch (err: any) {
+      console.error(err);
+      alert(`AI OMR Scan Failed: ${err.message || err}`);
+      setFileList(prev => prev.map(f => {
+        if (f.id === selectedFileId) {
+          return { ...f, status: 'Failed' };
+        }
+        return f;
+      }));
+    } finally {
+      setIsAIScanning(false);
+    }
+  };
+
   const handleSaveResult = async () => {
     if (!activeResult || !selectedFileId) return;
 
@@ -1234,26 +1443,51 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button 
-                        className="btn-primary" 
-                        onClick={runOMRScan} 
-                        disabled={isScanning}
-                        style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
-                      >
-                        {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
-                      </button>
-
-                      {activeResult && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', gap: '10px' }}>
                         <button 
-                          className="btn-success" 
-                          onClick={handleSaveResult}
-                          disabled={!detectedStudentId}
-                          style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
+                          className="btn-primary" 
+                          onClick={runOMRScan} 
+                          disabled={isScanning || isAIScanning}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
                         >
-                          💾 Save Result
+                          {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
                         </button>
-                      )}
+
+                        {activeResult && (
+                          <button 
+                            className="btn-success" 
+                            onClick={handleSaveResult}
+                            disabled={!detectedStudentId}
+                            style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
+                          >
+                            💾 Save Result
+                          </button>
+                        )}
+                      </div>
+
+                      <button 
+                        onClick={runAIOMRScan} 
+                        disabled={isScanning || isAIScanning}
+                        style={{ 
+                          width: '100%', 
+                          padding: '10px', 
+                          borderRadius: '10px', 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem', 
+                          background: '#8b5cf6', 
+                          color: '#fff', 
+                          border: 'none', 
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
+                        }}
+                      >
+                        {isAIScanning ? <><RefreshCw className="spin" size={14} /> AI Processing...</> : '🧠 Run AI OMR Scan'}
+                      </button>
                     </div>
                   </div>
                 </div>

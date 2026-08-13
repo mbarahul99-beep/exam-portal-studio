@@ -142,6 +142,7 @@ export default function App() {
     () => localStorage.getItem('appex_session_id_token') || null
   );
   const [pdfImportEnabled, setPdfImportEnabled] = useState<boolean>(true);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
 
   const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
@@ -420,6 +421,9 @@ export default function App() {
           const settings = await res.json();
           if (settings.pdfImportEnabled !== undefined) {
             setPdfImportEnabled(settings.pdfImportEnabled === 'true');
+          }
+          if (settings.gemini_api_key !== undefined) {
+            setGeminiApiKey(settings.gemini_api_key);
           }
         }
       } catch (err) {
@@ -3965,6 +3969,74 @@ export default function App() {
                           }} />
                         </span>
                       </label>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 0 10px 0' }}>
+                    <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Gemini AI API Key</div>
+                    <p style={{ fontSize: '0.9rem', color: '#64748b', margin: '0 0 12px 0' }}>
+                      Configure the Gemini API Key used for high-accuracy AI OMR sheet scanning double-checks.
+                    </p>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <input 
+                        type="password" 
+                        placeholder={geminiApiKey ? "•••••••• (Saved)" : "Enter Gemini API Key"}
+                        value={geminiApiKey === '••••••••' ? '' : geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                      />
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/settings/owner', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                idToken: sessionIdToken,
+                                clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com',
+                                settings: {
+                                  gemini_api_key: geminiApiKey
+                                }
+                              })
+                            });
+                            if (!res.ok) {
+                              const errData = await res.json();
+                              throw new Error(errData.error || 'Failed to update Gemini API key');
+                            }
+                            
+                            // Success toast or alert
+                            const toast = document.createElement('div');
+                            toast.innerText = `Gemini API key successfully saved to Hostinger MySQL Database!`;
+                            toast.style.position = 'fixed';
+                            toast.style.bottom = '24px';
+                            toast.style.right = '24px';
+                            toast.style.background = '#047857';
+                            toast.style.color = '#fff';
+                            toast.style.padding = '12px 24px';
+                            toast.style.borderRadius = '8px';
+                            toast.style.zIndex = '9999';
+                            toast.style.fontFamily = 'sans-serif';
+                            toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                            document.body.appendChild(toast);
+                            setTimeout(() => toast.remove(), 3000);
+                            setGeminiApiKey('••••••••');
+                          } catch (err: any) {
+                            alert(`Failed to save Gemini key: ${err.message}`);
+                          }
+                        }}
+                        style={{
+                          padding: '10px 20px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#2563eb',
+                          color: '#fff',
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Save Key
+                      </button>
                     </div>
                   </div>
                 </div>

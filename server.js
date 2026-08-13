@@ -1235,6 +1235,43 @@ app.post('/api/scan/debug-models', async (req, res) => {
   }
 });
 
+// Gemini AI OMR Scanner direct query test endpoint
+app.post('/api/scan/test-google-direct', async (req, res) => {
+  try {
+    let apiKey = '';
+    if (pool) {
+      const [rows] = await pool.query('SELECT `value` FROM app_settings WHERE `key` = "gemini_api_key"');
+      if (rows.length > 0 && rows[0].value) {
+        apiKey = rows[0].value;
+      }
+    }
+    if (!apiKey) apiKey = process.env.GEMINI_API_KEY || '';
+    if (!apiKey) return res.status(400).json({ error: 'No API Key' });
+
+    const results = {};
+    const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    for (const m of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1/models/${m}:generateContent?key=${apiKey}`;
+        const gRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: "Respond 'OK'." }] }]
+          })
+        });
+        const text = await gRes.text();
+        results[m] = { status: gRes.status, response: JSON.parse(text) };
+      } catch (err) {
+        results[m] = { error: err.message };
+      }
+    }
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Gemini AI OMR Scanner verification endpoint
 app.post('/api/scan/ai-verify', async (req, res) => {
   const { imageDataBase64, numQuestions } = req.body;

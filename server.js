@@ -1313,16 +1313,43 @@ Return the result as a JSON object matching the requested schema.`;
       }
     };
 
-    // 4. Call Google Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
+    // 4. Call Google Gemini API (With self-healing candidate models fallback loop)
+    const candidateModels = [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-1.5-flash'
+    ];
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API returned status ${response.status}: ${errText}`);
+    let response = null;
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        console.log(`Attempting OMR parse with model: ${modelName}`);
+        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
+        
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (response.ok) {
+          console.log(`OMR parse successful with model: ${modelName}`);
+          break;
+        } else {
+          const errText = await response.text();
+          lastError = new Error(`Model ${modelName} failed with status ${response.status}: ${errText}`);
+          console.warn(lastError.message);
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Model ${modelName} request failed:`, err.message);
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw lastError || new Error('All candidate Gemini models failed to process the request.');
     }
 
     const data = await response.json();

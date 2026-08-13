@@ -1203,6 +1203,38 @@ app.post('/api/upload-omr', async (req, res) => {
   }
 });
 
+// Gemini AI OMR Scanner models listing debug endpoint
+app.get('/api/scan/debug-models', async (req, res) => {
+  try {
+    let apiKey = '';
+    if (pool) {
+      const [rows] = await pool.query('SELECT `value` FROM app_settings WHERE `key` = "gemini_api_key"');
+      if (rows.length > 0 && rows[0].value) {
+        apiKey = rows[0].value;
+      }
+    }
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY || '';
+    }
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Gemini API Key is not configured.' });
+    }
+
+    const betaRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const betaData = await betaRes.json();
+    
+    const stableRes = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
+    const stableData = await stableRes.json();
+
+    res.json({
+      betaModels: betaData,
+      stableModels: stableData
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Gemini AI OMR Scanner verification endpoint
 app.post('/api/scan/ai-verify', async (req, res) => {
   const { imageDataBase64, numQuestions } = req.body;

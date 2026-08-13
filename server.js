@@ -1237,6 +1237,7 @@ Analyze the provided image of an OMR exam sheet.
 The sheet has exactly ${numQuestions} questions.
 Read the selected option circles (A, B, C, D, or empty) for each question (from 1 to ${numQuestions}).
 Also read the filled digits in the Student ID / Roll No grid columns from left to right.
+In addition, transcribe the student's handwritten Name and Father's Name from the text fields in the sheet header (if present).
 Return the result as a JSON object matching the requested schema.`;
 
     const requestBody = {
@@ -1259,13 +1260,15 @@ Return the result as a JSON object matching the requested schema.`;
           type: 'OBJECT',
           properties: {
             studentId: { type: 'STRING', description: 'The detected Student ID (Roll No) digits.' },
+            studentName: { type: 'STRING', description: 'The transcribed handwritten Name from the sheet header, or "" if not found.' },
+            fatherName: { type: 'STRING', description: 'The transcribed handwritten Father\'s Name from the sheet header, or "" if not found.' },
             answers: {
               type: 'OBJECT',
               description: `An object mapping question numbers "1" to "${numQuestions}" to their detected option character (A, B, C, D, or "" if empty/blank).`,
               additionalProperties: { type: 'STRING' }
             }
           },
-          required: ['studentId', 'answers']
+          required: ['studentId', 'studentName', 'fatherName', 'answers']
         }
       }
     };

@@ -579,7 +579,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         const aiRollStripped = stripLeadingZeros(aiResult.studentId);
         const classStudents = students.filter(s => s.className === exam.className);
         const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
-        const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
+        let studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
 
         let score = 0;
         let correctCount = 0;
@@ -675,7 +675,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           ? targetCanvas.toDataURL('image/jpeg', 0.92) 
           : snapCanvas.toDataURL('image/jpeg', 0.92);
 
-        const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+        let finalStudentId = studentId;
+        const cleanName = (aiResult.studentName || '').trim();
+        const cleanFather = (aiResult.fatherName || '').trim();
+
+        if (!finalStudentId && cleanName) {
+          try {
+            const newStudentId = await db.students.add({
+              studentNum: aiResult.studentId || '',
+              name: cleanName,
+              fatherName: cleanFather || '',
+              className: exam.className
+            });
+            finalStudentId = newStudentId;
+
+            // Trigger sync of this new student to the cloud
+            const { syncStudentToCloud } = await import('../utils/cloudSync');
+            const saved = await db.students.get(newStudentId);
+            if (saved) {
+              syncStudentToCloud(saved).catch(console.warn);
+            }
+          } catch (regErr) {
+            console.error("Auto registration in camera flow failed:", regErr);
+          }
+        }
+
+        const targetStudentId = finalStudentId || -(Date.now() + Math.floor(Math.random() * 1000));
 
         if (exam.id) {
           try {
@@ -702,8 +727,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           }
         }
 
+        const scanResultName = matchedStudent 
+          ? matchedStudent.name 
+          : (cleanName 
+              ? (cleanFather ? `${cleanName} f/o ${cleanFather}` : cleanName)
+              : 'Unknown Candidate');
+
         setLastScanOverlay({
-          studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+          studentName: scanResultName,
           studentNum: aiResult.studentId || '',
           score,
           correctCount,
@@ -712,7 +743,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           answers: aiResult.answers,
           bookletSet: detectedSet,
           omrImageUrl: croppedUrl,
-          studentId: studentId
+          studentId: finalStudentId
         });
 
       } catch (err: any) {
@@ -1183,6 +1214,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       const classStudents = students.filter(s => s.className === exam.className);
       const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
       const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
+      const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
 
       let score = 0;
       let correctCount = 0;
@@ -1274,9 +1306,15 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         );
       }
 
+      const cleanName = (aiResult.studentName || '').trim();
+      const cleanFather = (aiResult.fatherName || '').trim();
+      const transcribedName = cleanName 
+        ? (cleanFather ? `${cleanName} f/o ${cleanFather} (Unregistered)` : `${cleanName} (Unregistered)`)
+        : 'Unknown Candidate';
+
       const scanResultData = {
-        studentId,
-        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
+        studentId: targetStudentId,
+        studentName: matchedStudent ? matchedStudent.name : transcribedName,
         detectedStudentNum: aiResult.studentId,
         bookletSet: detectedSet,
         score,
@@ -1284,7 +1322,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         wrongCount,
         unansweredCount,
         answers: aiResult.answers,
-        warpedCanvas: targetCanvas
+        warpedCanvas: targetCanvas,
+        rawTranscribedName: cleanName,
+        rawTranscribedFatherName: cleanFather
       };
 
       setFileList(prev => {
@@ -1307,7 +1347,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         return updated;
       });
 
-      setDetectedStudentId(studentId);
+      setDetectedStudentId(targetStudentId);
       setActiveResult(scanResultData);
 
     } catch (err: any) {
@@ -1333,6 +1373,41 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
+      let finalStudentId = detectedStudentId;
+
+      // Auto-register unregistered student from transcribed Name/Father Name
+      if (detectedStudentId < 0) {
+        const cleanName = (activeResult.rawTranscribedName || '').trim();
+        const cleanFather = (activeResult.rawTranscribedFatherName || '').trim();
+        const studentNum = activeResult.detectedStudentNum || '';
+
+        if (cleanName) {
+          try {
+            const newStudentId = await db.students.add({
+              studentNum,
+              name: cleanName,
+              fatherName: cleanFather,
+              className: exam.className
+            });
+            finalStudentId = newStudentId;
+
+            // Trigger sync of this new student to the cloud
+            const { syncStudentToCloud } = await import('../utils/cloudSync');
+            const saved = await db.students.get(newStudentId);
+            if (saved) {
+              syncStudentToCloud(saved).catch(console.warn);
+            }
+          } catch (regErr: any) {
+            console.error("Auto registration in save flow failed:", regErr);
+            alert("Failed to auto-register student: " + (regErr.message || regErr));
+            return;
+          }
+        } else {
+          alert('Please associate scan with a student.');
+          return;
+        }
+      }
+
       let finalOmrUrl: string | undefined = undefined;
       const currentFile = fileList.find(f => f.id === selectedFileId);
       let base64Data: string | null = null;
@@ -1351,7 +1426,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             body: JSON.stringify({
               imageData: base64Data,
               examId: exam.id,
-              studentId: detectedStudentId
+              studentId: finalStudentId
             })
           });
           const data = await res.json();
@@ -1366,13 +1441,13 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      if (exam.id && detectedStudentId) {
-        await db.submissions.where('[examId+studentId]').equals([exam.id, detectedStudentId]).delete();
+      if (exam.id && finalStudentId) {
+        await db.submissions.where('[examId+studentId]').equals([exam.id, finalStudentId]).delete();
       }
 
       const subId = await db.submissions.add({
         examId: exam.id!,
-        studentId: detectedStudentId,
+        studentId: finalStudentId,
         score: activeResult.score,
         answers: activeResult.answers,
         bookletSet: activeResult.bookletSet,
@@ -1381,7 +1456,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       });
 
       const savedSub = await db.submissions.get(subId);
-      if (savedSub) {
+      if (savedSub && finalStudentId > 0) {
         await syncSubmissionToCloud(savedSub);
       }
       pullCloudUpdatesToIndexedDB();
@@ -1393,7 +1468,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         const updated = prev.filter(f => {
           if (f.id === selectedFileId) return false;
           if (f.result) {
-            if (detectedStudentId && f.result.studentId === detectedStudentId) return false;
+            if (finalStudentId && f.result.studentId === finalStudentId) return false;
             if (activeResult.detectedStudentNum && f.result.detectedStudentNum === activeResult.detectedStudentNum) return false;
           }
           const rollNum = activeResult.detectedStudentNum;
@@ -1426,7 +1501,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             setDetectedStudentId(null);
           }
         } else {
-          setSelectedFileId('');
+          setSelectedFileId(null);
           setActiveResult(null);
           setDetectedStudentId(null);
         }

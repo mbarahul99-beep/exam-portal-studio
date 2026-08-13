@@ -1204,7 +1204,7 @@ app.post('/api/upload-omr', async (req, res) => {
 });
 
 // Gemini AI OMR Scanner models listing debug endpoint
-app.get('/api/scan/debug-models', async (req, res) => {
+app.post('/api/scan/debug-models', async (req, res) => {
   try {
     let apiKey = '';
     if (pool) {

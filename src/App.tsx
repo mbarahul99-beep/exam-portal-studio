@@ -143,6 +143,7 @@ export default function App() {
   );
   const [pdfImportEnabled, setPdfImportEnabled] = useState<boolean>(true);
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [hideAiScanning, setHideAiScanning] = useState<boolean>(false);
 
   const [showTeacherManagementModal, setShowTeacherManagementModal] = useState(false);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
@@ -424,6 +425,9 @@ export default function App() {
           }
           if (settings.gemini_api_key !== undefined) {
             setGeminiApiKey(settings.gemini_api_key);
+          }
+          if (settings.hideAiScanning !== undefined) {
+            setHideAiScanning(settings.hideAiScanning === 'true');
           }
         }
       } catch (err) {
@@ -3857,8 +3861,8 @@ export default function App() {
 
           {activeTab === 'system-controls' && sessionIsOwner && (
             <div className="tab-pane animate-fade-in" style={{ padding: '24px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-              <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div className="controls-container">
+                <div className="controls-header">
                   <div>
                     <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>System Controls</h1>
                     <p style={{ color: '#64748b', marginTop: '4px' }}>Application developer & feature flag configurations</p>
@@ -3866,13 +3870,13 @@ export default function App() {
                 </div>
 
                 {/* Developer Info Card */}
-                <div className="glass-card" style={{ padding: '20px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                <div className="developer-card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Shield size={24} color="#2563eb" />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 700, color: '#1e293b' }}>{sessionEmail}</span>
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', background: '#dbeafe', color: '#1e40af' }}>Developer & Owner</span>
                       </div>
@@ -3882,17 +3886,18 @@ export default function App() {
                 </div>
 
                 {/* Feature Controls List */}
-                <div className="glass-card" style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
+                <div className="controls-card">
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '16px' }}>Feature Toggles</h2>
                   
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ flex: 1, paddingRight: '24px' }}>
+                  {/* Toggle 1: PDF Import */}
+                  <div className="control-row">
+                    <div className="control-row-info">
                       <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>AI PDF Question Import Tab</div>
                       <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0 }}>
                         Enable or disable the "Import PDF (AI)" sub-tab under Question Banks for all other administrators and teachers.
                       </p>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="control-row-action">
                       <span style={{ 
                         fontSize: '0.85rem', 
                         fontWeight: 600, 
@@ -3928,7 +3933,7 @@ export default function App() {
                                 const errData = await res.json();
                                 throw new Error(errData.error || 'Failed to update owner settings');
                               }
-                              // Success toast or alert
+                              // Success toast
                               const toast = document.createElement('div');
                               toast.innerText = `Settings successfully saved to Hostinger MySQL Database!`;
                               toast.style.position = 'fixed';
@@ -3972,18 +3977,107 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 0 10px 0' }}>
+                  {/* Toggle 2: Hide AI Scanning Mode */}
+                  <div className="control-row">
+                    <div className="control-row-info">
+                      <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Hide AI OMR Scanning Mode</div>
+                      <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0 }}>
+                        Hide the "AI Scanner" option in the OMR scanning camera overlay, locking scanning to the standard OpenCV edge detection.
+                      </p>
+                    </div>
+                    <div className="control-row-action">
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: 600, 
+                        padding: '4px 10px', 
+                        borderRadius: '20px', 
+                        background: hideAiScanning ? '#ecfdf5' : '#fef2f2', 
+                        color: hideAiScanning ? '#047857' : '#b91c1c' 
+                      }}>
+                        {hideAiScanning ? 'Hidden' : 'Visible'}
+                      </span>
+                      <label style={{ position: 'relative', display: 'inline-block', width: '52px', height: '28px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={hideAiScanning}
+                          onChange={async (e) => {
+                            const newStatus = e.target.checked;
+                            setHideAiScanning(newStatus);
+                            
+                            // Send sync to server securely with Google idToken
+                            try {
+                              const res = await fetch('/api/settings/owner', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  idToken: sessionIdToken,
+                                  clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com',
+                                  settings: {
+                                    hideAiScanning: String(newStatus)
+                                  }
+                                })
+                              });
+                              if (!res.ok) {
+                                const errData = await res.json();
+                                throw new Error(errData.error || 'Failed to update owner settings');
+                              }
+                              // Success toast
+                              const toast = document.createElement('div');
+                              toast.innerText = `Settings successfully saved to Hostinger MySQL Database!`;
+                              toast.style.position = 'fixed';
+                              toast.style.bottom = '24px';
+                              toast.style.right = '24px';
+                              toast.style.background = '#047857';
+                              toast.style.color = '#fff';
+                              toast.style.padding = '12px 24px';
+                              toast.style.borderRadius = '8px';
+                              toast.style.zIndex = '9999';
+                              toast.style.fontFamily = 'sans-serif';
+                              toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                              document.body.appendChild(toast);
+                              setTimeout(() => toast.remove(), 3000);
+                            } catch (err: any) {
+                              setHideAiScanning(!newStatus); // Revert switch on failure
+                              alert(`Failed to save settings: ${err.message}`);
+                            }
+                          }}
+                          style={{ opacity: 0, width: 0, height: 0 }} 
+                        />
+                        <span style={{
+                          position: 'absolute',
+                          top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: hideAiScanning ? '#3b82f6' : '#cbd5e1',
+                          transition: '.3s',
+                          borderRadius: '34px'
+                        }}>
+                          <span style={{
+                            position: 'absolute',
+                            content: '""',
+                            height: '20px', width: '20px',
+                            left: hideAiScanning ? '28px' : '4px',
+                            bottom: '4px',
+                            backgroundColor: 'white',
+                            transition: '.3s',
+                            borderRadius: '50%'
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Gemini API Key Configuration Section */}
+                  <div className="api-key-section">
                     <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Gemini AI API Key</div>
                     <p style={{ fontSize: '0.9rem', color: '#64748b', margin: '0 0 12px 0' }}>
                       Configure the Gemini API Key used for high-accuracy AI OMR sheet scanning double-checks.
                     </p>
-                    <div style={{ display: 'flex', gap: '12px' }}>
+                    <div className="api-key-input-group">
                       <input 
                         type="password" 
                         placeholder={geminiApiKey ? "•••••••• (Saved)" : "Enter Gemini API Key"}
                         value={geminiApiKey === '••••••••' ? '' : geminiApiKey}
                         onChange={(e) => setGeminiApiKey(e.target.value)}
-                        style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                        className="api-key-input"
                       />
                       <button
                         onClick={async () => {
@@ -4032,7 +4126,9 @@ export default function App() {
                           color: '#fff',
                           fontWeight: 600,
                           fontSize: '0.85rem',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center'
                         }}
                       >
                         Save Key

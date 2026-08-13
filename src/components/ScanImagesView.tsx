@@ -152,7 +152,26 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [isScanning, setIsScanning] = useState(false);
   const [isAIScanning, setIsAIScanning] = useState(false);
   const [cameraScanMode, setCameraScanMode] = useState<'standard' | 'ai'>('standard');
+  const [hideAiScanning, setHideAiScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
+
+  useEffect(() => {
+    const checkSetting = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const settings = await res.json();
+          if (settings.hideAiScanning === 'true') {
+            setHideAiScanning(true);
+            setCameraScanMode('standard');
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to check hideAiScanning setting in ScanImagesView:", err);
+      }
+    };
+    checkSetting();
+  }, []);
 
   // Scanned Submissions & Full-Screen View Sheets Mode
   const [existingSubmissions, setExistingSubmissions] = useState<ExamSubmission[]>([]);
@@ -2210,7 +2229,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             {/* Transparent overlay canvas for drawing the detected corners and guide outline */}
             <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', zIndex: 10 }}></canvas>
 
-            {!lastScanOverlay && (
+            {!lastScanOverlay && !hideAiScanning && (
               <div style={{
                 position: 'absolute',
                 bottom: '16px',

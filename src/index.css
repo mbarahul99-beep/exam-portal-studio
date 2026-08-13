@@ -3543,3 +3543,111 @@ button {
     overflow-y: visible !important;
   }
 }
+
+/* Mobile friendly System Controls Screen */
+.controls-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 16px 40px 16px;
+}
+
+.controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.developer-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+}
+
+.controls-card {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 24px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.control-row-info {
+  flex: 1;
+  padding-right: 24px;
+}
+
+.control-row-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.api-key-section {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0 10px 0;
+}
+
+.api-key-input-group {
+  display: flex;
+  gap: 12px;
+}
+
+.api-key-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+@media (max-width: 600px) {
+  .controls-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .developer-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px;
+  }
+  .controls-card {
+    padding: 16px;
+  }
+  .control-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .control-row-info {
+    padding-right: 0;
+  }
+  .control-row-action {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .api-key-input-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  .api-key-input-group button {
+    width: 100%;
+    justify-content: center;
+  }
+}

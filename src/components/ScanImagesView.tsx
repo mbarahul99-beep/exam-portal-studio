@@ -672,6 +672,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
         const aiResult = await response.json();
 
+        // Map array of answers [{q: 1, ans: "A"}, ...] into key-value map {1: "A", ...}
+        const parsedAnswers: Record<number, string> = {};
+        if (Array.isArray(aiResult.answers)) {
+          aiResult.answers.forEach((item: any) => {
+            if (item && typeof item.q === 'number') {
+              parsedAnswers[item.q] = item.ans || '';
+            }
+          });
+        }
+
         const stripLeadingZeros = (val: string) => {
           const cleaned = val.replace(/^0+/, '');
           return cleaned === '' ? '0' : cleaned;
@@ -702,7 +712,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             if (sec.allowOptionalAttempts && sec.maxAttempts) {
               const attempted: Array<{ q: number; ans: string }> = [];
               qNums.forEach(q => {
-                const ans = aiResult.answers[q] || '';
+                const ans = parsedAnswers[q] || '';
                 if (ans !== '') attempted.push({ q, ans });
               });
 
@@ -723,7 +733,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               score += unattemptedCount * secUnansweredMarks;
             } else {
               qNums.forEach(q => {
-                const studentAns = aiResult.answers[q] || '';
+                const studentAns = parsedAnswers[q] || '';
                 const correctAns = correctKey[q] || '';
                 if (studentAns === '') {
                   score += secUnansweredMarks;
@@ -744,7 +754,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           const uMarks = exam.unansweredMarks ?? 0;
 
           for (let q = 1; q <= exam.numQuestions; q++) {
-            const studentAns = aiResult.answers[q] || '';
+            const studentAns = parsedAnswers[q] || '';
             const correctAns = correctKey[q] || '';
 
             if (studentAns === '') {
@@ -764,7 +774,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           drawOverlayOnWarpedCanvas(
             targetCanvas,
             exam.numQuestions,
-            aiResult.answers,
+            parsedAnswers,
             correctKey,
             (cvResult && cvResult.bestDy) || 0,
             exam.sections ?? []
@@ -786,7 +796,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               examId: exam.id!,
               studentId: targetStudentId,
               score: score,
-              answers: aiResult.answers,
+              answers: parsedAnswers,
               bookletSet: detectedSet,
               omrImageUrl: croppedUrl,
               scannedAt: new Date(),
@@ -817,7 +827,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           correctCount,
           wrongCount,
           unansweredCount,
-          answers: aiResult.answers,
+          answers: parsedAnswers,
           bookletSet: detectedSet,
           omrImageUrl: croppedUrl,
           studentId: studentId,
@@ -1282,6 +1292,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       const aiResult = await response.json();
       
+      // Map array of answers [{q: 1, ans: "A"}, ...] into key-value map {1: "A", ...}
+      const parsedAnswers: Record<number, string> = {};
+      if (Array.isArray(aiResult.answers)) {
+        aiResult.answers.forEach((item: any) => {
+          if (item && typeof item.q === 'number') {
+            parsedAnswers[item.q] = item.ans || '';
+          }
+        });
+      }
+
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
         return cleaned === '' ? '0' : cleaned;
@@ -1314,7 +1334,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           if (sec.allowOptionalAttempts && sec.maxAttempts) {
             const attempted: Array<{ q: number; ans: string }> = [];
             qNums.forEach(q => {
-              const ans = aiResult.answers[q] || '';
+              const ans = parsedAnswers[q] || '';
               if (ans !== '') attempted.push({ q, ans });
             });
 
@@ -1335,7 +1355,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             score += unattemptedCount * secUnansweredMarks;
           } else {
             qNums.forEach(q => {
-              const studentAns = aiResult.answers[q] || '';
+              const studentAns = parsedAnswers[q] || '';
               const correctAns = correctKey[q] || '';
               if (studentAns === '') {
                 score += secUnansweredMarks;
@@ -1356,7 +1376,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         const uMarks = exam.unansweredMarks ?? 0;
 
         for (let q = 1; q <= exam.numQuestions; q++) {
-          const studentAns = aiResult.answers[q] || '';
+          const studentAns = parsedAnswers[q] || '';
           const correctAns = correctKey[q] || '';
 
           if (studentAns === '') {
@@ -1376,7 +1396,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         drawOverlayOnWarpedCanvas(
           targetCanvas,
           exam.numQuestions,
-          aiResult.answers,
+          parsedAnswers,
           correctKey,
           (cvResult && cvResult.bestDy) || 0,
           exam.sections ?? []
@@ -1398,7 +1418,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         correctCount,
         wrongCount,
         unansweredCount,
-        answers: aiResult.answers,
+        answers: parsedAnswers,
         warpedCanvas: targetCanvas,
         rawTranscribedName: cleanName,
         rawTranscribedFatherName: cleanFather
@@ -1415,7 +1435,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               correctCount,
               wrongCount,
               unansweredCount,
-              answers: aiResult.answers,
+              answers: parsedAnswers,
               warpedCanvas: targetCanvas || undefined
             };
           }

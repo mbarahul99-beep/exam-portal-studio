@@ -277,43 +277,18 @@ export async function scanOMRSheet(
       9   // Constant
     );
 
-    // 3. Find contours
-    contours = new cv.MatVector();
-    hierarchy = new cv.Mat();
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    // 4. Find the 4 corner anchors
+    // 3. Find contours using multi-attempt fallback loops
     const candidates: Array<{ center: { x: number; y: number }; area: number; rect: any }> = [];
     const srcWidth = src.cols;
     const srcHeight = src.rows;
+    const pageArea = srcWidth * srcHeight;
 
-    for (let i = 0; i < contours.size(); ++i) {
-      const cnt = contours.get(i);
-      const rect = cv.boundingRect(cnt);
-      const area = rect.width * rect.height;
-      const aspectRatio = rect.width / rect.height;
-
-      const pageArea = srcWidth * srcHeight;
-      // Anchor size check: must be a big corner mark (at least 0.012% of page area) and square-shaped
-      const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
-      
-      const cArea = cv.contourArea(cnt);
-      const solidity = area > 0 ? cArea / area : 0;
-      const isSolid = solidity >= 0.65;
-
-      if (isCorrectSize && isSquare && isSolid) {
-        const center = {
-          x: rect.x + rect.width / 2,
-          y: rect.y + rect.height / 2
-        };
-        candidates.push({ center, area, rect });
-      }
-      cnt.delete();
-    }
+    let tlMarker: any = null;
+    let trMarker: any = null;
+    let blMarker: any = null;
+    let brMarker: any = null;
 
     const findBestQuadInCandidates = (cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>) => {
-      // Sort by area descending to ensure we analyze the most prominent squares first
       const sorted = [...cands].sort((a, b) => b.area - a.area);
       const topCands = sorted.slice(0, 15);
       
@@ -327,7 +302,6 @@ export async function scanOMRSheet(
               for (let l = k + 1; l < topCands.length; l++) {
                 const pts = [topCands[i], topCands[j], topCands[k], topCands[l]];
                 
-                // Identify TL, TR, BL, BR
                 const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
                 const tl = sortedBySum[0];
                 const br = sortedBySum[3];
@@ -337,12 +311,10 @@ export async function scanOMRSheet(
                 const bl = sortedByDiff[0];
                 const tr = sortedByDiff[1];
 
-                // Validate that the areas of the 4 markers are similar
                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
                 if (minArea === 0 || maxArea / minArea > 1.8) continue;
 
-                // Side lengths
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
                 const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
@@ -354,19 +326,14 @@ export async function scanOMRSheet(
                 if (avgW === 0) continue;
                 const ratio = avgH / avgW;
 
-                // Validate A4-like anchor ratio (~1.34 portrait or ~0.75 landscape) and parallelism of opposite sides
                 const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
                 const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
                 const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
                 const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
-                // Strict constraints:
-                // 1. Minimum sheet size check: detected quad must cover at least 15% of the page
                 const quadArea = avgW * avgH;
-                const pageArea = srcWidth * srcHeight;
                 const isSheetSizeValid = quadArea > pageArea * 0.15;
 
-                // 2. Anchor size proportional to sheet width: anchors must be between 1.5% and 8% of sheet width
                 const isAnchorSizeValid = 
                   (tl.rect.width >= avgW * 0.015 && tl.rect.width <= avgW * 0.08) &&
                   (tr.rect.width >= avgW * 0.015 && tr.rect.width <= avgW * 0.08) &&
@@ -387,37 +354,43 @@ export async function scanOMRSheet(
       return bestQuad;
     };
 
-    let tlMarker: any = null;
-    let trMarker: any = null;
-    let blMarker: any = null;
-    let brMarker: any = null;
+    const thresholdAttempts = [
+      { adaptive: true, blockSize: 15, C: 9 },
+      { adaptive: true, blockSize: 25, C: 9 },
+      { adaptive: true, blockSize: 35, C: 9 },
+      { adaptive: false, threshold: 90 },
+      { adaptive: false, threshold: 110 },
+      { adaptive: false, threshold: 130 },
+      { adaptive: false, threshold: 150 }
+    ];
 
-    let quad = findBestQuadInCandidates(candidates);
-    if (quad) {
-      tlMarker = quad.tl;
-      trMarker = quad.tr;
-      blMarker = quad.bl;
-      brMarker = quad.br;
-    }
+    for (const attempt of thresholdAttempts) {
+      if (tlMarker && trMarker && blMarker && brMarker) break;
 
-    // Fallback: If markers are not successfully detected using adaptive threshold, try global thresholding
-    if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      // Global threshold at 110: pure black anchors stand out cleanly from shadows/wooden table edge
-      cv.threshold(gray, thresh, 110, 255, cv.THRESH_BINARY_INV);
+      if (attempt.adaptive) {
+        cv.adaptiveThreshold(
+          blurred,
+          thresh,
+          255,
+          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+          cv.THRESH_BINARY_INV,
+          attempt.blockSize,
+          attempt.C
+        );
+      } else {
+        cv.threshold(gray, thresh, attempt.threshold, 255, cv.THRESH_BINARY_INV);
+      }
 
-      candidates.length = 0;
-      contours.delete();
-      hierarchy.delete();
       contours = new cv.MatVector();
       hierarchy = new cv.Mat();
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
+      candidates.length = 0;
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
         const area = rect.width * rect.height;
         const aspectRatio = rect.width / rect.height;
-        const pageArea = srcWidth * srcHeight;
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
         const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
@@ -436,13 +409,16 @@ export async function scanOMRSheet(
         cnt.delete();
       }
 
-      quad = findBestQuadInCandidates(candidates);
+      const quad = findBestQuadInCandidates(candidates);
       if (quad) {
         tlMarker = quad.tl;
         trMarker = quad.tr;
         blMarker = quad.bl;
         brMarker = quad.br;
       }
+
+      contours.delete();
+      hierarchy.delete();
     }
 
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
@@ -527,12 +503,12 @@ export async function scanOMRSheet(
     cv.imshow(debugWarpedCanvas, warped);
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
-    // Scans range of vertical shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
+    // Scans range of vertical shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDy = 0;
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -8; dy <= 8; dy += 1) {
+    for (let dy = -12; dy <= 12; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -549,7 +525,6 @@ export async function scanOMRSheet(
             colMax = avgGray;
           }
         }
-        // Only count columns with a clear contrast difference (indicating a filled bubble)
         if (colMax - colMin > 50) {
           totalIntensity += colMin;
           filledColumnsCount++;
@@ -566,10 +541,10 @@ export async function scanOMRSheet(
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
     // 5.3. Auto-Calibrate Horizontal Scan Offset
-    // Scans range of horizontal shifts from -8px to +8px to find the alignment that maximizes bubble darkness contrast
+    // Scans range of horizontal shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
-    for (let dx = -8; dx <= 8; dx += 1) {
+    for (let dx = -12; dx <= 12; dx += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -656,6 +631,13 @@ export async function scanOMRSheet(
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
     console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
 
+    // Compute contrast threshold scaling based on white paper level to adapt to lighting
+    const contrastScale = Math.min(1.0, Math.max(0.60, whitePaperLevel / 220));
+    const localContrastThreshold = 28 * contrastScale;
+    const avgContrastThreshold = 18 * contrastScale;
+    const absoluteThreshold = 32 * contrastScale;
+    console.log("[OMR Scanner] Calibrated thresholds (local/avg/abs):", localContrastThreshold.toFixed(1), avgContrastThreshold.toFixed(1), absoluteThreshold.toFixed(1));
+
     // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
@@ -666,22 +648,19 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        // Inner radius 5.0px to cover the bubble interior with local snap alignment
         const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 5.0);
         intensities.push(avgGray);
       }
 
-      // Calculate column statistics
       const colMax = Math.max(...intensities);
       const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
 
-      // Find all rows in this column that are significantly darker than the column average and column max
       const filledRows: number[] = [];
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        const isLocalContrastValid = colMax - val > 28;
-        const isAvgContrastValid = colAvg - val > 18;
-        const isAbsoluteValid = val < whitePaperLevel - 32;
+        const isLocalContrastValid = colMax - val > localContrastThreshold;
+        const isAvgContrastValid = colAvg - val > avgContrastThreshold;
+        const isAbsoluteValid = val < whitePaperLevel - absoluteThreshold;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledRows.push(r);
         }
@@ -690,7 +669,7 @@ export async function scanOMRSheet(
       if (filledRows.length === 1) {
         studentNum += digitValuesList[filledRows[0]].toString();
       } else {
-        studentNum += '0'; // default fallback for empty or multiple fills
+        studentNum += '0';
       }
     }
 
@@ -712,7 +691,6 @@ export async function scanOMRSheet(
         continue;
       }
 
-      // Check section options count
       const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
       const is5Option = sec && sec.questionType === '5 option';
       const numOptions = is5Option ? 5 : 4;
@@ -729,23 +707,20 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        // Inner radius 4.0px to cover the bubble interior with local snap alignment
         const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 4.0);
         intensities.push(avgGray);
       }
 
-      // Calculate row statistics
       const rowMax = Math.max(...intensities);
       const rowSum = intensities.reduce((sum, v) => sum + v, 0);
       const rowAvg = rowSum / numOptions;
 
-      // Detect all filled options for this question using local, average, and absolute thresholds
       const filledOptions: number[] = [];
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        const isLocalContrastValid = rowMax - val > 28;
-        const isAvgContrastValid = rowAvg - val > 18;
-        const isAbsoluteValid = val < whitePaperLevel - 32;
+        const isLocalContrastValid = rowMax - val > localContrastThreshold;
+        const isAvgContrastValid = rowAvg - val > avgContrastThreshold;
+        const isAbsoluteValid = val < whitePaperLevel - absoluteThreshold;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledOptions.push(o);
         }
@@ -754,9 +729,9 @@ export async function scanOMRSheet(
       if (filledOptions.length === 1) {
         answers[q] = OPTIONS_FIVE[filledOptions[0]];
       } else if (filledOptions.length > 1) {
-        answers[q] = 'MULTIPLE'; // Mark wrong due to multiple bubble selections
+        answers[q] = 'MULTIPLE';
       } else {
-        answers[q] = ''; // unanswered
+        answers[q] = '';
       }
     }
 
@@ -765,8 +740,6 @@ export async function scanOMRSheet(
     gray.delete();
     blurred.delete();
     thresh.delete();
-    contours.delete();
-    hierarchy.delete();
     warped.delete();
     warpedGray.delete();
 

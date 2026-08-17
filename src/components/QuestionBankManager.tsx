@@ -102,8 +102,8 @@ function repairJsonString(str: string): string {
   // Fix single quoted values: e.g. : 'value', or : 'value'}
   cleaned = cleaned.replace(/:\s*'([^']*)'\s*([,\}])/g, ':"$1"$2');
 
-  // Escape any backslash that is not already followed by a double quote or backslash
-  cleaned = cleaned.replace(/\\(?!["\\])/g, '\\\\');
+  // Escape single backslashes that are not part of double-backslashes or escaped quotes
+  cleaned = cleaned.replace(/(?<!\\)\\(?![\\"])/g, '\\\\');
 
   // Fix trailing commas
   cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');

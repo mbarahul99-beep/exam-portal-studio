@@ -31,6 +31,86 @@ interface QuestionBankManagerProps {
   pdfImportEnabled?: boolean;
 }
 
+function closeMalformedJson(jsonStr: string): string {
+  let cleaned = jsonStr.trim();
+  
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```json/, "").replace(/```$/, "").trim();
+  }
+
+  let inString = false;
+  let escape = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{' || char === '[') {
+        stack.push(char);
+      } else if (char === '}') {
+        if (stack[stack.length - 1] === '{') stack.pop();
+      } else if (char === ']') {
+        if (stack[stack.length - 1] === '[') stack.pop();
+      }
+    }
+  }
+
+  if (inString) {
+    cleaned += '"';
+  }
+
+  // Strip trailing commas, colons or partial keys
+  cleaned = cleaned.trim().replace(/,\s*$/, "").replace(/:\s*$/, "");
+
+  // Remove dangling keys at the end of the truncated JSON
+  cleaned = cleaned.replace(/,\s*"[^"]*"\s*$/, "");
+  cleaned = cleaned.replace(/,\s*"[^"]*$/, "");
+
+  while (stack.length > 0) {
+    const last = stack.pop();
+    if (last === '{') {
+      cleaned += '}';
+    } else if (last === '[') {
+      cleaned += ']';
+    }
+  }
+
+  return cleaned;
+}
+
+function repairJsonString(str: string): string {
+  let cleaned = str.trim();
+  
+  // First auto-close any truncated structures
+  cleaned = closeMalformedJson(cleaned);
+
+  // Fix single quoted keys: e.g. 'key':
+  cleaned = cleaned.replace(/'([^']+)'\s*:/g, '"$1":');
+
+  // Fix single quoted values: e.g. : 'value', or : 'value'}
+  cleaned = cleaned.replace(/:\s*'([^']*)'\s*([,\}])/g, ':"$1"$2');
+
+  // Escape any backslash that is not already followed by a double quote or backslash
+  cleaned = cleaned.replace(/\\(?!["\\])/g, '\\\\');
+
+  // Fix trailing commas
+  cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');
+
+  return cleaned;
+}
+
 function cropCanvasRegion(
   canvas: HTMLCanvasElement,
   ymin: number,
@@ -477,6 +557,12 @@ For each question:
    - For each option that is an image, identify its 0-based pageIndex and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
    - Return these in the "optionDiagramBoxes" array of objects, containing "optionIdx" (0-based) and the bounding "box".
 
+CRITICAL JSON RULES:
+- Output valid JSON only.
+- Do NOT use single quotes for keys or values.
+- Do NOT leave trailing commas anywhere.
+- Escape all backslashes in LaTeX formulas (e.g. write "\\\\frac" instead of "\\frac" so it is valid JSON).
+
 Return the result STRICTLY as a JSON array of objects with this structure (no other text, no markdown wrappers, just raw JSON array):
 [
   {
@@ -546,12 +632,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
           throw new Error("Gemini API returned an empty response. Verify your API key.");
         }
 
-        let cleanedJson = rawText.trim();
-        if (cleanedJson.startsWith("```")) {
-          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-        }
-
-        const parsed = JSON.parse(cleanedJson);
+        const repairedJson = repairJsonString(rawText);
+        const parsed = JSON.parse(repairedJson);
         if (Array.isArray(parsed) && parsed.length > 0) {
           let croppedCount = 0;
           for (let qIdx = 0; qIdx < parsed.length; qIdx++) {

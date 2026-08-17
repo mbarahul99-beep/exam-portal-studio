@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { db, type BankQuestion, type QuestionBank } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MathRenderer } from './MathRenderer';
@@ -104,6 +104,14 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [pdfFromPage, setPdfFromPage] = useState<number>(2);
   const [pdfToPage, setPdfToPage] = useState<number>(3);
   const [pdfFileObject, setPdfFileObject] = useState<File | null>(null);
+
+  // PDF Batch Parser States
+  const [pdfBatchSize, setPdfBatchSize] = useState<number>(2);
+  const [pdfBatchDelay, setPdfBatchDelay] = useState<number>(3);
+  const [isBatching, setIsBatching] = useState<boolean>(false);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(0);
+  const [totalBatchesCount, setTotalBatchesCount] = useState<number>(0);
+  const abortBatchRef = useRef<boolean>(false);
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -361,7 +369,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
     }
   };
 
-  const handlePdfParse = async () => {
+  const handlePdfBatchParse = async () => {
     const file = pdfFileObject;
     if (!file) {
       setPdfParseError("Please select a PDF file first.");
@@ -383,7 +391,20 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
 
     setIsParsingPdf(true);
     setPdfParseError(null);
-    setParsedQuestions([]);
+    setIsBatching(true);
+    abortBatchRef.current = false;
+
+    // Calculate batch ranges
+    const ranges: Array<{ from: number; to: number }> = [];
+    for (let p = pdfFromPage; p <= pdfToPage; p += pdfBatchSize) {
+      ranges.push({
+        from: p,
+        to: Math.min(pdfToPage, p + pdfBatchSize - 1)
+      });
+    }
+
+    setTotalBatchesCount(ranges.length);
+    setCurrentBatchIndex(0);
 
     try {
       setPdfParseStatus("Loading PDF document...");
@@ -391,43 +412,53 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
       const typedArray = new Uint8Array(arrayBuffer);
       const pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
 
-      const pageCanvases: HTMLCanvasElement[] = [];
-      const pageImagesData: string[] = [];
+      // Helper function for rate limit delay
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-      // Render only the selected page range
-      for (let pNum = pdfFromPage; pNum <= pdfToPage; pNum++) {
-        setPdfParseStatus(`Rendering page ${pNum} of ${pdfPageCount}...`);
-        const page = await pdfDoc.getPage(pNum);
-        
-        // Render at 1.5x scale. This is more than enough for clear formulas, keeps API payload small.
-        const scale = 1.5;
-        const viewport = page.getViewport({ scale });
+      for (let i = 0; i < ranges.length; i++) {
+        if (abortBatchRef.current) {
+          setPdfParseStatus("Batch extraction stopped by user.");
+          break;
+        }
 
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error(`Failed to create 2d context for page ${pNum}`);
+        const batch = ranges[i];
+        setCurrentBatchIndex(i + 1);
+        setPdfParseStatus(`[Batch ${i + 1}/${ranges.length}] Rendering pages ${batch.from} to ${batch.to}...`);
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        const pageCanvases: HTMLCanvasElement[] = [];
+        const pageImagesData: string[] = [];
 
-        await page.render({
-          canvasContext: context,
-          viewport: viewport,
-          canvas: canvas
-        }).promise;
+        // Render page canvases
+        for (let pNum = batch.from; pNum <= batch.to; pNum++) {
+          const page = await pdfDoc.getPage(pNum);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
 
-        pageCanvases.push(canvas);
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error(`Failed to create 2d context for page ${pNum}`);
 
-        // Convert page to compressed JPEG
-        const jpegBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-        pageImagesData.push(jpegBase64);
-      }
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
 
-      setPdfParseStatus("Sending page images to Gemini for question extraction (this may take up to a minute)...");
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas
+          }).promise;
 
-      // In the prompt, explain that pageIndex 0 refers to the first page image in the parts list, index 1 refers to the second, etc.
-      const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided page images of a question paper.
+          pageCanvases.push(canvas);
+
+          const jpegBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+          pageImagesData.push(jpegBase64);
+        }
+
+        if (abortBatchRef.current) break;
+
+        setPdfParseStatus(`[Batch ${i + 1}/${ranges.length}] Extracting questions from pages ${batch.from} to ${batch.to}...`);
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+
+        const systemPrompt = `You are an expert exam parser. Your job is to extract questions from the provided page images of a question paper.
 You are given a list of page images.
 Identify all multiple choice questions (MCQs) in the images.
 For each question:
@@ -475,122 +506,141 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
   }
 ]`;
 
-      const promptParts: any[] = [{ text: systemPrompt }];
-      for (const jpegBase64 of pageImagesData) {
-        promptParts.push({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: jpegBase64
-          }
-        });
-      }
-
-      const response = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: promptParts
+        const promptParts: any[] = [{ text: systemPrompt }];
+        for (const jpegBase64 of pageImagesData) {
+          promptParts.push({
+            inlineData: {
+              data: jpegBase64,
+              mimeType: 'image/jpeg'
             }
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json'
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
-      }
-
-      const resData = await response.json();
-      const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!rawText) {
-        throw new Error("Gemini API returned an empty response. Verify your API key.");
-      }
-
-      let cleanedJson = rawText.trim();
-      if (cleanedJson.startsWith("```")) {
-        cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
-      }
-
-      const parsed = JSON.parse(cleanedJson);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        throw new Error("No questions could be structured from the page images. Make sure the pages contain clear questions.");
-      }
-
-      // Crop the diagrams directly from the rendered canvases in memory!
-      setPdfParseStatus("Cropping diagrams and chemical structures...");
-      let croppedCount = 0;
-
-      for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
-        const q = parsed[qIdx];
-        
-        // 1. Crop question diagram
-        if (q.diagramBox && typeof q.diagramBox.pageIndex === 'number' && typeof q.diagramBox.ymin === 'number') {
-          const pIdx = q.diagramBox.pageIndex;
-          if (pIdx >= 0 && pIdx < pageCanvases.length) {
-            const canvas = pageCanvases[pIdx];
-            const cropped = cropCanvasRegion(
-              canvas,
-              q.diagramBox.ymin,
-              q.diagramBox.xmin,
-              q.diagramBox.ymax,
-              q.diagramBox.xmax
-            );
-            if (cropped) {
-              q.questionImage = cropped;
-              croppedCount++;
-            }
-          }
+          });
         }
 
-        // 2. Crop option diagrams
-        if (Array.isArray(q.optionDiagramBoxes)) {
-          for (const optBox of q.optionDiagramBoxes) {
-            const optIdx = optBox.optionIdx;
-            const box = optBox.box;
-            if (typeof optIdx === 'number' && box && typeof box.pageIndex === 'number' && typeof box.ymin === 'number') {
-              const pIdx = box.pageIndex;
+        const response = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: promptParts
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
+        }
+
+        const resData = await response.json();
+        const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!rawText) {
+          throw new Error("Gemini API returned an empty response. Verify your API key.");
+        }
+
+        let cleanedJson = rawText.trim();
+        if (cleanedJson.startsWith("```")) {
+          cleanedJson = cleanedJson.replace(/^```json/, "").replace(/```$/, "").trim();
+        }
+
+        const parsed = JSON.parse(cleanedJson);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          let croppedCount = 0;
+          for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
+            const q = parsed[qIdx];
+            
+            // Crop question diagram
+            if (q.diagramBox && typeof q.diagramBox.pageIndex === 'number' && typeof q.diagramBox.ymin === 'number') {
+              const pIdx = q.diagramBox.pageIndex;
               if (pIdx >= 0 && pIdx < pageCanvases.length) {
                 const canvas = pageCanvases[pIdx];
                 const cropped = cropCanvasRegion(
                   canvas,
-                  box.ymin,
-                  box.xmin,
-                  box.ymax,
-                  box.xmax
+                  q.diagramBox.ymin,
+                  q.diagramBox.xmin,
+                  q.diagramBox.ymax,
+                  q.diagramBox.xmax
                 );
                 if (cropped) {
-                  q.options[optIdx] = cropped;
+                  q.questionImage = cropped;
                   croppedCount++;
                 }
               }
             }
+
+            // Crop option diagrams
+            if (Array.isArray(q.optionDiagramBoxes)) {
+              for (const optBox of q.optionDiagramBoxes) {
+                const optIdx = optBox.optionIdx;
+                const box = optBox.box;
+                if (typeof optIdx === 'number' && box && typeof box.pageIndex === 'number' && typeof box.ymin === 'number') {
+                  const pIdx = box.pageIndex;
+                  if (pIdx >= 0 && pIdx < pageCanvases.length) {
+                    const canvas = pageCanvases[pIdx];
+                    const cropped = cropCanvasRegion(
+                      canvas,
+                      box.ymin,
+                      box.xmin,
+                      box.ymax,
+                      box.xmax
+                    );
+                    if (cropped) {
+                      q.options[optIdx] = cropped;
+                      croppedCount++;
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Append parsed questions to queue
+          setParsedQuestions(prev => {
+            const next = [...prev, ...parsed];
+            setSelectedParsedIndexes(old => {
+              const updated = { ...old };
+              for (let idx = prev.length; idx < next.length; idx++) {
+                updated[idx] = true;
+              }
+              return updated;
+            });
+            return next;
+          });
+        }
+
+        // Rate-limiting delay for subsequent batches
+        if (i < ranges.length - 1 && !abortBatchRef.current) {
+          for (let sec = pdfBatchDelay; sec > 0; sec--) {
+            if (abortBatchRef.current) break;
+            setPdfParseStatus(`[Batch ${i + 1}/${ranges.length} Done] Waiting ${sec}s before next batch to prevent rate limits...`);
+            await sleep(1000);
           }
         }
       }
 
-      const initialIndexes: Record<number, boolean> = {};
-      parsed.forEach((_, idx) => {
-        initialIndexes[idx] = true;
-      });
-      setSelectedParsedIndexes(initialIndexes);
-      setParsedQuestions(parsed);
-      setPdfParseStatus(`Successfully parsed ${parsed.length} questions and cropped ${croppedCount} diagrams from pages ${pdfFromPage}–${pdfToPage}!`);
+      if (abortBatchRef.current) {
+        setPdfParseStatus("Extraction stopped. Preview questions parsed so far below.");
+      } else {
+        setPdfParseStatus("Successfully completed extracting all batches!");
+      }
     } catch (err: any) {
-      console.error("PDF Parsing error:", err);
-      setPdfParseError(err.message || "Failed to process PDF page range.");
+      console.error("PDF Batch Parsing error:", err);
+      setPdfParseError(err.message || "Failed to process PDF batch.");
     } finally {
       setIsParsingPdf(false);
+      setIsBatching(false);
     }
   };
+
+
 
   const handleImportSelectedQuestionsToBank = async () => {
     if (!selectedBank) return;
@@ -1347,58 +1397,117 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
 
                 {pdfFileObject && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
+                    {/* Page Range Inputs */}
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>FROM PAGE</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>START PAGE</span>
                         <input
                           type="number"
                           min={1}
                           max={pdfPageCount}
                           value={pdfFromPage}
                           onChange={(e) => setPdfFromPage(Math.max(1, Math.min(pdfPageCount, parseInt(e.target.value) || 1)))}
+                          disabled={isParsingPdf}
                           style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
                         />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>TO PAGE</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>END PAGE</span>
                         <input
                           type="number"
                           min={pdfFromPage}
                           max={pdfPageCount}
                           value={pdfToPage}
                           onChange={(e) => setPdfToPage(Math.max(pdfFromPage, Math.min(pdfPageCount, parseInt(e.target.value) || pdfFromPage)))}
+                          disabled={isParsingPdf}
                           style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
                         />
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handlePdfParse}
-                      disabled={isParsingPdf || !geminiApiKey.trim()}
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        background: (isParsingPdf || !geminiApiKey.trim()) ? '#94a3b8' : 'var(--primary)',
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        cursor: (isParsingPdf || !geminiApiKey.trim()) ? 'not-allowed' : 'pointer',
-                        fontSize: '0.88rem',
-                        marginTop: '8px',
-                        transition: 'background 0.2s'
-                      }}
-                    >
-                      {isParsingPdf ? "Processing Pages..." : `Extract Questions from Pages ${pdfFromPage} to ${pdfToPage}`}
-                    </button>
+                    {/* Batching & Rate Limit Inputs */}
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>PAGES PER BATCH</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={pdfBatchSize}
+                          onChange={(e) => setPdfBatchSize(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                          disabled={isParsingPdf}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', flex: 1 }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>DELAY INTERVAL (SEC)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={pdfBatchDelay}
+                          onChange={(e) => setPdfBatchDelay(Math.max(0, Math.min(30, parseInt(e.target.value) || 0)))}
+                          disabled={isParsingPdf}
+                          style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Process / Cancel Buttons */}
+                    <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '8px' }}>
+                      {isBatching ? (
+                        <button
+                          type="button"
+                          onClick={() => { abortBatchRef.current = true; setPdfParseStatus("Stopping after current batch..."); }}
+                          style={{
+                            flex: 1,
+                            padding: '12px',
+                            borderRadius: '6px',
+                            border: '1px solid #ef4444',
+                            background: '#fef2f2',
+                            color: '#ef4444',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            fontSize: '0.88rem',
+                            transition: 'background 0.2s'
+                          }}
+                        >
+                          Stop Batch Extraction
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handlePdfBatchParse}
+                          disabled={isParsingPdf || !geminiApiKey.trim()}
+                          style={{
+                            flex: 1,
+                            padding: '12px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: (isParsingPdf || !geminiApiKey.trim()) ? '#94a3b8' : 'var(--primary)',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            cursor: (isParsingPdf || !geminiApiKey.trim()) ? 'not-allowed' : 'pointer',
+                            fontSize: '0.88rem',
+                            transition: 'background 0.2s'
+                          }}
+                        >
+                          Start Batch Extraction
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {isParsingPdf && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600, marginTop: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#2563eb', fontWeight: 600, marginTop: '8px', flexWrap: 'wrap' }}>
                     <div style={{ width: '16px', height: '16px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                     <span>{pdfParseStatus}</span>
+                    {totalBatchesCount > 0 && (
+                      <span style={{ background: '#eff6ff', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem', color: '#2563eb', border: '1px solid #bfdbfe', fontWeight: 'bold' }}>
+                        Batch {currentBatchIndex}/{totalBatchesCount}
+                      </span>
+                    )}
                   </div>
                 )}
 
@@ -1412,13 +1521,48 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               {/* Preview zone */}
               {parsedQuestions.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', background: '#ffffff', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
-                      Parsed Questions List ({parsedQuestions.length} Found)
-                    </h4>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      Select the questions to import into bank: <strong>{selectedBank?.name}</strong>.
-                    </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                        Parsed Questions List ({parsedQuestions.length} Found)
+                      </h4>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        Select the questions to import into bank: <strong>{selectedBank?.name}</strong>.
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated: Record<number, boolean> = {};
+                          parsedQuestions.forEach((_, idx) => {
+                            updated[idx] = true;
+                          });
+                          setSelectedParsedIndexes(updated);
+                        }}
+                        style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer', transition: 'background 0.2s' }}
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedParsedIndexes({})}
+                        style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer', transition: 'background 0.2s' }}
+                      >
+                        Deselect All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setParsedQuestions([]);
+                          setSelectedParsedIndexes({});
+                          setPdfParseStatus('');
+                        }}
+                        style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #fee2e2', background: '#fef2f2', fontSize: '0.75rem', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', transition: 'background 0.2s' }}
+                      >
+                        Clear Queue
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>

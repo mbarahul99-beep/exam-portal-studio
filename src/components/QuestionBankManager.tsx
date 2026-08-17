@@ -633,7 +633,24 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         }
 
         const repairedJson = repairJsonString(rawText);
-        const parsed = JSON.parse(repairedJson);
+        let parsed;
+        try {
+          parsed = JSON.parse(repairedJson);
+        } catch (e: any) {
+          console.error("JSON parse failure. Raw text:", rawText);
+          console.error("Repaired JSON:", repairedJson);
+          
+          let snippet = "";
+          const posMatch = e.message.match(/position\s+(\d+)/);
+          if (posMatch) {
+            const pos = parseInt(posMatch[1], 10);
+            const start = Math.max(0, pos - 40);
+            const end = Math.min(repairedJson.length, pos + 40);
+            snippet = repairedJson.substring(start, end);
+            snippet = `\nSnippet around error: "...${snippet}..."`;
+          }
+          throw new Error(`JSON parsing failed: ${e.message}.${snippet}`);
+        }
         if (Array.isArray(parsed) && parsed.length > 0) {
           let croppedCount = 0;
           for (let qIdx = 0; qIdx < parsed.length; qIdx++) {

@@ -5782,7 +5782,14 @@ export default function App() {
             margin: 0 !important;
             padding: 0 !important;
           }
-          #root > div:not(.print-overlay-container) {
+          .app-container {
+            display: block !important;
+            min-height: 0 !important;
+          }
+          #root > div:not(.app-container) {
+            display: none !important;
+          }
+          .app-container > div:not(.print-overlay-container):not(.print-only) {
             display: none !important;
           }
           .app-layout, .tab-pane, .modal-backdrop, .sidebar, .mobile-header, header, footer {

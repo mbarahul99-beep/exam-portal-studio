@@ -98,6 +98,14 @@ class AppTabErrorBoundary extends React.Component<{ children: React.ReactNode, t
   }
 }
 
+const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+  const chunked: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunked.push(arr.slice(i, i + size));
+  }
+  return chunked;
+};
+
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
@@ -5777,7 +5785,9 @@ export default function App() {
           display: none;
         }
         @media print {
-          body {
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
             background: #ffffff !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -5785,6 +5795,8 @@ export default function App() {
           .app-container {
             display: block !important;
             min-height: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
           }
           #root > div:not(.app-container) {
             display: none !important;
@@ -5800,16 +5812,27 @@ export default function App() {
           }
           .print-overlay-container {
             display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
             width: 100% !important;
             margin: 0 !important;
-            padding: 10mm 15mm !important;
+            padding: 0 !important;
             box-sizing: border-box !important;
             background: #ffffff !important;
           }
+          .print-page {
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .print-page:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
           @page {
+            size: A4;
             margin: 10mm 15mm !important;
           }
         }
@@ -6071,70 +6094,95 @@ export default function App() {
             )}
 
             {activePrintJob.type === 'bulk-cards' && activePrintJob.students && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '20px'
-              }}>
-                {activePrintJob.students.map((student, idx) => (
-                  <div key={idx} style={{
-                    pageBreakInside: 'avoid',
-                    breakInside: 'avoid',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    background: '#ffffff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    textAlign: 'center',
-                    boxSizing: 'border-box'
+              <div className="print-pages-wrapper">
+                {chunkArray(activePrintJob.students, 9).map((pageStudents, pageIdx) => (
+                  <div key={pageIdx} className="print-page" style={{
+                    pageBreakAfter: pageIdx < Math.ceil(activePrintJob.students!.length / 9) - 1 ? 'always' : 'auto',
+                    breakAfter: pageIdx < Math.ceil(activePrintJob.students!.length / 9) - 1 ? 'page' : 'auto',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gridTemplateRows: 'repeat(3, 1fr)',
+                    gap: '20px',
+                    boxSizing: 'border-box',
+                    minHeight: '277mm',
+                    maxHeight: '277mm',
+                    overflow: 'hidden'
                   }}>
-                    <div style={{ textTransform: 'uppercase', fontSize: '0.7rem', fontWeight: '800', color: '#2563eb', letterSpacing: '1px', marginBottom: '8px', borderBottom: '2px solid #eff6ff', width: '100%', paddingBottom: '4px' }}>STUDENT IDENTITY CARD</div>
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
-                      alt="QR"
-                      style={{ width: '120px', height: '120px', marginBottom: '8px' }}
-                    />
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>{student.name}</div>
-                    {student.fatherName && (
-                      <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>F-{student.fatherName}</div>
-                    )}
-                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Class: <strong>{student.className}</strong></div>
-                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Roll ID: <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{student.studentNum}</span></div>
+                    {pageStudents.map((student, idx) => (
+                      <div key={idx} style={{
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        background: '#ffffff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxSizing: 'border-box',
+                        height: '100%',
+                        maxHeight: '85mm'
+                      }}>
+                        <div style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: '800', color: '#2563eb', letterSpacing: '1px', marginBottom: '8px', borderBottom: '2px solid #eff6ff', width: '100%', paddingBottom: '4px' }}>STUDENT IDENTITY CARD</div>
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
+                          alt="QR"
+                          style={{ width: '120px', height: '120px', minWidth: '120px', minHeight: '120px', marginBottom: '8px', objectFit: 'contain' }}
+                        />
+                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{student.name}</div>
+                        {student.fatherName && (
+                          <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>F-{student.fatherName}</div>
+                        )}
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Class: <strong>{student.className}</strong></div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Roll ID: <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{student.studentNum}</span></div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
             )}
 
             {activePrintJob.type === 'bulk-stickers' && activePrintJob.students && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '12px'
-              }}>
-                {activePrintJob.students.map((student, idx) => (
-                  <div key={idx} style={{
-                    pageBreakInside: 'avoid',
-                    breakInside: 'avoid',
-                    border: '1px dashed #cbd5e1',
-                    padding: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    textAlign: 'center',
-                    background: '#ffffff'
+              <div className="print-pages-wrapper">
+                {chunkArray(activePrintJob.students, 24).map((pageStudents, pageIdx) => (
+                  <div key={pageIdx} className="print-page" style={{
+                    pageBreakAfter: pageIdx < Math.ceil(activePrintJob.students!.length / 24) - 1 ? 'always' : 'auto',
+                    breakAfter: pageIdx < Math.ceil(activePrintJob.students!.length / 24) - 1 ? 'page' : 'auto',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateRows: 'repeat(6, 1fr)',
+                    gap: '12px',
+                    boxSizing: 'border-box',
+                    minHeight: '277mm',
+                    maxHeight: '277mm',
+                    overflow: 'hidden'
                   }}>
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
-                      alt="QR"
-                      style={{ width: '85px', height: '85px', marginBottom: '4px' }}
-                    />
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{student.name}</div>
-                    {student.fatherName && (
-                      <div style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', marginBottom: '2px' }}>F-{student.fatherName}</div>
-                    )}
-                    <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Roll ID: {student.studentNum}</div>
+                    {pageStudents.map((student, idx) => (
+                      <div key={idx} style={{
+                        border: '1px dashed #cbd5e1',
+                        padding: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        background: '#ffffff',
+                        boxSizing: 'border-box',
+                        height: '100%',
+                        maxHeight: '43mm'
+                      }}>
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
+                          alt="QR"
+                          style={{ width: '85px', height: '85px', minWidth: '85px', minHeight: '85px', marginBottom: '4px', objectFit: 'contain' }}
+                        />
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{student.name}</div>
+                        {student.fatherName && (
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', marginBottom: '2px' }}>F-{student.fatherName}</div>
+                        )}
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Roll ID: {student.studentNum}</div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>

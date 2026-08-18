@@ -376,6 +376,7 @@ export default function App() {
   const [viewingQrStudent, setViewingQrStudent] = useState<Student | null>(null);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [showImportCsvModal, setShowImportCsvModal] = useState(false);
+  const [showBulkQrDropdown, setShowBulkQrDropdown] = useState(false);
 
   // Face Enrollment States
   const [enrollingFaceStudent, setEnrollingFaceStudent] = useState<Student | null>(null);
@@ -703,6 +704,239 @@ export default function App() {
     a.download = 'apex_student_import_template.csv';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleBulkPrintIdCards = (className: string) => {
+    const classStudents = students.filter(s => s.className === className);
+    if (classStudents.length === 0) {
+      alert("No students in this class to print QR codes.");
+      return;
+    }
+
+    const sorted = [...classStudents].sort((a, b) => {
+      const numA = parseInt(a.studentNum, 10);
+      const numB = parseInt(b.studentNum, 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.studentNum.localeCompare(b.studentNum, undefined, { numeric: true });
+    });
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      const cardsHtml = sorted.map(student => {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`;
+        return `
+          <div class="card-wrapper">
+            <div class="card">
+              <div class="card-header">STUDENT ID CARD</div>
+              <img class="qr-img" src="${qrUrl}" alt="QR" />
+              <div class="student-name">${student.name}</div>
+              <div class="student-info">Class: <strong>${student.className}</strong></div>
+              <div class="student-info">Roll ID: <span class="roll-id">${student.studentNum}</span></div>
+            </div>
+          </div>
+        `;
+      }).join('\n');
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Bulk QR ID Cards - ${className}</title>
+            <style>
+              body {
+                margin: 0;
+                padding: 20px;
+                font-family: Arial, sans-serif;
+                background: #f1f5f9;
+              }
+              .page-container {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+                max-width: 1000px;
+                margin: 0 auto;
+              }
+              .card-wrapper {
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              .card {
+                background: #ffffff;
+                border: 2px solid #2563eb;
+                border-radius: 12px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+              }
+              .card-header {
+                font-size: 0.75rem;
+                font-weight: 800;
+                color: #2563eb;
+                letter-spacing: 0.1em;
+                margin-bottom: 12px;
+                border-bottom: 2px solid #eff6ff;
+                width: 100%;
+                padding-bottom: 6px;
+              }
+              .qr-img {
+                width: 130px;
+                height: 130px;
+                margin-bottom: 12px;
+              }
+              .student-name {
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .student-info {
+                font-size: 0.8rem;
+                color: #64748b;
+                margin: 2px 0;
+              }
+              .roll-id {
+                font-weight: 700;
+                color: #2563eb;
+              }
+              @media print {
+                body {
+                  background: #ffffff;
+                  padding: 0;
+                }
+                .page-container {
+                  max-width: 100%;
+                  gap: 15px;
+                }
+                .card {
+                  box-shadow: none;
+                  border: 1px solid #cbd5e1;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="page-container">
+              ${cardsHtml}
+            </div>
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                  window.close();
+                }, 500);
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
+
+  const handleBulkPrintStickers = (className: string) => {
+    const classStudents = students.filter(s => s.className === className);
+    if (classStudents.length === 0) {
+      alert("No students in this class to print QR codes.");
+      return;
+    }
+
+    const sorted = [...classStudents].sort((a, b) => {
+      const numA = parseInt(a.studentNum, 10);
+      const numB = parseInt(b.studentNum, 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.studentNum.localeCompare(b.studentNum, undefined, { numeric: true });
+    });
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      const stickersHtml = sorted.map(student => {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`;
+        return `
+          <div class="sticker">
+            <img class="qr-img" src="${qrUrl}" alt="QR" />
+            <div class="student-name">${student.name}</div>
+            <div class="student-info">Roll ID: ${student.studentNum}</div>
+          </div>
+        `;
+      }).join('\n');
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>QR Stickers Sheet - ${className}</title>
+            <style>
+              body {
+                margin: 0;
+                padding: 10px;
+                font-family: Arial, sans-serif;
+              }
+              .grid-container {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+              }
+              .sticker {
+                border: 1px dashed #cbd5e1;
+                padding: 10px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                background: #ffffff;
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              .qr-img {
+                width: 90px;
+                height: 90px;
+                margin-bottom: 4px;
+              }
+              .student-name {
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: #0f172a;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100%;
+              }
+              .student-info {
+                font-size: 0.7rem;
+                color: #64748b;
+              }
+              @media print {
+                body {
+                  padding: 0;
+                }
+                .sticker {
+                  border: 1px dashed #cbd5e1;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="grid-container">
+              ${stickersHtml}
+            </div>
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                  window.close();
+                }, 500);
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
   };
 
   const handleAddClass = async (e?: React.FormEvent) => {
@@ -2610,6 +2844,85 @@ export default function App() {
                             >
                               <FileSpreadsheet size={20} color="#2563eb" />
                             </button>
+
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                              <button
+                                onClick={() => setShowBulkQrDropdown(!showBulkQrDropdown)}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                                title="Bulk Print/Download QR Codes"
+                              >
+                                <QrCode size={20} color="#2563eb" />
+                              </button>
+
+                              {showBulkQrDropdown && (
+                                <>
+                                  <div 
+                                    onClick={() => setShowBulkQrDropdown(false)} 
+                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                  />
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    right: 0,
+                                    marginTop: '8px',
+                                    background: '#ffffff',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                                    zIndex: 1000,
+                                    width: '220px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    padding: '6px 0'
+                                  }}>
+                                    <button
+                                      onClick={() => {
+                                        setShowBulkQrDropdown(false);
+                                        handleBulkPrintIdCards(selectedClassName || '');
+                                      }}
+                                      style={{
+                                        padding: '10px 16px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        textAlign: 'left',
+                                        fontSize: '0.88rem',
+                                        fontWeight: 600,
+                                        color: '#1e293b',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.2s',
+                                        width: '100%'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      📄 Print ID Cards Grid
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowBulkQrDropdown(false);
+                                        handleBulkPrintStickers(selectedClassName || '');
+                                      }}
+                                      style={{
+                                        padding: '10px 16px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        textAlign: 'left',
+                                        fontSize: '0.88rem',
+                                        fontWeight: 600,
+                                        color: '#1e293b',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.2s',
+                                        width: '100%'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      🏷️ Print Sticker/Label Sheet
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
 

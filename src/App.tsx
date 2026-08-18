@@ -392,6 +392,68 @@ export default function App() {
     className?: string;
   } | null>(null);
 
+  const isNavigatingFromPopstateRef = useRef(false);
+
+  // Synchronize initial state to history stack
+  useEffect(() => {
+    window.history.replaceState({
+      activeTab,
+      selectedClassName,
+      hasPrintJob: activePrintJob !== null,
+      hasViewingQrStudent: viewingQrStudent !== null
+    }, '');
+  }, []);
+
+  // Listen to popstate event (browser back/forward button clicks)
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      if (!state) return;
+
+      isNavigatingFromPopstateRef.current = true;
+
+      if (state.activeTab !== undefined) {
+        setActiveTab(state.activeTab);
+      }
+      if (state.selectedClassName !== undefined) {
+        setSelectedClassName(state.selectedClassName);
+      }
+      if (!state.hasPrintJob) {
+        setActivePrintJob(null);
+      }
+      if (!state.hasViewingQrStudent) {
+        setViewingQrStudent(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Push new history states when navigation state changes
+  useEffect(() => {
+    if (isNavigatingFromPopstateRef.current) {
+      isNavigatingFromPopstateRef.current = false;
+      return;
+    }
+
+    const currentState = window.history.state;
+    const newHistoryState = {
+      activeTab,
+      selectedClassName,
+      hasPrintJob: activePrintJob !== null,
+      hasViewingQrStudent: viewingQrStudent !== null
+    };
+
+    if (!currentState || 
+        currentState.activeTab !== newHistoryState.activeTab ||
+        currentState.selectedClassName !== newHistoryState.selectedClassName ||
+        currentState.hasPrintJob !== newHistoryState.hasPrintJob ||
+        currentState.hasViewingQrStudent !== newHistoryState.hasViewingQrStudent) {
+      window.history.pushState(newHistoryState, '');
+    }
+  }, [activeTab, selectedClassName, activePrintJob, viewingQrStudent]);
+
   // Face Enrollment States
   const [enrollingFaceStudent, setEnrollingFaceStudent] = useState<Student | null>(null);
   const [enrollStream, setEnrollStream] = useState<MediaStream | null>(null);
@@ -2542,7 +2604,13 @@ export default function App() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
-                        onClick={() => setSelectedClassName(null)}
+                        onClick={() => {
+                          if (window.history.state?.selectedClassName) {
+                            window.history.back();
+                          } else {
+                            setSelectedClassName(null);
+                          }
+                        }}
                         style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                       >
                         <ArrowLeft size={22} color="#0f172a" />
@@ -6024,7 +6092,13 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button 
-                onClick={() => setActivePrintJob(null)}
+                onClick={() => {
+                  if (window.history.state?.hasPrintJob) {
+                    window.history.back();
+                  } else {
+                    setActivePrintJob(null);
+                  }
+                }}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '6px',

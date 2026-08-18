@@ -377,6 +377,12 @@ export default function App() {
   const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [showImportCsvModal, setShowImportCsvModal] = useState(false);
   const [showBulkQrDropdown, setShowBulkQrDropdown] = useState(false);
+  const [activePrintJob, setActivePrintJob] = useState<{
+    type: 'single' | 'bulk-cards' | 'bulk-stickers';
+    student?: Student;
+    students?: Student[];
+    className?: string;
+  } | null>(null);
 
   // Face Enrollment States
   const [enrollingFaceStudent, setEnrollingFaceStudent] = useState<Student | null>(null);
@@ -722,119 +728,11 @@ export default function App() {
       return a.studentNum.localeCompare(b.studentNum, undefined, { numeric: true });
     });
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      const cardsHtml = sorted.map(student => {
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`;
-        return `
-          <div class="card-wrapper">
-            <div class="card">
-              <div class="card-header">STUDENT ID CARD</div>
-              <img class="qr-img" src="${qrUrl}" alt="QR" />
-              <div class="student-name">${student.name}</div>
-              <div class="student-info">Class: <strong>${student.className}</strong></div>
-              <div class="student-info">Roll ID: <span class="roll-id">${student.studentNum}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('\n');
-
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Bulk QR ID Cards - ${className}</title>
-            <style>
-              body {
-                margin: 0;
-                padding: 20px;
-                font-family: Arial, sans-serif;
-                background: #f1f5f9;
-              }
-              .page-container {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 20px;
-                max-width: 1000px;
-                margin: 0 auto;
-              }
-              .card-wrapper {
-                page-break-inside: avoid;
-                break-inside: avoid;
-              }
-              .card {
-                background: #ffffff;
-                border: 2px solid #2563eb;
-                border-radius: 12px;
-                padding: 16px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-                box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-              }
-              .card-header {
-                font-size: 0.75rem;
-                font-weight: 800;
-                color: #2563eb;
-                letter-spacing: 0.1em;
-                margin-bottom: 12px;
-                border-bottom: 2px solid #eff6ff;
-                width: 100%;
-                padding-bottom: 6px;
-              }
-              .qr-img {
-                width: 130px;
-                height: 130px;
-                margin-bottom: 12px;
-              }
-              .student-name {
-                font-size: 1.1rem;
-                font-weight: 700;
-                color: #0f172a;
-                margin-bottom: 4px;
-              }
-              .student-info {
-                font-size: 0.8rem;
-                color: #64748b;
-                margin: 2px 0;
-              }
-              .roll-id {
-                font-weight: 700;
-                color: #2563eb;
-              }
-              @media print {
-                body {
-                  background: #ffffff;
-                  padding: 0;
-                }
-                .page-container {
-                  max-width: 100%;
-                  gap: 15px;
-                }
-                .card {
-                  box-shadow: none;
-                  border: 1px solid #cbd5e1;
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="page-container">
-              ${cardsHtml}
-            </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.print();
-                  window.close();
-                }, 500);
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    setActivePrintJob({
+      type: 'bulk-cards',
+      className: className,
+      students: sorted
+    });
   };
 
   const handleBulkPrintStickers = (className: string) => {
@@ -853,90 +751,11 @@ export default function App() {
       return a.studentNum.localeCompare(b.studentNum, undefined, { numeric: true });
     });
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      const stickersHtml = sorted.map(student => {
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`;
-        return `
-          <div class="sticker">
-            <img class="qr-img" src="${qrUrl}" alt="QR" />
-            <div class="student-name">${student.name}</div>
-            <div class="student-info">Roll ID: ${student.studentNum}</div>
-          </div>
-        `;
-      }).join('\n');
-
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>QR Stickers Sheet - ${className}</title>
-            <style>
-              body {
-                margin: 0;
-                padding: 10px;
-                font-family: Arial, sans-serif;
-              }
-              .grid-container {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 10px;
-              }
-              .sticker {
-                border: 1px dashed #cbd5e1;
-                padding: 10px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-                background: #ffffff;
-                page-break-inside: avoid;
-                break-inside: avoid;
-              }
-              .qr-img {
-                width: 90px;
-                height: 90px;
-                margin-bottom: 4px;
-              }
-              .student-name {
-                font-size: 0.8rem;
-                font-weight: 700;
-                color: #0f172a;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 100%;
-              }
-              .student-info {
-                font-size: 0.7rem;
-                color: #64748b;
-              }
-              @media print {
-                body {
-                  padding: 0;
-                }
-                .sticker {
-                  border: 1px dashed #cbd5e1;
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="grid-container">
-              ${stickersHtml}
-            </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.print();
-                  window.close();
-                }, 500);
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    setActivePrintJob({
+      type: 'bulk-stickers',
+      className: className,
+      students: sorted
+    });
   };
 
   const handleAddClass = async (e?: React.FormEvent) => {
@@ -4841,6 +4660,11 @@ export default function App() {
 
               <div style={{ textAlign: 'center' }}>
                 <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{viewingQrStudent.name}</h4>
+                {viewingQrStudent.fatherName && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '4px' }}>
+                    F-{viewingQrStudent.fatherName}
+                  </div>
+                )}
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Class: <strong>{viewingQrStudent.className}</strong></div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Roll ID: <code style={{ fontSize: '0.9rem', color: '#1058ca', fontWeight: 'bold' }}>{viewingQrStudent.studentNum}</code></div>
               </div>
@@ -4849,28 +4673,11 @@ export default function App() {
             <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
               <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setViewingQrStudent(null)}>Close</button>
               <button className="btn-primary" style={{ flex: 1 }} onClick={() => {
-                const printContent = document.getElementById('student-printable-card');
-                if (printContent) {
-                  const printWindow = window.open('', '_blank');
-                  if (printWindow) {
-                    printWindow.document.write(`
-                      <html>
-                        <head>
-                          <title>Print ID Card - ${viewingQrStudent.name}</title>
-                          <style>
-                            body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: Arial, sans-serif; }
-                            #card { width: 320px; border: 2px solid #1058ca; border-radius: 12px; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
-                          </style>
-                        </head>
-                        <body>
-                          <div id="card">${printContent.innerHTML}</div>
-                          <script>window.onload = function() { window.print(); setTimeout(function() { window.close(); }, 500); }</script>
-                        </body>
-                      </html>
-                    `);
-                    printWindow.document.close();
-                  }
-                }
+                setViewingQrStudent(null);
+                setActivePrintJob({
+                  type: 'single',
+                  student: viewingQrStudent
+                });
               }}>Print Card</button>
             </div>
           </div>
@@ -5970,11 +5777,33 @@ export default function App() {
           display: none;
         }
         @media print {
+          body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #root > div:not(.print-overlay-container) {
+            display: none !important;
+          }
+          .app-layout, .tab-pane, .modal-backdrop, .sidebar, .mobile-header, header, footer {
+            display: none !important;
+          }
           .no-print {
             display: none !important;
           }
-          .print-only {
+          .print-overlay-container {
             display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 10mm 15mm !important;
+            box-sizing: border-box !important;
+            background: #ffffff !important;
+          }
+          @page {
+            margin: 10mm 15mm !important;
           }
         }
       `}</style>
@@ -6116,6 +5945,193 @@ export default function App() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activePrintJob && (
+        <div className="print-overlay-container" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: '#f8fafc',
+          zIndex: 9999,
+          overflowY: 'auto',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          {/* Toolbar (Hidden on Print) */}
+          <div className="no-print" style={{
+            position: 'sticky',
+            top: 0,
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '12px 24px',
+            width: '100%',
+            maxWidth: '1000px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            marginBottom: '20px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ textAlign: 'left' }}>
+              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                {activePrintJob.type === 'single' ? 'Print Student ID Card' : 
+                 activePrintJob.type === 'bulk-cards' ? `Print ID Cards Grid - ${activePrintJob.className}` : 
+                 `Print Sticker Sheet - ${activePrintJob.className}`}
+              </h4>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                Use "Save as PDF" in your print dialog to download as a PDF file.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                onClick={() => setActivePrintJob(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontSize: '0.88rem',
+                  fontWeight: 'bold',
+                  color: '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                Close Preview
+              </button>
+              <button 
+                onClick={() => window.print()}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#2563eb',
+                  fontSize: '0.88rem',
+                  fontWeight: 'bold',
+                  color: '#ffffff',
+                  cursor: 'pointer'
+                }}
+              >
+                Print Now
+              </button>
+            </div>
+          </div>
+
+          {/* Printable Area */}
+          <div style={{ width: '100%', maxWidth: '1000px', padding: '10mm 15mm', boxSizing: 'border-box', background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            {activePrintJob.type === 'single' && activePrintJob.student && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                <div style={{
+                  width: '320px',
+                  border: '2px solid #2563eb',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  textAlign: 'center',
+                  boxSizing: 'border-box'
+                }}>
+                  <div style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: '800', color: '#2563eb', letterSpacing: '1px' }}>STUDENT IDENTITY CARD</div>
+                  <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(activePrintJob.student.studentNum + ':' + activePrintJob.student.className)}`} 
+                      alt="QR"
+                      style={{ width: '150px', height: '150px', display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', fontWeight: 'bold', color: '#0f172a' }}>{activePrintJob.student.name}</h4>
+                    {activePrintJob.student.fatherName && (
+                      <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>F-{activePrintJob.student.fatherName}</div>
+                    )}
+                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Class: <strong>{activePrintJob.student.className}</strong></div>
+                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Roll ID: <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{activePrintJob.student.studentNum}</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePrintJob.type === 'bulk-cards' && activePrintJob.students && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '20px'
+              }}>
+                {activePrintJob.students.map((student, idx) => (
+                  <div key={idx} style={{
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    background: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    boxSizing: 'border-box'
+                  }}>
+                    <div style={{ textTransform: 'uppercase', fontSize: '0.7rem', fontWeight: '800', color: '#2563eb', letterSpacing: '1px', marginBottom: '8px', borderBottom: '2px solid #eff6ff', width: '100%', paddingBottom: '4px' }}>STUDENT IDENTITY CARD</div>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
+                      alt="QR"
+                      style={{ width: '120px', height: '120px', marginBottom: '8px' }}
+                    />
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>{student.name}</div>
+                    {student.fatherName && (
+                      <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>F-{student.fatherName}</div>
+                    )}
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Class: <strong>{student.className}</strong></div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Roll ID: <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{student.studentNum}</span></div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activePrintJob.type === 'bulk-stickers' && activePrintJob.students && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: '12px'
+              }}>
+                {activePrintJob.students.map((student, idx) => (
+                  <div key={idx} style={{
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                    border: '1px dashed #cbd5e1',
+                    padding: '10px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    background: '#ffffff'
+                  }}>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(student.studentNum + ':' + student.className)}`} 
+                      alt="QR"
+                      style={{ width: '85px', height: '85px', marginBottom: '4px' }}
+                    />
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{student.name}</div>
+                    {student.fatherName && (
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', marginBottom: '2px' }}>F-{student.fatherName}</div>
+                    )}
+                    <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Roll ID: {student.studentNum}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

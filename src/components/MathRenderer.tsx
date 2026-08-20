@@ -31,9 +31,15 @@ function formatTabularLaTeXToHtml(text: string): string {
       .replace(/\\hline/g, '')                    // remove \hline
       .trim();
 
-    // Split rows by double backslashes or single backslashes at row boundaries
-    const rows = body.split(/\\{1,2}(?=\s*(?:\\hline|\n|\r|$))/);
-    const tableRowsHtml: string[] = [];
+    // Normalize row endings: Replace double backslashes with newline,
+    // and single backslash row endings (followed by space, \hline or markers) with newline.
+    let normalized = body
+      .replace(/\\\\/g, '\n')
+      .replace(/\\(?=\s*(?:\\hline|\n|\r|$))/g, '\n');
+
+    // Split rows
+    const rows = normalized.split('\n');
+    const tableLines: string[] = [];
 
     for (let row of rows) {
       row = row.trim();
@@ -42,61 +48,39 @@ function formatTabularLaTeXToHtml(text: string): string {
       // Split cells by ampersand &
       const cells = row.split('&').map(c => {
         let val = c.trim();
-        // Remove LaTeX bold formatting \textbf{text} or \text{text} to make it cleaner
+        // Remove LaTeX formatting
         val = val.replace(/\\textbf\{([^]*?)\}/g, '$1');
         val = val.replace(/\\text\{([^]*?)\}/g, '$1');
-        return val;
-      });
+        val = val.replace(/\\multicolumn\{\d+\}\{[^]*?\}\{([^]*?)\}/g, '$1');
+        return val.trim();
+      }).filter(c => c.length > 0);
 
-      // Filter out empty rows
-      if (cells.length === 0 || (cells.length === 1 && !cells[0].trim())) {
-        continue;
+      if (cells.length === 0) continue;
+
+      // Join cells with simple spaces and pipes
+      if (cells.length === 4) {
+        const left = `${cells[0]} ${cells[1]}`.trim();
+        const right = `${cells[2]} ${cells[3]}`.trim();
+        tableLines.push(`${left}   |   ${right}`);
+      } else if (cells.length === 2) {
+        tableLines.push(`${cells[0]}   |   ${cells[1]}`);
+      } else {
+        tableLines.push(cells.join('   |   '));
       }
-
-      const rowCellsHtml: string[] = [];
-      for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
-        let val = cells[cellIdx].trim();
-        
-        // Match \multicolumn{number}{align}{content}
-        const multMatch = val.match(/\\multicolumn\{\s*(\d+)\s*\}\{[^}]*\}\{([^]*?)\}/);
-        let colspanAttr = '';
-        if (multMatch) {
-          colspanAttr = ` colspan="${multMatch[1]}"`;
-          val = multMatch[2].trim();
-        } else if (cells.length === 2) {
-          colspanAttr = ' colspan="2"';
-        }
-
-        // Align labels like (A) or (i) to center, other text to left
-        const isLabel = val.startsWith('(') || val.match(/^[a-zA-Z0-9\.\(\)]+$/) && val.length <= 4;
-        const align = multMatch || isLabel ? 'center' : 'left';
-        
-        // Use a light gray background for headers
-        const isHeader = val === 'Column-I' || val === 'Column-II' || val === 'List-I' || val === 'List-II';
-        const background = isHeader ? '#f8fafc' : 'transparent';
-        const fontWeight = isHeader ? 'bold' : 'normal';
-
-        const style = `border: 1px solid #cbd5e1; padding: 6px 10px; text-align: ${align}; font-weight: ${fontWeight}; background-color: ${background};`;
-        
-        rowCellsHtml.push(`<td${colspanAttr} style="${style}">${val}</td>`);
-      }
-
-      tableRowsHtml.push(`<tr style="border-bottom: 1px solid #cbd5e1;">${rowCellsHtml.join('')}</tr>`);
     }
 
-    const tableHtml = `
-<div style="overflow-x: auto; margin: 12px 0; text-align: left;">
-  <table style="border-collapse: collapse; width: 100%; max-width: 600px; border: 1px solid #cbd5e1; font-size: 0.85rem; background-color: #ffffff; text-align: left; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-    <tbody>
-      ${tableRowsHtml.join('\n')}
-    </tbody>
-  </table>
+    const simpleTableText = tableLines.join('\n');
+
+    // Render as a very clean, border-free and simple styled div
+    const simpleHtml = `
+<div style="font-family: monospace; font-size: 0.9rem; margin: 14px 0; padding: 10px 14px; background-color: #fafafa; border-left: 3px solid #cbd5e1; white-space: pre-wrap; line-height: 1.6; color: #1e293b; text-align: left;">
+${simpleTableText}
 </div>
     `.trim();
 
-    return `${beforeTabular}\n${tableHtml}\n${afterTabular}`.trim();
+    return `${beforeTabular}\n${simpleHtml}\n${afterTabular}`.trim();
   } catch (err) {
-    console.warn("Failed to format LaTeX tabular to HTML:", err);
+    console.warn("Failed to format LaTeX tabular to simple text:", err);
     return text;
   }
 }

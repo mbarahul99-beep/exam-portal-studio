@@ -13,78 +13,6 @@ interface MathRendererProps {
   style?: React.CSSProperties;
 }
 
-function formatTabularLaTeXToHtml(text: string): string {
-  if (!text || !text.includes('\\begin{tabular}')) return text;
-
-  try {
-    const startIdx = text.indexOf('\\begin{tabular}');
-    const endIdx = text.indexOf('\\end{tabular}');
-    if (startIdx === -1 || endIdx === -1) return text;
-
-    const beforeTabular = text.substring(0, startIdx).trim();
-    const afterTabular = text.substring(endIdx + 13).trim();
-    const tabularBody = text.substring(startIdx, endIdx);
-
-    // Clean up tabular commands
-    let body = tabularBody
-      .replace(/\\begin\{tabular\}[^]*?\}/g, '') // remove \begin{tabular}{...}
-      .replace(/\\hline/g, '')                    // remove \hline
-      .trim();
-
-    // Normalize row endings: Replace double backslashes with newline,
-    // and single backslash row endings (followed by space, \hline or markers) with newline.
-    let normalized = body
-      .replace(/\\\\/g, '\n')
-      .replace(/\\(?=\s*(?:\\hline|\n|\r|$))/g, '\n');
-
-    // Split rows
-    const rows = normalized.split('\n');
-    const tableLines: string[] = [];
-
-    for (let row of rows) {
-      row = row.trim();
-      if (!row) continue;
-
-      // Split cells by ampersand &
-      const cells = row.split('&').map(c => {
-        let val = c.trim();
-        // Remove LaTeX formatting
-        val = val.replace(/\\textbf\{([^]*?)\}/g, '$1');
-        val = val.replace(/\\text\{([^]*?)\}/g, '$1');
-        val = val.replace(/\\multicolumn\{\d+\}\{[^]*?\}\{([^]*?)\}/g, '$1');
-        return val.trim();
-      }).filter(c => c.length > 0);
-
-      if (cells.length === 0) continue;
-
-      // Join cells with simple spaces and pipes
-      if (cells.length === 4) {
-        const left = `${cells[0]} ${cells[1]}`.trim();
-        const right = `${cells[2]} ${cells[3]}`.trim();
-        tableLines.push(`${left}   |   ${right}`);
-      } else if (cells.length === 2) {
-        tableLines.push(`${cells[0]}   |   ${cells[1]}`);
-      } else {
-        tableLines.push(cells.join('   |   '));
-      }
-    }
-
-    const simpleTableText = tableLines.join('\n');
-
-    // Render as a very clean, border-free and simple styled div
-    const simpleHtml = `
-<div style="font-family: monospace; font-size: 0.9rem; margin: 14px 0; padding: 10px 14px; background-color: #fafafa; border-left: 3px solid #cbd5e1; white-space: pre-wrap; line-height: 1.6; color: #1e293b; text-align: left;">
-${simpleTableText}
-</div>
-    `.trim();
-
-    return `${beforeTabular}\n${simpleHtml}\n${afterTabular}`.trim();
-  } catch (err) {
-    console.warn("Failed to format LaTeX tabular to simple text:", err);
-    return text;
-  }
-}
-
 export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
   if (!text || typeof text !== 'string') return null;
 
@@ -92,10 +20,6 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
   let processedText = text
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, '\r');
-
-  if (processedText.includes('\\begin{tabular}')) {
-    processedText = formatTabularLaTeXToHtml(processedText);
-  }
 
   if (processedText.startsWith('data:image/') || processedText.startsWith('http://') || processedText.startsWith('https://') || processedText.includes('base64,')) {
     const isBase64 = processedText.startsWith('data:image/') || processedText.includes('base64,');

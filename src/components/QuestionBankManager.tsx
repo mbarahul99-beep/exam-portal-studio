@@ -129,7 +129,7 @@ function cropCanvasRegion(
     let w = ((xmax - xmin) / 1000) * pageW;
     let h = ((ymax - ymin) / 1000) * pageH;
 
-    const padding = 15;
+    const padding = 5;
     x = Math.max(0, x - padding);
     y = Math.max(0, y - padding);
     w = Math.min(pageW - x, w + padding * 2);
@@ -646,6 +646,7 @@ For each question:
    If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:
    - Identify the 0-based pageIndex of the page image where the diagram is visible.
    - Detect its bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000 where 0 is top/left, 1000 is bottom/right).
+   - Bounding Box Precision: The bounding box must terminate strictly at the outer edges of the drawings/structures. Do NOT include any question text or label headings from the top or sides of the diagram. Do NOT include any option text or letters (like '(a)', '(b)', '(c)', '(d)', '(i)', '(ii)', etc.) printed underneath or next to the structures.
    - Return this in the "diagramBox" field.
 7. CRITICAL - Option Diagram Bounding Boxes:
    If the options themselves are diagrams, chemical structures, or equations rendered as images (rather than standard plain text):

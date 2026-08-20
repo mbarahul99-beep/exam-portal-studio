@@ -2011,7 +2011,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                                   </div>
                                   {qVal.questionImage && (
                                     <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                                      <img src={qVal.questionImage} alt="Library Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                                      <img src={qVal.questionImage} alt="Library Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
                                     </div>
                                   )}
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>

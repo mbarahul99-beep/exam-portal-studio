@@ -1396,7 +1396,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                           </div>
                           {q.questionImage && (
                             <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                              <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                              <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
                             </div>
                           )}
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
@@ -1978,6 +1978,12 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                             <div style={{ marginTop: '4px', color: '#334155', lineHeight: '1.4' }}>
                               <MathRenderer text={q.questionText} />
                             </div>
+
+                            {q.questionImage && (
+                              <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                                <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
+                              </div>
+                            )}
 
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px', marginTop: '10px' }}>
                               {q.options.map((opt: string, oIdx: number) => (

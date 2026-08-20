@@ -729,7 +729,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
                 {currentQ.questionImage && (
                   <div style={{ marginBottom: '24px', textAlign: 'center', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', display: 'inline-block', maxWidth: '100%' }}>
-                    <img src={currentQ.questionImage} alt="Question Diagram" style={{ maxHeight: '250px', maxWidth: '100%', objectFit: 'contain' }} />
+                    <img src={currentQ.questionImage} alt="Question Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
                   </div>
                 )}
 

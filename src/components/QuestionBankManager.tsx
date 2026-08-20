@@ -107,6 +107,9 @@ function repairJsonString(str: string): string {
   // Escape single backslashes that are not part of double-backslashes or escaped quotes
   cleaned = cleaned.replace(/(?<!\\)\\(?![\\"])/g, '\\\\');
 
+  // Fix multiple commas or commas followed by commas (e.g. 88,, or 88, ,)
+  cleaned = cleaned.replace(/,(\s*,)+/g, ',');
+
   // Fix trailing commas
   cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');
 
@@ -199,7 +202,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [pdfFileObject, setPdfFileObject] = useState<File | null>(null);
 
   // PDF Batch Parser States
-  const [pdfBatchSize, setPdfBatchSize] = useState<number>(2);
+  const [pdfBatchSize, setPdfBatchSize] = useState<number>(1);
   const [pdfBatchDelay, setPdfBatchDelay] = useState<number>(3);
   const [isBatching, setIsBatching] = useState<boolean>(false);
   const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(0);
@@ -637,18 +640,19 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
 You are given a list of page images.
 Identify all multiple choice questions (MCQs) in the images.
 For each question:
-1. Extract the question text.
+1. Extract the question text. Paraphrase the question text slightly (reword sentences or use synonyms) while keeping the original academic meaning, variables, and values exactly intact, to ensure compliance with copyright and safety check policies.
 2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
 3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D).
-4. Provide a brief explanation or solution.
+4. Provide a very brief, generic 1-line mathematical or conceptual explanation. Do NOT generate long, complex textbook explanations.
 5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
-6. CRITICAL - Diagram Bounding Boxes:
+6. Escape any double quotes inside the questionText or explanation (e.g. use '\\"' instead of '"').
+7. CRITICAL - Diagram Bounding Boxes:
    If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:
    - Identify the 0-based pageIndex of the page image where the diagram is visible.
    - Detect its bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000 where 0 is top/left, 1000 is bottom/right).
    - Bounding Box Precision: The bounding box must terminate strictly at the outer edges of the drawings/structures. Do NOT include any question text or label headings from the top or sides of the diagram. Do NOT include any option text or letters (like '(a)', '(b)', '(c)', '(d)', '(i)', '(ii)', etc.) printed underneath or next to the structures.
    - Return this in the "diagramBox" field.
-7. CRITICAL - Option Diagram Bounding Boxes:
+8. CRITICAL - Option Diagram Bounding Boxes:
    If the options themselves are diagrams, chemical structures, or equations rendered as images (rather than standard plain text):
    - For each option that is an image, identify its 0-based pageIndex and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
    - Return these in the "optionDiagramBoxes" array of objects, containing "optionIdx" (0-based) and the bounding "box".
@@ -698,6 +702,13 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
           });
         }
 
+        const safetySettings = [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ];
+
         const response = await fetch(geminiUrl, {
           method: 'POST',
           headers: {
@@ -711,8 +722,10 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               }
             ],
             generationConfig: {
-              responseMimeType: 'application/json'
-            }
+              responseMimeType: 'application/json',
+              temperature: 0.1
+            },
+            safetySettings: safetySettings
           })
         });
 
@@ -725,7 +738,11 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!rawText) {
-          throw new Error("Gemini API returned an empty response. Verify your API key.");
+          const finishReason = resData?.candidates?.[0]?.finishReason;
+          if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+            throw new Error(`Gemini API empty response: Blocked by Google ${finishReason} / Copyright policy filter.`);
+          }
+          throw new Error("Gemini API returned an empty response. Verify your API key or check safety restrictions.");
         }
 
         const repairedJson = repairJsonString(rawText);

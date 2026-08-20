@@ -23,7 +23,9 @@ import {
   ArrowLeft,
   Upload,
   FileText,
-  Brain
+  Brain,
+  Edit3,
+  FolderClosed
 } from 'lucide-react';
 
 interface QuestionBankManagerProps {
@@ -178,6 +180,17 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
   const [pdfParseError, setPdfParseError] = useState<string | null>(null);
   const [pdfParseStatus, setPdfParseStatus] = useState<string>('');
+  
+  // Bank renaming states
+  const [isEditingBankName, setIsEditingBankName] = useState(false);
+  const [editBankExam, setEditBankExam] = useState('');
+  const [editBankSubject, setEditBankSubject] = useState('');
+  const [editBankTopic, setEditBankTopic] = useState('');
+
+  // Bulk question actions states
+  const [selectedQIds, setSelectedQIds] = useState<number[]>([]);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [targetMoveBankId, setTargetMoveBankId] = useState<number | string>('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
   const [selectedParsedIndexes, setSelectedParsedIndexes] = useState<Record<number, boolean>>({});
   const [pdfPageCount, setPdfPageCount] = useState<number>(0);
@@ -220,6 +233,85 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const questionBanks = useLiveQuery(() => db.questionBanks.toArray()) || [];
   const allBankQuestions = useLiveQuery(() => db.questionBank.toArray()) || [];
   const examsList = useLiveQuery(() => db.exams.toArray()) || [];
+
+  const handleSaveBankRename = async () => {
+    if (!selectedBank || !selectedBank.id) return;
+    if (!editBankExam.trim() || !editBankSubject.trim() || !editBankTopic.trim()) {
+      alert("Fields cannot be empty.");
+      return;
+    }
+    try {
+      const newName = `${editBankExam.trim()} - ${editBankSubject.trim()}: ${editBankTopic.trim()}`;
+      await db.questionBanks.update(selectedBank.id, {
+        targetExam: editBankExam.trim(),
+        subject: editBankSubject.trim(),
+        topic: editBankTopic.trim(),
+        name: newName
+      });
+
+      const updatedBank = {
+        ...selectedBank,
+        targetExam: editBankExam.trim(),
+        subject: editBankSubject.trim(),
+        topic: editBankTopic.trim(),
+        name: newName
+      };
+
+      await syncQuestionBankToCloud(updatedBank);
+      setSelectedBank(updatedBank);
+      setIsEditingBankName(false);
+    } catch (err: any) {
+      alert(`Error renaming bank: ${err.message}`);
+    }
+  };
+
+  const handleDeleteSelectedQuestions = async () => {
+    if (selectedQIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete the ${selectedQIds.length} selected questions from this bank?`)) return;
+    try {
+      for (const id of selectedQIds) {
+        await deleteBankQuestionFromCloud(id);
+        await db.questionBank.delete(id);
+      }
+      setSelectedQIds([]);
+    } catch (err: any) {
+      alert(`Error deleting questions: ${err.message}`);
+    }
+  };
+
+  const handleMoveSelectedQuestions = async () => {
+    if (selectedQIds.length === 0) return;
+    if (!targetMoveBankId) {
+      alert("Please select a target question bank.");
+      return;
+    }
+    try {
+      const targetId = Number(targetMoveBankId);
+      const targetBank = questionBanks.find(b => b.id === targetId);
+      if (!targetBank) {
+        alert("Target question bank not found.");
+        return;
+      }
+      
+      for (const id of selectedQIds) {
+        const qObj = await db.questionBank.get(id);
+        if (qObj) {
+          const updatedQObj = {
+            ...qObj,
+            bankId: targetId
+          };
+          await db.questionBank.put(updatedQObj);
+          await syncBankQuestionToCloud(updatedQObj);
+        }
+      }
+      setSelectedQIds([]);
+      setShowMoveModal(false);
+      setTargetMoveBankId('');
+      alert("Successfully moved selected questions!");
+    } catch (err: any) {
+      alert(`Error moving questions: ${err.message}`);
+    }
+  };
 
   // Handle creating a new Question Bank
   const handleCreateBank = async (e: React.FormEvent) => {
@@ -495,6 +587,8 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
       // Helper function for rate limit delay
       const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+      const failedBatches: Array<{ pages: string; error: string }> = [];
+
       for (let i = 0; i < ranges.length; i++) {
         if (abortBatchRef.current) {
           setPdfParseStatus("Batch extraction stopped by user.");
@@ -503,7 +597,8 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
 
         const batch = ranges[i];
         setCurrentBatchIndex(i + 1);
-        setPdfParseStatus(`[Batch ${i + 1}/${ranges.length}] Rendering pages ${batch.from} to ${batch.to}...`);
+        try {
+          setPdfParseStatus(`[Batch ${i + 1}/${ranges.length}] Rendering pages ${batch.from} to ${batch.to}...`);
 
         const pageCanvases: HTMLCanvasElement[] = [];
         const pageImagesData: string[] = [];
@@ -714,6 +809,13 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
             return next;
           });
         }
+        } catch (batchErr: any) {
+          console.error(`Batch ${i + 1} failed:`, batchErr);
+          failedBatches.push({
+            pages: `${batch.from} to ${batch.to}`,
+            error: batchErr.message || "Unknown error"
+          });
+        }
 
         // Rate-limiting delay for subsequent batches
         if (i < ranges.length - 1 && !abortBatchRef.current) {
@@ -728,7 +830,13 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       if (abortBatchRef.current) {
         setPdfParseStatus("Extraction stopped. Preview questions parsed so far below.");
       } else {
-        setPdfParseStatus("Successfully completed extracting all batches!");
+        if (failedBatches.length > 0) {
+          const summary = failedBatches.map(f => `Pages ${f.pages}: ${f.error}`).join('; ');
+          setPdfParseStatus(`Completed scanning. Note: Extraction failed for some pages [${summary}]`);
+          setPdfParseError(`Extraction finished with errors on these pages:\n` + failedBatches.map(f => `- Pages ${f.pages}: ${f.error}`).join('\n'));
+        } else {
+          setPdfParseStatus("Successfully completed extracting all batches!");
+        }
       }
     } catch (err: any) {
       console.error("PDF Batch Parsing error:", err);
@@ -1027,16 +1135,66 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               >
                 <ArrowLeft size={16} />
               </button>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  <span>Question Banks</span>
-                  <ChevronRight size={12} />
-                  <span style={{ fontWeight: 'bold' }}>{selectedBank.targetExam}</span>
+              {isEditingBankName ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Target Exam"
+                    value={editBankExam}
+                    onChange={e => setEditBankExam(e.target.value)}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', width: '100px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Subject"
+                    value={editBankSubject}
+                    onChange={e => setEditBankSubject(e.target.value)}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', width: '120px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Topic"
+                    value={editBankTopic}
+                    onChange={e => setEditBankTopic(e.target.value)}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', width: '140px' }}
+                  />
+                  <button
+                    onClick={handleSaveBankRename}
+                    style={{ padding: '4px 10px', borderRadius: '4px', background: '#2f855a', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setIsEditingBankName(false)}
+                    style={{ padding: '4px 10px', borderRadius: '4px', background: '#fff', color: '#4a5568', border: '1px solid var(--border-color)', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <h3 style={{ margin: '2px 0 0 0', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
-                  {selectedBank.subject} - {selectedBank.topic}
-                </h3>
-              </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    <span>Question Banks</span>
+                    <ChevronRight size={12} />
+                    <span style={{ fontWeight: 'bold' }}>{selectedBank.targetExam}</span>
+                  </div>
+                  <h3 style={{ margin: '2px 0 0 0', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {selectedBank.subject} - {selectedBank.topic}
+                    <button
+                      onClick={() => {
+                        setEditBankExam(selectedBank.targetExam);
+                        setEditBankSubject(selectedBank.subject);
+                        setEditBankTopic(selectedBank.topic);
+                        setIsEditingBankName(true);
+                      }}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', padding: '2px', display: 'inline-flex', alignItems: 'center' }}
+                      title="Rename Question Bank"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                  </h3>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', background: '#fff' }}>
@@ -1094,42 +1252,121 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
 
               {/* Questions Feed */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Bulk Actions Panel */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '8px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredQuestions.length > 0 && selectedQIds.length === filteredQuestions.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedQIds(filteredQuestions.map(q => q.id!));
+                        } else {
+                          setSelectedQIds([]);
+                        }
+                      }}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                      Select All ({filteredQuestions.length})
+                    </span>
+                  </div>
+
+                  {selectedQIds.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>
+                        {selectedQIds.length} selected
+                      </span>
+                      <button
+                        onClick={() => setShowMoveModal(true)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--primary)',
+                          background: '#fff',
+                          color: 'var(--primary)',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FolderClosed size={14} /> Move To Bank
+                      </button>
+                      <button
+                        onClick={handleDeleteSelectedQuestions}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: '#e53e3e',
+                          color: '#fff',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Trash2 size={14} /> Delete Selected
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {filteredQuestions.length === 0 ? (
                   <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No questions stored in this bank matching your filters. Click <strong>+ Add Question</strong> or import them!
                   </div>
                 ) : (
-                  filteredQuestions.map((q, idx) => (
-                    <div key={q.id} className="qbank-question-card glass-card animate-fade-in">
-                      <div style={{ flex: 1, textAlign: 'left' }}>
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>Q{idx + 1}.</span>
-                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: q.difficulty === 'easy' ? '#e6fffa' : q.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: q.difficulty === 'easy' ? '#234e52' : q.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>
-                            {q.difficulty.toUpperCase()}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
-                          <MathRenderer text={q.questionText} />
-                        </div>
-                        {q.questionImage && (
-                          <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                            <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                  filteredQuestions.map((q, idx) => {
+                    const isSelected = selectedQIds.includes(q.id!);
+                    return (
+                      <div key={q.id} className="qbank-question-card glass-card animate-fade-in" style={{ border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedQIds(prev => [...prev, q.id!]);
+                            } else {
+                              setSelectedQIds(prev => prev.filter(id => id !== q.id!));
+                            }
+                          }}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', marginTop: '4px' }}
+                        />
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>Q{idx + 1}.</span>
+                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: q.difficulty === 'easy' ? '#e6fffa' : q.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: q.difficulty === 'easy' ? '#234e52' : q.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>
+                              {q.difficulty.toUpperCase()}
+                            </span>
                           </div>
-                        )}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                          {q.options.map((opt, oIdx) => (
-                            <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
-                              <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
-                              <MathRenderer text={opt} />
+                          <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
+                            <MathRenderer text={q.questionText} />
+                          </div>
+                          {q.questionImage && (
+                            <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                              <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
                             </div>
-                          ))}
-                        </div>
-                        {q.explanation && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px', fontStyle: 'italic' }}>
-                            Explanation: <MathRenderer text={q.explanation} />
+                          )}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                            {q.options.map((opt, oIdx) => (
+                              <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
+                                <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
+                                <MathRenderer text={opt} />
+                              </div>
+                            ))}
                           </div>
-                        )}
-                      </div>
+                          {q.explanation && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px', fontStyle: 'italic' }}>
+                              Explanation: <MathRenderer text={q.explanation} />
+                            </div>
+                          )}
+                        </div>
 
                       <div className="qbank-question-actions">
                         <button 
@@ -1160,7 +1397,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                         </button>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -2111,6 +2349,56 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 6. MODAL DIALOG: MOVE SELECTED QUESTIONS TO ANOTHER BANK */}
+      {showMoveModal && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="glass-card animate-scale-up" style={{ background: '#ffffff', width: '90%', maxWidth: '480px', padding: '24px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Move {selectedQIds.length} Questions</h3>
+              <button onClick={() => setShowMoveModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: 'var(--text-muted)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>SELECT TARGET QUESTION BANK</label>
+                <select 
+                  value={targetMoveBankId} 
+                  onChange={e => setTargetMoveBankId(e.target.value)} 
+                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.85rem', background: '#fff' }}
+                >
+                  <option value="">-- Choose Target Bank --</option>
+                  {questionBanks.filter(b => b.id !== selectedBank?.id).map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
+              <button 
+                onClick={() => {
+                  setShowMoveModal(false);
+                  setTargetMoveBankId('');
+                }} 
+                className="btn-secondary" 
+                style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleMoveSelectedQuestions} 
+                className="btn-primary" 
+                style={{ padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', background: 'var(--primary)', border: 'none', color: '#fff', cursor: 'pointer' }}
+              >
+                Move Questions
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

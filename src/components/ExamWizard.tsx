@@ -91,6 +91,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   const [questionSetupTab, setQuestionSetupTab] = useState<'manual' | 'csv' | 'library'>('manual');
   const [showAddedQuestionsModal, setShowAddedQuestionsModal] = useState(false);
   const [csvUploadSuccess, setCsvUploadSuccess] = useState<string | null>(null);
+  const [selectedExamQNums, setSelectedExamQNums] = useState<number[]>([]);
 
   // Library filters
   const [selectedLibBankId, setSelectedLibBankId] = useState<string>('All');
@@ -289,6 +290,86 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
 
     loadQuestionBank();
   }, [questionSetupTab, selectedLibBankId, libDifficultyFilter, libSearchQuery]);
+
+  const handleDeleteSelectedExamQuestions = () => {
+    if (selectedExamQNums.length === 0) return;
+    if (!confirm(`Are you sure you want to delete the ${selectedExamQNums.length} selected questions from this section?`)) return;
+    setQuestionsState(prev => prev.filter(q => !(q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName && selectedExamQNums.includes(q.qNum))));
+    setSelectedExamQNums([]);
+    setActiveQuestionIndex(0);
+  };
+
+  const handleAddAllLibraryQuestions = () => {
+    const toAdd = libraryQuestions.filter(qVal => 
+      !questionsState.some(q => q.questionText.trim() === qVal.questionText.trim())
+    );
+
+    if (toAdd.length === 0) {
+      alert("All questions in this view are already added to the exam.");
+      return;
+    }
+
+    const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
+    const qCount = sectionConfig ? sectionConfig.qCount : 100;
+
+    setQuestionsState(prev => {
+      let updated = [...prev];
+      let addedCount = 0;
+
+      for (const qVal of toAdd) {
+        let slotIdx = updated.findIndex(q => 
+          q.subjectName === selectedSubjectName && 
+          q.sectionName === selectedSectionName && 
+          !q.questionText.trim()
+        );
+
+        if (slotIdx === -1) {
+          const currentCount = updated.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).length;
+          if (currentCount >= qCount) {
+            alert(`Reached section limit of ${qCount} questions. Added ${addedCount} questions.`);
+            break;
+          }
+          
+          const existingQNums = new Set(updated.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).map(q => q.qNum));
+          let nextQNum = 1;
+          while (existingQNums.has(nextQNum)) {
+            nextQNum++;
+          }
+
+          const newQ = {
+            qNum: nextQNum,
+            sectionName: selectedSectionName,
+            subjectName: selectedSubjectName,
+            questionText: qVal.questionText,
+            options: [...qVal.options],
+            correctOptionIdx: qVal.correctOptionIdx,
+            explanation: qVal.explanation || '',
+            questionImage: qVal.questionImage || ''
+          };
+          updated.push(newQ);
+          addedCount++;
+        } else {
+          updated[slotIdx] = {
+            ...updated[slotIdx],
+            questionText: qVal.questionText,
+            options: [...qVal.options],
+            correctOptionIdx: qVal.correctOptionIdx,
+            explanation: qVal.explanation || '',
+            questionImage: qVal.questionImage || ''
+          };
+          addedCount++;
+        }
+      }
+
+      updated.sort((a, b) => {
+        if (a.subjectName !== b.subjectName) return a.subjectName.localeCompare(b.subjectName);
+        if (a.sectionName !== b.sectionName) return a.sectionName.localeCompare(b.sectionName);
+        return a.qNum - b.qNum;
+      });
+
+      return updated;
+    });
+  };
 
   React.useEffect(() => {
     if (questionSetupTab !== 'library') return;
@@ -1447,35 +1528,103 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                           + Add Question
                         </button>
                         
+                        {selectedExamQNums.length > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: '6px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#cf1322', fontWeight: 'bold' }}>{selectedExamQNums.length} Selected</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedExamQNums([])}
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  background: '#fff',
+                                  color: '#595959',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 'bold',
+                                  border: '1px solid #d9d9d9',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDeleteSelectedExamQuestions}
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  background: '#ff4d4f',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 'bold',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', flex: 1 }}>
                           {questionsState.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).map((q) => {
                             const isFilled = q.questionText.trim().length > 0;
                             const globalIdx = questionsState.findIndex(qs => qs.qNum === q.qNum);
                             const isActive = globalIdx === activeQuestionIndex;
+                            const isSelected = selectedExamQNums.includes(q.qNum);
                             return (
-                              <button
-                                key={`q-list-btn-${q.qNum}`}
-                                onClick={() => setActiveQuestionIndex(globalIdx)}
-                                className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
+                              <div
+                                key={`q-list-item-${q.qNum}`}
                                 style={{
-                                  border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
-                                  background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
-                                  color: isActive ? 'var(--primary)' : '#4a5568',
-                                  fontWeight: isActive ? 'bold' : 'normal',
-                                  cursor: 'pointer',
-                                  fontSize: '0.8rem',
-                                  width: '100%',
-                                  textAlign: 'left',
-                                  padding: '8px 12px',
-                                  borderRadius: '6px',
                                   display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center'
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  width: '100%'
                                 }}
                               >
-                                <span>Q {q.qNum}</span>
-                                {isFilled && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48bb78' }} />}
-                              </button>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedExamQNums(prev => [...prev, q.qNum]);
+                                    } else {
+                                      setSelectedExamQNums(prev => prev.filter(n => n !== q.qNum));
+                                    }
+                                  }}
+                                  style={{
+                                    width: '15px',
+                                    height: '15px',
+                                    cursor: 'pointer',
+                                    accentColor: 'var(--primary)'
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveQuestionIndex(globalIdx)}
+                                  className={`manual-entry-q-btn ${isActive ? 'active' : ''}`}
+                                  style={{
+                                    border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                    background: isActive ? 'rgba(16, 88, 202, 0.08)' : '#fff',
+                                    color: isActive ? 'var(--primary)' : '#4a5568',
+                                    fontWeight: isActive ? 'bold' : 'normal',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    flex: 1,
+                                    textAlign: 'left',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <span>Q {q.qNum}</span>
+                                  {isFilled && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48bb78' }} />}
+                                </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -1797,6 +1946,28 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                             onChange={e => setLibSearchQuery(e.target.value)} 
                             style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.75rem', background: '#fff' }}
                           />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            onClick={handleAddAllLibraryQuestions}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: '4px',
+                              border: 'none',
+                              background: '#2b6cb0',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                              height: '31px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            Add All to Exam
+                          </button>
                         </div>
                       </div>
 

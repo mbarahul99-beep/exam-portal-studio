@@ -645,7 +645,7 @@ For each question:
 2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
 3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D).
 4. Provide a very brief, generic 1-line mathematical or conceptual explanation. Do NOT generate long, complex textbook explanations.
-5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$').
+5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$'). For 'Match the Column' questions, do NOT use LaTeX tabular blocks (\\begin{tabular}) or markdown tables. Instead, format them cleanly as plain text stacked or side-by-side using pipe delimiters (e.g. 'Column-I | Column-II' on newlines).
 6. Escape any double quotes inside the questionText or explanation (e.g. use '\\"' instead of '"').
 7. CRITICAL - Diagram Bounding Boxes:
    If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:

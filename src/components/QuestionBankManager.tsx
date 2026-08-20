@@ -208,6 +208,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(0);
   const [totalBatchesCount, setTotalBatchesCount] = useState<number>(0);
   const abortBatchRef = useRef<boolean>(false);
+  const [useAiParaphrasing, setUseAiParaphrasing] = useState<boolean>(false);
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -640,7 +641,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
 You are given a list of page images.
 Identify all multiple choice questions (MCQs) in the images.
 For each question:
-1. Extract the question text. Paraphrase the question text slightly (reword sentences or use synonyms) while keeping the original academic meaning, variables, and values exactly intact, to ensure compliance with copyright and safety check policies.
+1. Extract the question text. ${useAiParaphrasing ? "Paraphrase the question text slightly (reword sentences or use synonyms) while keeping the original academic meaning, variables, and values exactly intact, to ensure compliance with copyright and safety check policies." : "Extract the question text EXACTLY word-for-word from the image without any modification, paraphrasing, or rewording."}
 2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
 3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D).
 4. Provide a very brief, generic 1-line mathematical or conceptual explanation. Do NOT generate long, complex textbook explanations.
@@ -1806,6 +1807,21 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                           style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
                         />
                       </div>
+                    </div>
+
+                    {/* Paraphrasing / Recitation Bypass Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', textAlign: 'left' }}>
+                      <input
+                        type="checkbox"
+                        id="useAiParaphrasing"
+                        checked={useAiParaphrasing}
+                        onChange={(e) => setUseAiParaphrasing(e.target.checked)}
+                        disabled={isParsingPdf}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <label htmlFor="useAiParaphrasing" style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer' }}>
+                        Use AI paraphrasing (Recitation safety bypass)
+                      </label>
                     </div>
 
                     {/* Process / Cancel Buttons */}

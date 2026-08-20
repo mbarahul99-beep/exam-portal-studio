@@ -645,15 +645,16 @@ For each question:
 2. Extract the options. There must be exactly 4 or 5 options. If any options are missing, leave them as empty strings.
 3. Determine the correct option index (0-based, i.e., 0 for A, 1 for B, 2 for C, 3 for D).
 4. Provide a very brief, generic 1-line mathematical or conceptual explanation. Do NOT generate long, complex textbook explanations.
-5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$' or '$g = 10 \\text{ m/s}^2$'). For 'Match the Column' questions, do NOT use LaTeX tabular blocks (\\begin{tabular}) or markdown tables. Instead, format them cleanly as plain text stacked or side-by-side using pipe delimiters (e.g. 'Column-I | Column-II' on newlines).
-6. Escape any double quotes inside the questionText or explanation (e.g. use '\\"' instead of '"').
-7. CRITICAL - Diagram Bounding Boxes:
+5. Transcribe all mathematical expressions, chemical equations, and formulas into clean inline LaTeX (enclosed in '$', e.g. '$\\frac{9.8}{\\sqrt{2}}$'). For 'Match the Column' grid tables, ALWAYS generate a LaTeX '\\begin{tabular}' block to represent the grid columns, containing '&' column separators and '\\\\' row breaks. Do NOT omit index labels like (A) or (i) from the cells. E.g. '\\begin{tabular}{|l|l|l|l|} \\hline \\textbf{(A)} & Lysosomes & \\textbf{(i)} & Protein synthesis \\\\ \\hline ... \\end{tabular}'.
+6. Format multi-line questions (such as lists of statements (A, B, C), Roman numeral lists (i, ii, iii, iv), numbered steps (I, II, III, IV), or Statement-I/Statement-II questions) cleanly with each item on a new line. Use a real newline character (\n) in the JSON text to separate them so they break lines properly in the user interface.
+7. Escape any double quotes inside the questionText or explanation (e.g. use '\\"' instead of '"').
+8. CRITICAL - Diagram Bounding Boxes:
    If a question contains a diagram, schematic drawing, math graph, block diagram, or circuit diagram:
    - Identify the 0-based pageIndex of the page image where the diagram is visible.
    - Detect its bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000 where 0 is top/left, 1000 is bottom/right).
    - Bounding Box Precision: The bounding box must terminate strictly at the outer edges of the drawings/structures. Do NOT include any question text or label headings from the top or sides of the diagram. Do NOT include any option text or letters (like '(a)', '(b)', '(c)', '(d)', '(i)', '(ii)', etc.) printed underneath or next to the structures.
    - Return this in the "diagramBox" field.
-8. CRITICAL - Option Diagram Bounding Boxes:
+9. CRITICAL - Option Diagram Bounding Boxes:
    If the options themselves are diagrams, chemical structures, or equations rendered as images (rather than standard plain text):
    - For each option that is an image, identify its 0-based pageIndex and bounding box coordinates: ymin, xmin, ymax, xmax (normalized 0 to 1000).
    - Return these in the "optionDiagramBoxes" array of objects, containing "optionIdx" (0-based) and the bounding "box".

@@ -13,7 +13,7 @@ interface MathRendererProps {
   style?: React.CSSProperties;
 }
 
-function formatTabularLaTeX(text: string): string {
+function formatTabularLaTeXToHtml(text: string): string {
   if (!text || !text.includes('\\begin{tabular}')) return text;
 
   try {
@@ -29,12 +29,11 @@ function formatTabularLaTeX(text: string): string {
     let body = tabularBody
       .replace(/\\begin\{tabular\}[^]*?\}/g, '') // remove \begin{tabular}{...}
       .replace(/\\hline/g, '')                    // remove \hline
-      .replace(/\\multicolumn\{\d+\}\{[^]*?\}\{([^]*?)\}/g, '$1') // simplify \multicolumn{2}{c}{\textbf{Column-I}} -> \textbf{Column-I}
       .trim();
 
     // Split rows by double backslashes
     const rows = body.split('\\\\');
-    const formattedRows: string[] = [];
+    const tableRowsHtml: string[] = [];
 
     for (let row of rows) {
       row = row.trim();
@@ -49,31 +48,55 @@ function formatTabularLaTeX(text: string): string {
         return val;
       });
 
-      // Filter out empty cells at the end
-      while (cells.length > 0 && !cells[cells.length - 1]) {
-        cells.pop();
+      // Filter out empty rows
+      if (cells.length === 0 || (cells.length === 1 && !cells[0].trim())) {
+        continue;
       }
 
-      if (cells.length === 0) continue;
+      const rowCellsHtml: string[] = [];
+      for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
+        let val = cells[cellIdx].trim();
+        
+        // Match \multicolumn{number}{align}{content}
+        const multMatch = val.match(/\\multicolumn\{\s*(\d+)\s*\}\{[^}]*\}\{([^]*?)\}/);
+        let colspanAttr = '';
+        if (multMatch) {
+          colspanAttr = ` colspan="${multMatch[1]}"`;
+          val = multMatch[2].trim();
+        } else if (cells.length === 2) {
+          colspanAttr = ' colspan="2"';
+        }
 
-      // Format cells nicely:
-      // If we have 4 cells: cell0 cell1 | cell2 cell3
-      // If we have 2 cells: cell0 | cell1
-      if (cells.length === 4) {
-        const left = `${cells[0]} ${cells[1]}`.trim();
-        const right = `${cells[2]} ${cells[3]}`.trim();
-        formattedRows.push(`${left}   |   ${right}`);
-      } else if (cells.length === 2) {
-        formattedRows.push(`${cells[0]}   |   ${cells[1]}`);
-      } else {
-        formattedRows.push(cells.join('   |   '));
+        // Align labels like (A) or (i) to center, other text to left
+        const isLabel = val.startsWith('(') || val.match(/^[a-zA-Z0-9\.\(\)]+$/) && val.length <= 4;
+        const align = multMatch || isLabel ? 'center' : 'left';
+        
+        // Use a light gray background for headers
+        const isHeader = val === 'Column-I' || val === 'Column-II' || val === 'List-I' || val === 'List-II';
+        const background = isHeader ? '#f8fafc' : 'transparent';
+        const fontWeight = isHeader ? 'bold' : 'normal';
+
+        const style = `border: 1px solid #cbd5e1; padding: 6px 10px; text-align: ${align}; font-weight: ${fontWeight}; background-color: ${background};`;
+        
+        rowCellsHtml.push(`<td${colspanAttr} style="${style}">${val}</td>`);
       }
+
+      tableRowsHtml.push(`<tr style="border-bottom: 1px solid #cbd5e1;">${rowCellsHtml.join('')}</tr>`);
     }
 
-    const cleanedTable = formattedRows.join('\n');
-    return `${beforeTabular}\n${cleanedTable}\n${afterTabular}`.trim();
+    const tableHtml = `
+<div style="overflow-x: auto; margin: 12px 0; text-align: left;">
+  <table style="border-collapse: collapse; width: 100%; max-width: 600px; border: 1px solid #cbd5e1; font-size: 0.85rem; background-color: #ffffff; text-align: left; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+    <tbody>
+      ${tableRowsHtml.join('\n')}
+    </tbody>
+  </table>
+</div>
+    `.trim();
+
+    return `${beforeTabular}\n${tableHtml}\n${afterTabular}`.trim();
   } catch (err) {
-    console.warn("Failed to format LaTeX tabular:", err);
+    console.warn("Failed to format LaTeX tabular to HTML:", err);
     return text;
   }
 }
@@ -81,9 +104,13 @@ function formatTabularLaTeX(text: string): string {
 export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
   if (!text || typeof text !== 'string') return null;
 
-  let processedText = text;
+  // Unescape literal \n character strings (backslash followed by n)
+  let processedText = text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r');
+
   if (processedText.includes('\\begin{tabular}')) {
-    processedText = formatTabularLaTeX(processedText);
+    processedText = formatTabularLaTeXToHtml(processedText);
   }
 
   if (processedText.startsWith('data:image/') || processedText.startsWith('http://') || processedText.startsWith('https://') || processedText.includes('base64,')) {

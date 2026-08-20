@@ -887,6 +887,14 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
             pages: `${batch.from} to ${batch.to}`,
             error: batchErr.message || "Unknown error"
           });
+          // Cooldown sleep specifically for failure/block to reset API rate-limit state
+          if (i < ranges.length - 1 && !abortBatchRef.current) {
+            for (let sec = 6; sec > 0; sec--) {
+              if (abortBatchRef.current) break;
+              setPdfParseStatus(`[Batch ${i + 1} Skipped] Cooldown wait ${sec}s to recover API state before next page...`);
+              await sleep(1000);
+            }
+          }
         }
 
         // Rate-limiting delay for subsequent batches

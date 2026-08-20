@@ -18,8 +18,7 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ text, style }) => {
 
   // Unescape literal \n character strings (backslash followed by n)
   let processedText = text
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r');
+    .replace(/\\n(?!([a-zA-Z]))/g, '\n');
 
   if (processedText.startsWith('data:image/') || processedText.startsWith('http://') || processedText.startsWith('https://') || processedText.includes('base64,')) {
     const isBase64 = processedText.startsWith('data:image/') || processedText.includes('base64,');

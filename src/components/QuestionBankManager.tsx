@@ -717,7 +717,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         let rawText = "";
         let currentTemperature = 0.1;
         let isParaphraseAttempt = false;
-        const maxRetries = 3;
+        const maxRetries = 1;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {

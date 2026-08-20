@@ -692,7 +692,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverBankIds = new Set(data.questionBanks.map((b: any) => b.id));
       const localBanks = await db.questionBanks.toArray();
       for (const lb of localBanks) {
-        const isNew = lb.createdAt && (new Date().getTime() - new Date(lb.createdAt).getTime() < 8000);
+        const isNew = lb.createdAt && (new Date().getTime() - new Date(lb.createdAt).getTime() < 300000);
         if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics" && !isNew) {
           await db.questionBanks.delete(lb.id);
         }
@@ -742,7 +742,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       
       const localQs = await db.questionBank.toArray();
       for (const lq of localQs) {
-        const isNew = lq.createdAt && (new Date().getTime() - new Date(lq.createdAt).getTime() < 8000);
+        const isNew = lq.createdAt && (new Date().getTime() - new Date(lq.createdAt).getTime() < 300000);
         if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId && !isNew) {
           await db.questionBank.delete(lq.id);
         }

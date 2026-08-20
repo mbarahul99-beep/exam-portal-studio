@@ -59,7 +59,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
 
   // Step 1: Basic Details States
   const [examName, setExamName] = useState('');
-  const [className, setClassName] = useState('NEET');
+  const [className, setClassName] = useState('');
   const [examDate, setExamDate] = useState(() => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -257,6 +257,15 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
 
     loadExamData();
   }, [examId]);
+
+  React.useEffect(() => {
+    if (!examId && classes.length > 0) {
+      const match = classes.some(c => c.name === className);
+      if (!match) {
+        setClassName(classes[0].name);
+      }
+    }
+  }, [classes, examId, className]);
 
   React.useEffect(() => {
     if (questionSetupTab !== 'library') return;

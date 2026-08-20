@@ -750,7 +750,14 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
 
             if (!response.ok) {
               const errData = await response.json().catch(() => ({}));
-              throw new Error(errData?.error?.message || `API request failed with status ${response.status}`);
+              const msg = errData?.error?.message || `API request failed with status ${response.status}`;
+              if (response.status === 429) {
+                setPdfParseStatus(`[Rate Limit Exceeded] Quota reset cooldown. Waiting 12s before retrying...`);
+                await sleep(12000);
+                attempt--; // Retry this attempt index
+                continue;
+              }
+              throw new Error(msg);
             }
 
             const resData = await response.json();

@@ -31,8 +31,8 @@ function formatTabularLaTeXToHtml(text: string): string {
       .replace(/\\hline/g, '')                    // remove \hline
       .trim();
 
-    // Split rows by double backslashes
-    const rows = body.split('\\\\');
+    // Split rows by double backslashes or single backslashes at row boundaries
+    const rows = body.split(/\\{1,2}(?=\s*(?:\\hline|\n|\r|$))/);
     const tableRowsHtml: string[] = [];
 
     for (let row of rows) {

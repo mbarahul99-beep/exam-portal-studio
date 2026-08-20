@@ -772,6 +772,26 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
           let croppedCount = 0;
           for (let qIdx = 0; qIdx < parsed.length; qIdx++) {
             const q = parsed[qIdx];
+
+            // 1. Sanitize questionText: strip leading numbers/prefixes (like "98.", "Q102 - ")
+            if (q.questionText && typeof q.questionText === 'string') {
+              q.questionText = q.questionText.trim()
+                .replace(/^[qQ]?\d+[\.\-\s:]+/, '')
+                .trim();
+              
+              // 2. Sanitize questionText: strip trailing options (like (a) ... (b) ... )
+              q.questionText = q.questionText.replace(/\n\s*[\(\[]?[aA][\)\]\.\s]\s+[^]*$/, '').trim();
+            }
+
+            // 3. Sanitize options: strip option index prefixes (like "(a) ", "A. ")
+            if (Array.isArray(q.options)) {
+              q.options = q.options.map((opt: any) => {
+                if (typeof opt === 'string') {
+                  return opt.trim().replace(/^[\(\[]?[a-eA-E1-5][\)\]\.\s]\s*/, '').trim();
+                }
+                return opt;
+              });
+            }
             
             // Crop question diagram
             if (q.diagramBox && typeof q.diagramBox.pageIndex === 'number' && typeof q.diagramBox.ymin === 'number') {

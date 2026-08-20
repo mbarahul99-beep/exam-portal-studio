@@ -209,6 +209,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [totalBatchesCount, setTotalBatchesCount] = useState<number>(0);
   const abortBatchRef = useRef<boolean>(false);
   const [useAiParaphrasing, setUseAiParaphrasing] = useState<boolean>(false);
+  const [isSavingSelected, setIsSavingSelected] = useState<boolean>(false);
 
   // Browse questions filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -899,9 +900,9 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       return;
     }
 
+    setIsSavingSelected(true);
     try {
-      let importCount = 0;
-      for (const q of toImport) {
+      const promises = toImport.map(async (q) => {
         const item: BankQuestion = {
           bankId: selectedBank.id!,
           questionText: q.questionText,
@@ -923,16 +924,19 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         const insertedId = await db.questionBank.add(item);
         item.id = insertedId;
         await syncBankQuestionToCloud(item);
-        importCount++;
-      }
+      });
 
-      alert(`Successfully imported ${importCount} questions into bank: ${selectedBank?.name}!`);
+      await Promise.all(promises);
+
+      alert(`Successfully imported ${toImport.length} questions into bank: ${selectedBank?.name}!`);
       setParsedQuestions([]);
       setSelectedParsedIndexes({});
       setPdfParseStatus('');
       setSubTab('browse');
     } catch (err: any) {
       alert(`Failed to import questions: ${err.message}`);
+    } finally {
+      setIsSavingSelected(false);
     }
   };
 
@@ -1992,24 +1996,35 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                   <button
                     type="button"
                     onClick={handleImportSelectedQuestionsToBank}
+                    disabled={isSavingSelected}
                     style={{
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      background: isSavingSelected ? '#94a3b8' : 'linear-gradient(135deg, #10b981, #059669)',
                       color: '#fff',
                       fontWeight: 'bold',
                       fontSize: '0.88rem',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
+                      cursor: isSavingSelected ? 'not-allowed' : 'pointer',
+                      boxShadow: isSavingSelected ? 'none' : '0 2px 6px rgba(16,185,129,0.2)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
                       width: 'fit-content',
-                      alignSelf: 'flex-end'
+                      alignSelf: 'flex-end',
+                      opacity: isSavingSelected ? 0.8 : 1
                     }}
                   >
-                    <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
+                    {isSavingSelected ? (
+                      <>
+                        <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginRight: '6px' }} />
+                        Saving to Bank...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={16} /> Import Selected ({Object.values(selectedParsedIndexes).filter(Boolean).length}) Questions
+                      </>
+                    )}
                   </button>
                 </div>
               )}

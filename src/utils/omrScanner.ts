@@ -11,8 +11,8 @@ export interface ScanResult {
 
 // Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
 export function getScaledY(rawY: number, dy: number): number {
-  const yScale = 0.991; // Original yScale
-  return 48 + (rawY - 48) * yScale + dy;
+  const yScale = 1.0; // 1.0 yScale
+  return 70 + (rawY - 70) * yScale + dy;
 }
 
 // Coordinate mapping parameters (matching the generated HTML NEET sheet)
@@ -22,10 +22,10 @@ export const OMR_CONFIG = {
   
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 48, y: 48 },
-    tr: { x: 952, y: 48 },
-    bl: { x: 48, y: 1366 },
-    br: { x: 952, y: 1366 }
+    tl: { x: 70, y: 70 },
+    tr: { x: 930, y: 70 },
+    bl: { x: 70, y: 1344 },
+    br: { x: 930, y: 1344 }
   },
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)

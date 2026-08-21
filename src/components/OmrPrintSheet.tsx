@@ -23,15 +23,16 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const storedJson = localStorage.getItem('omr_custom_settings');
-        if (storedJson) {
-          setOmrConfig({ ...DEFAULT_OMR_SETTINGS, ...JSON.parse(storedJson) });
-          return;
+        let jsonStr = localStorage.getItem('omr_custom_settings');
+        if (!jsonStr) {
+          const record = await db.settings.where('key').equals('omr_custom_settings').first();
+          if (record && record.value) jsonStr = record.value;
         }
-
-        const record = await db.settings.where('key').equals('omr_custom_settings').first();
-        if (record && record.value) {
-          setOmrConfig({ ...DEFAULT_OMR_SETTINGS, ...JSON.parse(record.value) });
+        if (jsonStr) {
+          const parsed = JSON.parse(jsonStr);
+          setOmrConfig({ ...DEFAULT_OMR_SETTINGS, ...parsed });
+          if (parsed.customCols !== undefined) setCustomCols(parsed.customCols);
+          if (parsed.density) setDensity(parsed.density);
         }
       } catch (e) {
         console.warn("Failed loading OMR custom settings in print view:", e);
@@ -61,6 +62,46 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
   const getQuestionLabel = (qNum: number): string => {
     return String(qNum).padStart(2, '0');
+  };
+
+  const handleColsChange = async (val: number | undefined) => {
+    setCustomCols(val);
+    try {
+      const stored = localStorage.getItem('omr_custom_settings') || '{}';
+      const parsed = JSON.parse(stored);
+      parsed.customCols = val;
+      const json = JSON.stringify(parsed);
+      localStorage.setItem('omr_custom_settings', json);
+      
+      const record = await db.settings.where('key').equals('omr_custom_settings').first();
+      if (record) {
+        await db.settings.update(record.id!, { value: json });
+      } else {
+        await db.settings.add({ key: 'omr_custom_settings', value: json });
+      }
+    } catch (e) {
+      console.warn("Failed saving custom columns:", e);
+    }
+  };
+
+  const handleDensityChange = async (val: 'auto' | 'compact' | 'normal' | 'spacious') => {
+    setDensity(val);
+    try {
+      const stored = localStorage.getItem('omr_custom_settings') || '{}';
+      const parsed = JSON.parse(stored);
+      parsed.density = val;
+      const json = JSON.stringify(parsed);
+      localStorage.setItem('omr_custom_settings', json);
+      
+      const record = await db.settings.where('key').equals('omr_custom_settings').first();
+      if (record) {
+        await db.settings.update(record.id!, { value: json });
+      } else {
+        await db.settings.add({ key: 'omr_custom_settings', value: json });
+      }
+    } catch (e) {
+      console.warn("Failed saving custom density:", e);
+    }
   };
 
   // Determine bubble size string based on scale selection
@@ -125,7 +166,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             <span style={{ fontWeight: 600, color: '#475569' }}>Columns:</span>
             <select 
               value={customCols || ''} 
-              onChange={(e) => setCustomCols(e.target.value ? Number(e.target.value) : undefined)}
+              onChange={(e) => handleColsChange(e.target.value ? Number(e.target.value) : undefined)}
               style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
             >
               <option value="">Auto ({layout.numCols} Cols)</option>
@@ -142,7 +183,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             <span style={{ fontWeight: 600, color: '#475569' }}>Full Page Fill:</span>
             <select 
               value={density} 
-              onChange={(e) => setDensity(e.target.value as any)}
+              onChange={(e) => handleDensityChange(e.target.value as any)}
               style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
             >
               <option value="auto">⚡ Auto-Fit Full Page (100% Height)</option>

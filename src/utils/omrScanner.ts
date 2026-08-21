@@ -543,7 +543,7 @@ export async function scanOMRSheet(
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -12; dy <= 12; dy += 1) {
+    for (let dy = -24; dy <= 24; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -579,7 +579,7 @@ export async function scanOMRSheet(
     // Scans range of horizontal shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
-    for (let dx = -12; dx <= 12; dx += 1) {
+    for (let dx = -20; dx <= 20; dx += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -695,7 +695,7 @@ export async function scanOMRSheet(
         const val = intensities[r];
         const isLocalContrastValid = colMax - val > localContrastThreshold;
         const isAvgContrastValid = colAvg - val > avgContrastThreshold;
-        const isAbsoluteValid = val < whitePaperLevel - absoluteThreshold;
+        const isAbsoluteValid = val < colMax - absoluteThreshold;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledRows.push(r);
         }
@@ -755,7 +755,7 @@ export async function scanOMRSheet(
         const val = intensities[o];
         const isLocalContrastValid = rowMax - val > localContrastThreshold;
         const isAvgContrastValid = rowAvg - val > avgContrastThreshold;
-        const isAbsoluteValid = val < whitePaperLevel - absoluteThreshold;
+        const isAbsoluteValid = val < rowMax - absoluteThreshold;
         if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
           filledOptions.push(o);
         }

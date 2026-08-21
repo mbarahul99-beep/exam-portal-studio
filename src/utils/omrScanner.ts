@@ -509,7 +509,7 @@ export async function scanOMRSheet(
       botRoi.delete();
       tempThresh.delete();
       
-      const inkDifference = botMean - topMean; // Positive if bottom has more ink (bubbles region) than top (header/name boxes)
+      const inkDifference = topMean - botMean; // Positive if top has more ink (headers/grids) than bottom (signatures)
       
       // Apply a massive penalty of -5000 if the sheet is upside down (inkDifference < 0)
       const orientationScore = inkDifference < 0 ? (contrastScore + 10 * inkDifference - 5000) : (contrastScore + 10 * inkDifference);

@@ -508,9 +508,9 @@ export async function scanOMRSheet(
           contrastScore += (cMax - cMin);
         }
 
-        // Orientation verification: Correct upright sheet has a much higher density of black ink in top region.
-        const topRect = new cv.Rect(100, 120, 800, 280);
-        const botRect = new cv.Rect(100, 1050, 800, 250);
+        // Orientation verification: Compare header ink density (top 15%) to signatures/blank space density (bottom 15%)
+        const topRect = new cv.Rect(50, 50, 900, 200);
+        const botRect = new cv.Rect(50, 1164, 900, 200);
         
         const tempThresh = new cv.Mat();
         cv.adaptiveThreshold(

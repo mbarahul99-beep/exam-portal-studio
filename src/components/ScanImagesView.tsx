@@ -894,18 +894,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? []
       );
 
-      if (cvResult.debugWarpedCanvas) {
-        try {
-          const pass2 = await scanOMRSheet(
-            cvResult.debugWarpedCanvas,
-            exam.numQuestions,
-            scannerRollDigits,
-            exam.examSetsCount ?? 1,
-            exam.sections ?? []
-          );
-          if (pass2 && pass2.answers) cvResult = pass2;
-        } catch {}
-      }
+
 
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');
@@ -1095,18 +1084,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? []
       );
 
-      if (cvResult.debugWarpedCanvas) {
-        try {
-          const pass2 = await scanOMRSheet(
-            cvResult.debugWarpedCanvas,
-            exam.numQuestions,
-            scannerRollDigits,
-            exam.examSetsCount ?? 1,
-            exam.sections ?? []
-          );
-          if (pass2 && pass2.answers) cvResult = pass2;
-        } catch {}
-      }
+
 
       const stripLeadingZeros = (val: string) => {
         const cleaned = val.replace(/^0+/, '');

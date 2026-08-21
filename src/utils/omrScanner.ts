@@ -11,8 +11,8 @@ export interface ScanResult {
 
 // Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
 export function getScaledY(rawY: number, dy: number): number {
-  const yScale = 1.0; // 1.0 scale factor (perspective warp normalizes scaling margins)
-  return 70 + (rawY - 70) * yScale + dy;
+  const yScale = 0.991; // Original yScale
+  return 48 + (rawY - 48) * yScale + dy;
 }
 
 // Coordinate mapping parameters (matching the generated HTML NEET sheet)
@@ -22,10 +22,10 @@ export const OMR_CONFIG = {
   
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 70, y: 70 },
-    tr: { x: 930, y: 70 },
-    bl: { x: 70, y: 1344 },
-    br: { x: 930, y: 1344 }
+    tl: { x: 48, y: 48 },
+    tr: { x: 952, y: 48 },
+    bl: { x: 48, y: 1366 },
+    br: { x: 952, y: 1366 }
   },
 
   // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
@@ -683,7 +683,7 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 5.0);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         intensities.push(avgGray);
       }
 
@@ -691,12 +691,11 @@ export async function scanOMRSheet(
       const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
 
       const filledRows: number[] = [];
+      const colDiffThreshold = Math.max(25, colAvg * 0.18);
+      const maxAbsoluteColVal = colMax - 30;
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
-        const isLocalContrastValid = colMax - val > localContrastThreshold;
-        const isAvgContrastValid = colAvg - val > avgContrastThreshold;
-        const isAbsoluteValid = val < colMax - absoluteThreshold;
-        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
+        if (colAvg - val > colDiffThreshold && val < maxAbsoluteColVal) {
           filledRows.push(r);
         }
       }
@@ -742,7 +741,7 @@ export async function scanOMRSheet(
       const intensities: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        const avgGray = calculateBubbleAverageGrayWithSnap(warpedGray, x, y, 4.0);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         intensities.push(avgGray);
       }
 
@@ -751,12 +750,11 @@ export async function scanOMRSheet(
       const rowAvg = rowSum / numOptions;
 
       const filledOptions: number[] = [];
+      const rowDiffThreshold = Math.max(25, rowAvg * 0.15);
+      const maxAbsoluteRowVal = rowMax - 30;
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
-        const isLocalContrastValid = rowMax - val > localContrastThreshold;
-        const isAvgContrastValid = rowAvg - val > avgContrastThreshold;
-        const isAbsoluteValid = val < rowMax - absoluteThreshold;
-        if (isLocalContrastValid && isAvgContrastValid && isAbsoluteValid) {
+        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteRowVal) {
           filledOptions.push(o);
         }
       }
@@ -829,29 +827,7 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
   return count > 0 ? sum / count : 255;
 }
 
-/**
- * Calculates the average grayscale intensity inside a circular bubble ROI,
- * dynamically checking a 5-point local search neighborhood to snap to the darkest center.
- * This compensates for local warping skew and hand-held camera shaking.
- */
-function calculateBubbleAverageGrayWithSnap(grayMatrix: any, cx: number, cy: number, r: number): number {
-  let minGray = 256;
-  const offsets = [
-    { dx: 0, dy: 0 },
-    { dx: -2, dy: 0 },
-    { dx: 2, dy: 0 },
-    { dx: 0, dy: -2 },
-    { dx: 0, dy: 2 }
-  ];
 
-  for (let i = 0; i < offsets.length; i++) {
-    const val = calculateBubbleAverageGray(grayMatrix, cx + offsets[i].dx, cy + offsets[i].dy, r);
-    if (val < minGray) {
-      minGray = val;
-    }
-  }
-  return minGray;
-}
 
 let smallCanvas: HTMLCanvasElement | null = null;
 let smallCtx: CanvasRenderingContext2D | null = null;

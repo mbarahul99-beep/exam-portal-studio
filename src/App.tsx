@@ -5853,6 +5853,9 @@ export default function App() {
           display: none;
         }
         @media print {
+          .print-only {
+            display: block !important;
+          }
           html, body {
             height: auto !important;
             overflow: visible !important;

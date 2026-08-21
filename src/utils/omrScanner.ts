@@ -9,10 +9,12 @@ export interface ScanResult {
   bestDy?: number;
 }
 
+let currentYScale = 1.0;
+let currentYStartOffset = 70;
+
 // Helper function to scale Y coordinates to compensate for bottom-anchor cut-off scaling compression
 export function getScaledY(rawY: number, dy: number): number {
-  const yScale = 1.0; // 1.0 yScale
-  return 70 + (rawY - 70) * yScale + dy;
+  return currentYStartOffset + (rawY - currentYStartOffset) * currentYScale + dy;
 }
 
 // Coordinate mapping parameters (matching the generated HTML NEET sheet)
@@ -436,98 +438,130 @@ export async function scanOMRSheet(
       [basePts[1], basePts[2], basePts[3], basePts[0]]  // 270° CW
     ];
 
+    const anchorConfigs = [
+      {
+        name: '48px anchors',
+        tl: { x: 48, y: 48 },
+        tr: { x: 952, y: 48 },
+        br: { x: 952, y: 1366 },
+        bl: { x: 48, y: 1366 },
+        yScale: 0.991,
+        yStartOffset: 48
+      },
+      {
+        name: '70px anchors',
+        tl: { x: 70, y: 70 },
+        tr: { x: 930, y: 70 },
+        br: { x: 930, y: 1344 },
+        bl: { x: 70, y: 1344 },
+        yScale: 1.0,
+        yStartOffset: 70
+      }
+    ];
+
     bestWarpedMat = null;
     let maxOrientationContrast = -1;
-
-    let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-      OMR_CONFIG.anchors.tl.x, OMR_CONFIG.anchors.tl.y,
-      OMR_CONFIG.anchors.tr.x, OMR_CONFIG.anchors.tr.y,
-      OMR_CONFIG.anchors.br.x, OMR_CONFIG.anchors.br.y,
-      OMR_CONFIG.anchors.bl.x, OMR_CONFIG.anchors.bl.y
-    ]);
+    let bestConfig = anchorConfigs[1]; // default to 70px anchors
 
     const warpedSize = new cv.Size(OMR_CONFIG.width, OMR_CONFIG.height);
 
-    for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
-      const rot = candidateRotations[rotIdx];
-      const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        rot[0].center.x, rot[0].center.y,
-        rot[1].center.x, rot[1].center.y,
-        rot[2].center.x, rot[2].center.y,
-        rot[3].center.x, rot[3].center.y
+    for (const config of anchorConfigs) {
+      let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        config.tl.x, config.tl.y,
+        config.tr.x, config.tr.y,
+        config.br.x, config.br.y,
+        config.bl.x, config.bl.y
       ]);
 
-      const M_temp = cv.getPerspectiveTransform(srcPts, dstPts);
-      const tempWarped = new cv.Mat();
-      cv.warpPerspective(src, tempWarped, M_temp, warpedSize);
+      // Set scaling variables temporarily for getScaledY inside loop
+      currentYScale = config.yScale;
+      currentYStartOffset = config.yStartOffset;
 
-      const tempGray = new cv.Mat();
-      cv.cvtColor(tempWarped, tempGray, cv.COLOR_RGBA2GRAY);
+      for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
+        const rot = candidateRotations[rotIdx];
+        const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          rot[0].center.x, rot[0].center.y,
+          rot[1].center.x, rot[1].center.y,
+          rot[2].center.x, rot[2].center.y,
+          rot[3].center.x, rot[3].center.y
+        ]);
 
-      // Evaluate candidate roll number area (y: 216-416) for valid header/roll box structure
-      let contrastScore = 0;
-      const sidConf = OMR_CONFIG.studentId;
-      for (let col = 0; col < Math.min(5, rollNoDigits); col++) {
-        const x = sidConf.xStart + col * sidConf.xStep;
-        let cMin = 256, cMax = -1;
-        for (let row = 0; row < 10; row++) {
-          const y = getScaledY(sidConf.yStart + row * sidConf.yStep, 0);
-          const g = calculateBubbleAverageGray(tempGray, x, y, 4.5);
-          if (g < cMin) cMin = g;
-          if (g > cMax) cMax = g;
+        const M_temp = cv.getPerspectiveTransform(srcPts, dstPts);
+        const tempWarped = new cv.Mat();
+        cv.warpPerspective(src, tempWarped, M_temp, warpedSize);
+
+        const tempGray = new cv.Mat();
+        cv.cvtColor(tempWarped, tempGray, cv.COLOR_RGBA2GRAY);
+
+        // Evaluate candidate roll number area for valid header/roll box structure
+        let contrastScore = 0;
+        const sidConf = OMR_CONFIG.studentId;
+        for (let col = 0; col < Math.min(5, rollNoDigits); col++) {
+          const x = sidConf.xStart + col * sidConf.xStep;
+          let cMin = 256, cMax = -1;
+          for (let row = 0; row < 10; row++) {
+            const y = getScaledY(sidConf.yStart + row * sidConf.yStep, 0);
+            const g = calculateBubbleAverageGray(tempGray, x, y, 4.5);
+            if (g < cMin) cMin = g;
+            if (g > cMax) cMax = g;
+          }
+          contrastScore += (cMax - cMin);
         }
-        contrastScore += (cMax - cMin);
+
+        // Orientation verification: Correct upright sheet has a much higher density of black ink in top region.
+        const topRect = new cv.Rect(100, 120, 800, 280);
+        const botRect = new cv.Rect(100, 1050, 800, 250);
+        
+        const tempThresh = new cv.Mat();
+        cv.adaptiveThreshold(
+          tempGray,
+          tempThresh,
+          255,
+          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+          cv.THRESH_BINARY_INV,
+          25,
+          9
+        );
+        
+        const topRoi = tempThresh.roi(topRect);
+        const botRoi = tempThresh.roi(botRect);
+        
+        const topScalar = cv.mean(topRoi);
+        const botScalar = cv.mean(botRoi);
+        
+        const topMean = (topScalar && topScalar.val) ? topScalar.val[0] : (Array.isArray(topScalar) ? topScalar[0] : (topScalar[0] || 0));
+        const botMean = (botScalar && botScalar.val) ? botScalar.val[0] : (Array.isArray(botScalar) ? botScalar[0] : (botScalar[0] || 0));
+        
+        topRoi.delete();
+        botRoi.delete();
+        tempThresh.delete();
+        
+        const inkDifference = topMean - botMean;
+        
+        // Apply a massive penalty of -5000 if the sheet is upside down (inkDifference < 0)
+        const orientationScore = inkDifference < 0 ? (contrastScore + 10 * inkDifference - 5000) : (contrastScore + 10 * inkDifference);
+
+        if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
+          maxOrientationContrast = orientationScore;
+          if (bestWarpedMat) bestWarpedMat.delete();
+          bestWarpedMat = tempWarped;
+          bestConfig = config;
+        } else {
+          tempWarped.delete();
+        }
+
+        tempGray.delete();
+        M_temp.delete();
+        srcPts.delete();
       }
 
-      // Orientation verification: Correct upright sheet (0°) has a much higher density of black ink 
-      // (headers, grids, Roll No bubbles) in the top region than in the bottom signature region.
-      // Binarizing first removes shadows and lighting gradients completely.
-      const topRect = new cv.Rect(100, 120, 800, 280);
-      const botRect = new cv.Rect(100, 1050, 800, 250);
-      
-      const tempThresh = new cv.Mat();
-      cv.adaptiveThreshold(
-        tempGray,
-        tempThresh,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY_INV,
-        25,
-        9
-      );
-      
-      const topRoi = tempThresh.roi(topRect);
-      const botRoi = tempThresh.roi(botRect);
-      
-      const topScalar = cv.mean(topRoi);
-      const botScalar = cv.mean(botRoi);
-      
-      const topMean = (topScalar && topScalar.val) ? topScalar.val[0] : (Array.isArray(topScalar) ? topScalar[0] : (topScalar[0] || 0));
-      const botMean = (botScalar && botScalar.val) ? botScalar.val[0] : (Array.isArray(botScalar) ? botScalar[0] : (botScalar[0] || 0));
-      
-      topRoi.delete();
-      botRoi.delete();
-      tempThresh.delete();
-      
-      const inkDifference = topMean - botMean; // Positive if top has more ink (headers/grids) than bottom (signatures)
-      
-      // Apply a massive penalty of -5000 if the sheet is upside down (inkDifference < 0)
-      const orientationScore = inkDifference < 0 ? (contrastScore + 10 * inkDifference - 5000) : (contrastScore + 10 * inkDifference);
-
-      if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
-        maxOrientationContrast = orientationScore;
-        if (bestWarpedMat) bestWarpedMat.delete();
-        bestWarpedMat = tempWarped;
-      } else {
-        tempWarped.delete();
-      }
-
-      tempGray.delete();
-      M_temp.delete();
-      srcPts.delete();
+      dstPts.delete();
     }
 
-    dstPts.delete();
+    // Lock in the winning configuration
+    currentYScale = bestConfig.yScale;
+    currentYStartOffset = bestConfig.yStartOffset;
+    console.log("[OMR Scanner] Auto-selected printed anchor config:", bestConfig.name);
     let warped = bestWarpedMat;
 
     // Convert warped image to grayscale for bubble average intensity scan

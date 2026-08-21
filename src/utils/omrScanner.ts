@@ -543,7 +543,7 @@ export async function scanOMRSheet(
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
 
-    for (let dy = -24; dy <= 24; dy += 1) {
+    for (let dy = -12; dy <= 12; dy += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -552,7 +552,7 @@ export async function scanOMRSheet(
         let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, dy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
           if (avgGray < colMin) {
             colMin = avgGray;
           }
@@ -579,7 +579,7 @@ export async function scanOMRSheet(
     // Scans range of horizontal shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
-    for (let dx = -20; dx <= 20; dx += 1) {
+    for (let dx = -12; dx <= 12; dx += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
@@ -588,7 +588,7 @@ export async function scanOMRSheet(
         let colMax = -1;
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
+          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
           if (avgGray < colMin) {
             colMin = avgGray;
           }

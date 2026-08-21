@@ -682,17 +682,25 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           defaultAnswerKey[idx + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
         });
       } else {
-        defaultAnswerKey = answerKeys['A'] || {};
+        const rawDefault = answerKeys['A'] || {};
+        for (let q = 1; q <= totalQuestions; q++) {
+          defaultAnswerKey[q] = rawDefault[q] || 'A';
+        }
       }
 
-      // Generate answerKeys map
+      // Generate answerKeys map (truncated to totalQuestions)
       const finalAnswerKeys: Record<string, Record<number, string>> = {};
       if (examMode === 'online') {
         finalAnswerKeys['A'] = defaultAnswerKey;
       } else {
         const sets = Array.from({ length: examSetsCount }).map((_, i) => String.fromCharCode(65 + i));
         sets.forEach(setName => {
-          finalAnswerKeys[setName] = answerKeys[setName] || {};
+          const rawSet = answerKeys[setName] || {};
+          const truncatedSet: Record<number, string> = {};
+          for (let q = 1; q <= totalQuestions; q++) {
+            truncatedSet[q] = rawSet[q] || 'A';
+          }
+          finalAnswerKeys[setName] = truncatedSet;
         });
       }
 

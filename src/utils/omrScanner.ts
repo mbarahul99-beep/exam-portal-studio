@@ -313,7 +313,7 @@ export async function scanOMRSheet(
 
                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                if (minArea === 0 || maxArea / minArea > 1.45) continue;
+                if (minArea === 0 || maxArea / minArea > 1.60) continue;
 
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
@@ -393,11 +393,11 @@ export async function scanOMRSheet(
         const aspectRatio = rect.width / rect.height;
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.85 && aspectRatio <= 1.18;
+        const isSquare = aspectRatio >= 0.80 && aspectRatio <= 1.25;
         
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
-        const isSolid = solidity >= 0.82;
+        const isSolid = solidity >= 0.72;
 
         if (isCorrectSize && isSquare && isSolid) {
           const center = {
@@ -901,12 +901,12 @@ export function findOMRSheetCornersLive(
 
       // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.85 && aspectRatio <= 1.18;
+      const isSquare = aspectRatio >= 0.80 && aspectRatio <= 1.25;
       
       // Check solidity (anchors are solid black squares)
       const cArea = cv.contourArea(cnt);
       const solidity = area > 0 ? cArea / area : 0;
-      const isSolid = solidity >= 0.80;
+      const isSolid = solidity >= 0.72;
 
       if (isCorrectSize && isSquare && isSolid) {
         const center = {
@@ -945,7 +945,7 @@ export function findOMRSheetCornersLive(
             // Validate that the areas of the 4 markers are similar
             const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
             const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-            if (minArea === 0 || maxArea / minArea > 1.45) continue;
+            if (minArea === 0 || maxArea / minArea > 1.60) continue;
 
             const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
             const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);

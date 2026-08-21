@@ -479,25 +479,40 @@ export async function scanOMRSheet(
         contrastScore += (cMax - cMin);
       }
 
-      // Orientation verification: Correct upright sheet (0°) is much darker in the top header/Roll No region
-      // than the bottom signature/declaration region (which is mostly blank white paper).
+      // Orientation verification: Correct upright sheet (0°) has a much higher density of black ink 
+      // (headers, grids, Roll No bubbles) in the top region than in the bottom signature region.
+      // Binarizing first removes shadows and lighting gradients completely.
       const topRect = new cv.Rect(100, 120, 800, 280);
       const botRect = new cv.Rect(100, 1050, 800, 250);
       
-      const topRoi = tempGray.roi(topRect);
-      const botRoi = tempGray.roi(botRect);
+      const tempThresh = new cv.Mat();
+      cv.adaptiveThreshold(
+        tempGray,
+        tempThresh,
+        255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY_INV,
+        25,
+        9
+      );
+      
+      const topRoi = tempThresh.roi(topRect);
+      const botRoi = tempThresh.roi(botRect);
       
       const topScalar = cv.mean(topRoi);
       const botScalar = cv.mean(botRoi);
       
-      const topMean = (topScalar && topScalar.val) ? topScalar.val[0] : (Array.isArray(topScalar) ? topScalar[0] : (topScalar[0] || 128));
-      const botMean = (botScalar && botScalar.val) ? botScalar.val[0] : (Array.isArray(botScalar) ? botScalar[0] : (botScalar[0] || 128));
+      const topMean = (topScalar && topScalar.val) ? topScalar.val[0] : (Array.isArray(topScalar) ? topScalar[0] : (topScalar[0] || 0));
+      const botMean = (botScalar && botScalar.val) ? botScalar.val[0] : (Array.isArray(botScalar) ? botScalar[0] : (botScalar[0] || 0));
       
       topRoi.delete();
       botRoi.delete();
+      tempThresh.delete();
       
-      const densityDifference = botMean - topMean; // Positive if top is darker (higher ink content)
-      const orientationScore = contrastScore + 10 * densityDifference;
+      const inkDifference = topMean - botMean; // Positive if top has more ink (headers/bubbles) than bottom (empty space)
+      
+      // Apply a massive penalty of -5000 if the sheet is upside down (inkDifference < 0)
+      const orientationScore = inkDifference < 0 ? (contrastScore + 10 * inkDifference - 5000) : (contrastScore + 10 * inkDifference);
 
       if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
         maxOrientationContrast = orientationScore;

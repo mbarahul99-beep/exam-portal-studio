@@ -313,7 +313,7 @@ export async function scanOMRSheet(
 
                 const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
                 const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                if (minArea === 0 || maxArea / minArea > 1.8) continue;
+                if (minArea === 0 || maxArea / minArea > 1.45) continue;
 
                 const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
                 const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
@@ -393,11 +393,11 @@ export async function scanOMRSheet(
         const aspectRatio = rect.width / rect.height;
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+        const isSquare = aspectRatio >= 0.85 && aspectRatio <= 1.18;
         
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
-        const isSolid = solidity >= 0.65;
+        const isSolid = solidity >= 0.82;
 
         if (isCorrectSize && isSquare && isSolid) {
           const center = {
@@ -479,8 +479,25 @@ export async function scanOMRSheet(
         contrastScore += (cMax - cMin);
       }
 
-      if (contrastScore > maxOrientationContrast || !bestWarpedMat) {
-        maxOrientationContrast = contrastScore;
+      // Orientation verification: Correct upright sheet (0°) is much darker in the top header/Roll No region
+      // than the bottom signature/declaration region (which is mostly blank white paper).
+      const topRect = new cv.Rect(100, 120, 800, 280);
+      const botRect = new cv.Rect(100, 1050, 800, 250);
+      
+      const topRoi = tempGray.roi(topRect);
+      const botRoi = tempGray.roi(botRect);
+      
+      const topMean = cv.mean(topRoi).val[0];
+      const botMean = cv.mean(botRoi).val[0];
+      
+      topRoi.delete();
+      botRoi.delete();
+      
+      const densityDifference = botMean - topMean; // Positive if top is darker (higher ink content)
+      const orientationScore = contrastScore + 10 * densityDifference;
+
+      if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
+        maxOrientationContrast = orientationScore;
         if (bestWarpedMat) bestWarpedMat.delete();
         bestWarpedMat = tempWarped;
       } else {
@@ -884,12 +901,12 @@ export function findOMRSheetCornersLive(
 
       // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.35;
+      const isSquare = aspectRatio >= 0.85 && aspectRatio <= 1.18;
       
       // Check solidity (anchors are solid black squares)
       const cArea = cv.contourArea(cnt);
       const solidity = area > 0 ? cArea / area : 0;
-      const isSolid = solidity >= 0.65;
+      const isSolid = solidity >= 0.80;
 
       if (isCorrectSize && isSquare && isSolid) {
         const center = {
@@ -928,7 +945,7 @@ export function findOMRSheetCornersLive(
             // Validate that the areas of the 4 markers are similar
             const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
             const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-            if (minArea === 0 || maxArea / minArea > 1.8) continue;
+            if (minArea === 0 || maxArea / minArea > 1.45) continue;
 
             const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
             const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);

@@ -196,6 +196,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const prevTinyFrameRef = useRef<Uint8ClampedArray | null>(null);
   const stableFramesCountRef = useRef<number>(0);
   const lastStabilityCheckRef = useRef<number>(0);
+  const lockStartTimeRef = useRef<number | null>(null);
 
   // Registered students in this exam's class limit validation
   const [lastScanOverlay, setLastScanOverlay] = useState<{ 
@@ -280,8 +281,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       filter.Q.setValueAtTime(3.5, audioCtx.currentTime);
       
       const gain1 = audioCtx.createGain();
-      gain1.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
+      gain1.gain.setValueAtTime(0.85, audioCtx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
       
       noise1.connect(filter);
       filter.connect(gain1);
@@ -294,8 +295,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       
       const gain2 = audioCtx.createGain();
       gain2.gain.setValueAtTime(0.0, audioCtx.currentTime);
-      gain2.gain.setValueAtTime(0.2, audioCtx.currentTime + 0.04);
-      gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      gain2.gain.setValueAtTime(0.65, audioCtx.currentTime + 0.04);
+      gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.09);
       
       noise2.connect(filter);
       filter.connect(gain2);
@@ -450,15 +451,52 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
             if (isMoving) {
               stableFramesRef.current = 0;
+              lockStartTimeRef.current = null;
             } else if (!isScanningRef.current) {
-              stableFramesRef.current += 1;
+              if (lockStartTimeRef.current === null) {
+                lockStartTimeRef.current = Date.now();
+              }
 
-              // Auto-capture after 3 consecutive stable frames (~50ms) for instant snappy scanning
-              if (stableFramesRef.current >= 3) {
-                stableFramesRef.current = 0;
+              const elapsed = Date.now() - lockStartTimeRef.current;
+              const progress = Math.min(1.0, elapsed / 1000); // 1-second countdown
+
+              // Draw circular progress countdown loader in the center of the viewport
+              const cx = vW / 2;
+              const cy = vH / 2;
+              const r = 52;
+
+              // 1. Draw glowing transparent background circle ring
+              ctx.beginPath();
+              ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+              ctx.lineWidth = 10;
+              ctx.stroke();
+
+              // 2. Draw active progress emerald-green arc
+              ctx.beginPath();
+              ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * 2 * Math.PI);
+              ctx.strokeStyle = '#10b981';
+              ctx.lineWidth = 10;
+              ctx.lineCap = 'round';
+              ctx.stroke();
+
+              // 3. Draw central fill circle
+              ctx.beginPath();
+              ctx.arc(cx, cy, r - 13, 0, 2 * Math.PI);
+              ctx.fillStyle = progress >= 1.0 ? '#10b981' : 'rgba(15, 23, 42, 0.45)';
+              ctx.fill();
+
+              // 4. Draw countdown text or SNAP label
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 13px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(progress >= 1.0 ? 'SNAP' : `${Math.ceil((1.0 - progress) * 10)}`, cx, cy);
+
+              if (progress >= 1.0) {
+                lockStartTimeRef.current = null;
                 isScanningRef.current = true;
                 setIsScanning(true);
-                // Call capture asynchronously
                 setTimeout(() => {
                   captureCameraPhoto();
                 }, 0);
@@ -470,6 +508,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             setDetectorStatus('ready');
           } else {
             stableFramesRef.current = 0;
+            lockStartTimeRef.current = null;
             // No sheet found: draw a centered reference guides overlay
             setDetectorStatus('searching');
             

@@ -667,7 +667,7 @@ export async function scanOMRSheet(
     }
     samples.sort((a, b) => a - b);
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
-    const grayGuardThreshold = Math.min(145, whitePaperLevel - 50);
+    const grayGuardThreshold = Math.min(118, whitePaperLevel - 50);
     console.log("[OMR Scanner] Paper white level:", whitePaperLevel, "gray guard threshold:", grayGuardThreshold);
 
     // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks with box-level auto-alignment
@@ -841,9 +841,9 @@ function optimizeRowOffset(
   let bestDx = 0;
   let bestDy = 0;
 
-  // 1. Coarse search in steps of 2px (dy expanded to [-12, 12] to cross large crease steps)
+  // 1. Coarse search in steps of 2px (dy expanded to [-12, 12], dx expanded to [-10, 10] to cross crease distortions)
   for (let dy = -12; dy <= 12; dy += 2) {
-    for (let dx = -6; dx <= 6; dx += 2) {
+    for (let dx = -10; dx <= 10; dx += 2) {
       let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {
         const cx = xOptions[o] + globalDx + dx;
@@ -865,7 +865,7 @@ function optimizeRowOffset(
     for (let dx = -1; dx <= 1; dx++) {
       const targetDx = bestDx + dx;
       const targetDy = bestDy + dy;
-      if (targetDx < -6 || targetDx > 6 || targetDy < -12 || targetDy > 12) continue;
+      if (targetDx < -10 || targetDx > 10 || targetDy < -12 || targetDy > 12) continue;
       
       let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {

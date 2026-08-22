@@ -744,8 +744,8 @@ export async function scanOMRSheet(
 
       const localY = predictedY + rowOffset.bestDy;
 
-      // Update the accumulator for this column with the local offset correction (with damping)
-      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy * 0.9;
+      // Update the accumulator for this column with the local offset correction (direct tracking to prevent lag)
+      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy;
 
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {

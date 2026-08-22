@@ -1079,19 +1079,34 @@ function optimizeRowOffset(
   let bestDx = 0;
   let bestDy = 0;
 
-  // 1. Coarse search in steps of 2px (dy expanded to [-12, 12], dx expanded to [-10, 10] to cross crease distortions)
+  // 1. Coarse search in steps of 2px (dy in [-12, 12], dx in [-10, 10])
   for (let dy = -12; dy <= 12; dy += 2) {
     for (let dx = -10; dx <= 10; dx += 2) {
       let totalRowScore = 0;
+      let activeCount = 0;
       for (let o = 0; o < numOptions; o++) {
         const cx = xOptions[o] + globalDx + dx;
         const cy = y + dy;
+        
+        // If center is heavily black (filled), ignore it for outline snapping.
+        // Filled bubbles don't have white centers, so their outline score (ringVal - centerVal)
+        // collapses to <= 0, causing a negative bias that drags the row alignment away.
+        const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
+        if (centerVal > 100) {
+          continue; 
+        }
+        
         totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
+        activeCount++;
       }
-      if (totalRowScore > maxScore) {
-        maxScore = totalRowScore;
-        bestDx = dx;
-        bestDy = dy;
+      
+      // Snapping requires at least one empty option to calibrate row outline position.
+      if (activeCount > 0) {
+        if (totalRowScore > maxScore) {
+          maxScore = totalRowScore;
+          bestDx = dx;
+          bestDy = dy;
+        }
       }
     }
   }
@@ -1106,15 +1121,25 @@ function optimizeRowOffset(
       if (targetDx < -10 || targetDx > 10 || targetDy < -12 || targetDy > 12) continue;
 
       let totalRowScore = 0;
+      let activeCount = 0;
       for (let o = 0; o < numOptions; o++) {
         const cx = xOptions[o] + globalDx + targetDx;
         const cy = y + targetDy;
+        
+        const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
+        if (centerVal > 100) {
+          continue;
+        }
+        
         totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
+        activeCount++;
       }
-      if (totalRowScore > maxScore) {
-        maxScore = totalRowScore;
-        fineBestDx = targetDx;
-        fineBestDy = targetDy;
+      if (activeCount > 0) {
+        if (totalRowScore > maxScore) {
+          maxScore = totalRowScore;
+          fineBestDx = targetDx;
+          fineBestDy = targetDy;
+        }
       }
     }
   }

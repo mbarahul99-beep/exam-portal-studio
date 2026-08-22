@@ -697,20 +697,29 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with row-level auto-alignment
+    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with Continuous Dynamic Warp Tracking (CDWT)
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
+    // Initialize accumulated vertical shifts (CDWT) for each column in the grid
+    const colAccumulatedDy: Record<number, number> = {};
+    qConf.columns.forEach((_, idx) => {
+      colAccumulatedDy[idx] = 0;
+    });
+
     for (let q = 1; q <= numQuestions; q++) {
       let colConf = null;
-      for (const col of qConf.columns) {
+      let colIdx = -1;
+      for (let i = 0; i < qConf.columns.length; i++) {
+        const col = qConf.columns[i];
         if (q >= col.qStart && q <= col.qEnd) {
           colConf = col;
+          colIdx = i;
           break;
         }
       }
 
-      if (!colConf) {
+      if (!colConf || colIdx === -1) {
         answers[q] = '';
         continue;
       }
@@ -726,15 +735,21 @@ export async function scanOMRSheet(
         continue;
       }
       const slotIndex = qSlot.slotIdx;
-      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
+      
+      const currentAccDy = colAccumulatedDy[colIdx] ?? 0;
+      const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
       
       const xOptions = Array.from({ length: numOptions }, (_, o) => (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]));
-      const rowOffset = optimizeRowOffset(warpedBin, xOptions, y, numOptions, bestDx);
+      const rowOffset = optimizeRowOffset(warpedBin, xOptions, predictedY, numOptions, bestDx);
+
+      const localY = predictedY + rowOffset.bestDy;
+
+      // Update the accumulator for this column with the local offset correction (with damping)
+      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy * 0.9;
 
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = xOptions[optIdx] + bestDx + rowOffset.bestDx;
-        const localY = y + rowOffset.bestDy;
         const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 2.5);
         const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 2.5);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {

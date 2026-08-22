@@ -59,7 +59,8 @@ function drawOverlayOnWarpedCanvas(
   answers: Record<number, string>,
   correctKey: Record<number, string>,
   bestDy: number,
-  sections: any[]
+  sections: any[],
+  questionOffsets?: Record<number, { dx: number; dy: number }>
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -85,7 +86,9 @@ function drawOverlayOnWarpedCanvas(
     const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
     if (!qSlot) continue;
     const slotIndex = qSlot.slotIdx;
-    const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
+
+    const offset = questionOffsets?.[q] || { dx: 0, dy: 0 };
+    const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + offset.dy;
 
     const studentAns = answers[q] || '';
     const correctAns = correctKey[q] || '';
@@ -94,7 +97,7 @@ function drawOverlayOnWarpedCanvas(
 
     for (let optIdx = 0; optIdx < numOptions; optIdx++) {
       const optChar = optionChars[optIdx];
-      const x = optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx];
+      const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + offset.dx;
 
       const isStudentPick = studentAns === optChar;
       const isCorrectOption = correctAns === optChar;
@@ -818,7 +821,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             parsedAnswers,
             correctKey,
             (cvResult && cvResult.bestDy) || 0,
-            exam.sections ?? []
+            exam.sections ?? [],
+            cvResult && cvResult.questionOffsets
           );
         }
 
@@ -1011,7 +1015,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           cvResult.answers,
           correctKey,
           cvResult.bestDy || 0,
-          exam.sections ?? []
+          exam.sections ?? [],
+          cvResult.questionOffsets
         );
       }
 
@@ -1223,7 +1228,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           cvResult.answers,
           correctKey,
           cvResult.bestDy || 0,
-          exam.sections ?? []
+          exam.sections ?? [],
+          cvResult.questionOffsets
         );
       }
 
@@ -1459,7 +1465,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           parsedAnswers,
           correctKey,
           (cvResult && cvResult.bestDy) || 0,
-          exam.sections ?? []
+          exam.sections ?? [],
+          cvResult && cvResult.questionOffsets
         );
       }
 

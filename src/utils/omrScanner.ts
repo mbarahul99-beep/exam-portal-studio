@@ -7,6 +7,7 @@ export interface ScanResult {
   bookletSet?: string;
   debugWarpedCanvas?: HTMLCanvasElement; // For showing the warped, aligned page in UI
   bestDy?: number;
+  questionOffsets?: Record<number, { dx: number; dy: number }>;
 }
 
 let currentYScale = 1.0;
@@ -700,6 +701,7 @@ export async function scanOMRSheet(
     // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with Continuous Dynamic Warp Tracking (CDWT)
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
+    const questionOffsets: Record<number, { dx: number; dy: number }> = {};
 
     // Initialize accumulated vertical shifts (CDWT) for each column in the grid
     const colAccumulatedDy: Record<number, number> = {};
@@ -744,6 +746,12 @@ export async function scanOMRSheet(
 
       const localY = predictedY + rowOffset.bestDy;
 
+      // Track exact coordinates offsets (both horizontal and vertical tracking) for UI overlay rendering
+      questionOffsets[q] = {
+        dx: bestDx + rowOffset.bestDx,
+        dy: currentAccDy + rowOffset.bestDy
+      };
+
       // Update the accumulator for this column with the local offset correction (direct tracking to prevent lag)
       colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy;
 
@@ -780,7 +788,8 @@ export async function scanOMRSheet(
       answers,
       bookletSet,
       debugWarpedCanvas,
-      bestDy
+      bestDy,
+      questionOffsets
     };
 
   } catch (err: any) {

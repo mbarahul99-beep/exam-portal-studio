@@ -584,7 +584,7 @@ export async function scanOMRSheet(
     // Scans range of horizontal shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
-    for (let dx = -12; dx <= 12; dx += 1) {
+    for (let dx = -20; dx <= 20; dx += 1) {
       let totalIntensity = 0;
       let filledColumnsCount = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {

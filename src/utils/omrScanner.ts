@@ -784,9 +784,9 @@ function getLocalBubbleScan(
   let bestDx = 0;
   let bestDy = 0;
 
-  // Search a small neighborhood of [-3, 3] pixels to find the true bubble center
-  for (let dy = -3; dy <= 3; dy++) {
-    for (let dx = -3; dx <= 3; dx++) {
+  // Search neighborhood of [-6, 6] pixels with step of 2px for warp/fold tolerance
+  for (let dy = -6; dy <= 6; dy += 2) {
+    for (let dx = -6; dx <= 6; dx += 2) {
       const avgBin = calculateBubbleAverageGray(binMatrix, cx + dx, cy + dy, r);
       if (avgBin < minAvgBin) {
         minAvgBin = avgBin;

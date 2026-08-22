@@ -841,8 +841,8 @@ function optimizeRowOffset(
   let bestDx = 0;
   let bestDy = 0;
 
-  // 1. Coarse search in steps of 2px
-  for (let dy = -6; dy <= 6; dy += 2) {
+  // 1. Coarse search in steps of 2px (dy expanded to [-12, 12] to cross large crease steps)
+  for (let dy = -12; dy <= 12; dy += 2) {
     for (let dx = -6; dx <= 6; dx += 2) {
       let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {
@@ -865,7 +865,7 @@ function optimizeRowOffset(
     for (let dx = -1; dx <= 1; dx++) {
       const targetDx = bestDx + dx;
       const targetDy = bestDy + dy;
-      if (targetDx < -6 || targetDx > 6 || targetDy < -6 || targetDy > 6) continue;
+      if (targetDx < -6 || targetDx > 6 || targetDy < -12 || targetDy > 12) continue;
       
       let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {

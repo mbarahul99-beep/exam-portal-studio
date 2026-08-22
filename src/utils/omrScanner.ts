@@ -258,6 +258,7 @@ export async function scanOMRSheet(
   let contours: any = null;
   let hierarchy: any = null;
   let warpedGray: any = null;
+  let warpedBin: any = null;
   let bestWarpedMat: any = null;
 
   try {
@@ -539,6 +540,17 @@ export async function scanOMRSheet(
     warpedGray = new cv.Mat();
     cv.cvtColor(warped, warpedGray, cv.COLOR_RGBA2GRAY);
 
+    warpedBin = new cv.Mat();
+    cv.adaptiveThreshold(
+      warpedGray,
+      warpedBin,
+      255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+      cv.THRESH_BINARY_INV,
+      31,
+      12
+    );
+
     const debugWarpedCanvas = document.createElement('canvas');
     cv.imshow(debugWarpedCanvas, warped);
 
@@ -633,75 +645,21 @@ export async function scanOMRSheet(
       console.warn("Failed loading custom OMR settings inside scanner:", e);
     }
 
-    // 5.8. Dynamic White Level Auto-Calibration
-    // Samples the brightest bubble across the first 30 questions and all roll number bubbles to detect the background paper brightness under current lighting
-    const samples: number[] = [];
     const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
-    for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
-      let colConf = null;
-      for (const col of qConf.columns) {
-        if (q >= col.qStart && q <= col.qEnd) { colConf = col; break; }
-      }
-      if (!colConf) continue;
-      const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
-      const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
-      if (!qSlot) continue;
-      const slotIndex = qSlot.slotIdx;
-      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
-      let maxVal = -1;
-      for (let o = 0; o < 4; o++) {
-        const x = colConf.xOptions[o] + bestDx;
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 4.0);
-        if (val > maxVal) maxVal = val;
-      }
-      if (maxVal > 0) samples.push(maxVal);
-    }
 
-    // Add Roll No bubbles to the samples
-    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
-      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const val = calculateBubbleAverageGray(warpedGray, x, y, 5.0);
-        if (val > 0) samples.push(val);
-      }
-    }
-
-    samples.sort((a, b) => a - b);
-    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 225;
-    console.log("[OMR Scanner] Dynamically detected white paper level:", whitePaperLevel);
-
-    // Compute contrast threshold scaling based on white paper level to adapt to lighting
-    const contrastScale = Math.min(1.0, Math.max(0.60, whitePaperLevel / 220));
-    const localContrastThreshold = 28 * contrastScale;
-    const avgContrastThreshold = 18 * contrastScale;
-    const absoluteThreshold = 32 * contrastScale;
-    console.log("[OMR Scanner] Calibrated thresholds (local/avg/abs):", localContrastThreshold.toFixed(1), avgContrastThreshold.toFixed(1), absoluteThreshold.toFixed(1));
-
-    // 6. Scan Roll No (rollNoDigits digits instead of hardcoded 10)
+    // 6. Scan Roll No (rollNoDigits digits) using binarized image for complete crease shadow immunity
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
       const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
-      const intensities: number[] = [];
+      const filledRows: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-        intensities.push(avgGray);
-      }
-
-      const colMax = Math.max(...intensities);
-      const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
-
-      const filledRows: number[] = [];
-      const colDiffThreshold = Math.max(15, colAvg * 0.08);
-      const maxAbsoluteColVal = colMax - 15;
-      for (let r = 0; r < 10; r++) {
-        const val = intensities[r];
-        if (colAvg - val > colDiffThreshold && val < maxAbsoluteColVal) {
-          filledRows.push(r);
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 3.0);
+        if (avgBin > 80) {
+          filledRows.push(rowIdx);
         }
       }
 
@@ -712,7 +670,7 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout matching printed OMR sheet)
+    // 7. Scan Answers (Dynamic Grid Layout) using binarized image for complete crease shadow immunity
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
@@ -743,24 +701,12 @@ export async function scanOMRSheet(
       const slotIndex = qSlot.slotIdx;
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       
-      const intensities: number[] = [];
+      const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
-        intensities.push(avgGray);
-      }
-
-      const rowMax = Math.max(...intensities);
-      const rowSum = intensities.reduce((sum, v) => sum + v, 0);
-      const rowAvg = rowSum / numOptions;
-
-      const filledOptions: number[] = [];
-      const rowDiffThreshold = Math.max(15, rowAvg * 0.08);
-      const maxAbsoluteRowVal = rowMax - 15;
-      for (let o = 0; o < numOptions; o++) {
-        const val = intensities[o];
-        if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteRowVal) {
-          filledOptions.push(o);
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 2.5);
+        if (avgBin > 80) {
+          filledOptions.push(optIdx);
         }
       }
 
@@ -780,6 +726,7 @@ export async function scanOMRSheet(
     thresh.delete();
     warped.delete();
     warpedGray.delete();
+    warpedBin.delete();
 
     return {
       studentNum,
@@ -797,6 +744,7 @@ export async function scanOMRSheet(
     if (contours && !contours.isDeleted()) contours.delete();
     if (hierarchy && !hierarchy.isDeleted()) hierarchy.delete();
     if (warpedGray && !warpedGray.isDeleted()) warpedGray.delete();
+    if (warpedBin && !warpedBin.isDeleted()) warpedBin.delete();
     if (bestWarpedMat && !bestWarpedMat.isDeleted()) bestWarpedMat.delete();
     throw err;
   }

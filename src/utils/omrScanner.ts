@@ -696,8 +696,8 @@ export async function scanOMRSheet(
       const colAvg = intensities.reduce((sum, v) => sum + v, 0) / 10;
 
       const filledRows: number[] = [];
-      const colDiffThreshold = Math.max(25, colAvg * 0.18);
-      const maxAbsoluteColVal = colMax - 30;
+      const colDiffThreshold = Math.max(15, colAvg * 0.08);
+      const maxAbsoluteColVal = colMax - 15;
       for (let r = 0; r < 10; r++) {
         const val = intensities[r];
         if (colAvg - val > colDiffThreshold && val < maxAbsoluteColVal) {
@@ -755,8 +755,8 @@ export async function scanOMRSheet(
       const rowAvg = rowSum / numOptions;
 
       const filledOptions: number[] = [];
-      const rowDiffThreshold = Math.max(25, rowAvg * 0.15);
-      const maxAbsoluteRowVal = rowMax - 30;
+      const rowDiffThreshold = Math.max(15, rowAvg * 0.08);
+      const maxAbsoluteRowVal = rowMax - 15;
       for (let o = 0; o < numOptions; o++) {
         const val = intensities[o];
         if (rowAvg - val > rowDiffThreshold && val < maxAbsoluteRowVal) {

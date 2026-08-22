@@ -698,14 +698,16 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with Continuous Dynamic Warp Tracking (CDWT)
+    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with Continuous Dynamic 2D Warp Tracking (CD2DWT)
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
     const questionOffsets: Record<number, { dx: number; dy: number }> = {};
 
-    // Initialize accumulated vertical shifts (CDWT) for each column in the grid
+    // Initialize accumulated horizontal (Dx) and vertical (Dy) shifts for each grid column
+    const colAccumulatedDx: Record<number, number> = {};
     const colAccumulatedDy: Record<number, number> = {};
     qConf.columns.forEach((_, idx) => {
+      colAccumulatedDx[idx] = 0;
       colAccumulatedDy[idx] = 0;
     });
 
@@ -738,21 +740,26 @@ export async function scanOMRSheet(
       }
       const slotIndex = qSlot.slotIdx;
       
+      const currentAccDx = colAccumulatedDx[colIdx] ?? 0;
       const currentAccDy = colAccumulatedDy[colIdx] ?? 0;
-      const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
       
-      const xOptions = Array.from({ length: numOptions }, (_, o) => (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]));
+      const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
+      const xOptions = Array.from({ length: numOptions }, (_, o) => 
+        (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]) + currentAccDx
+      );
+      
       const rowOffset = optimizeRowOffset(warpedBin, xOptions, predictedY, numOptions, bestDx);
 
       const localY = predictedY + rowOffset.bestDy;
 
       // Track exact coordinates offsets (both horizontal and vertical tracking) for UI overlay rendering
       questionOffsets[q] = {
-        dx: bestDx + rowOffset.bestDx,
+        dx: bestDx + currentAccDx + rowOffset.bestDx,
         dy: currentAccDy + rowOffset.bestDy
       };
 
-      // Update the accumulator for this column with the local offset correction (direct tracking to prevent lag)
+      // Update the accumulators for this column with the local offset correction (direct tracking to prevent lag)
+      colAccumulatedDx[colIdx] = currentAccDx + rowOffset.bestDx;
       colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy;
 
       const filledOptions: number[] = [];

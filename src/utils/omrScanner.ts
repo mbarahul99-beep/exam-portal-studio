@@ -508,38 +508,9 @@ export async function scanOMRSheet(
           contrastScore += (cMax - cMin);
         }
 
-        // Orientation verification: Compare header ink density (top 15%) to signatures/blank space density (bottom 15%)
-        const topRect = new cv.Rect(50, 50, 900, 200);
-        const botRect = new cv.Rect(50, 1164, 900, 200);
-        
-        const tempThresh = new cv.Mat();
-        cv.adaptiveThreshold(
-          tempGray,
-          tempThresh,
-          255,
-          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-          cv.THRESH_BINARY_INV,
-          25,
-          9
-        );
-        
-        const topRoi = tempThresh.roi(topRect);
-        const botRoi = tempThresh.roi(botRect);
-        
-        const topScalar = cv.mean(topRoi);
-        const botScalar = cv.mean(botRoi);
-        
-        const topMean = (topScalar && topScalar.val) ? topScalar.val[0] : (Array.isArray(topScalar) ? topScalar[0] : (topScalar[0] || 0));
-        const botMean = (botScalar && botScalar.val) ? botScalar.val[0] : (Array.isArray(botScalar) ? botScalar[0] : (botScalar[0] || 0));
-        
-        topRoi.delete();
-        botRoi.delete();
-        tempThresh.delete();
-        
-        const inkDifference = topMean - botMean;
-        
-        // Apply a massive penalty of -5000 if the sheet is upside down (inkDifference < 0)
-        const orientationScore = inkDifference < 0 ? (contrastScore + 10 * inkDifference - 5000) : (contrastScore + 10 * inkDifference);
+        // Orientation verification: Roll number grid alignment naturally maximizes contrastScore.
+        // Purely using contrastScore completely prevents false positive rotation penalties on large question sheets.
+        const orientationScore = contrastScore;
 
         if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
           maxOrientationContrast = orientationScore;

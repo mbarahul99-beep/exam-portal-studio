@@ -758,8 +758,8 @@ export async function scanOMRSheet(
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = xOptions[optIdx] + bestDx + rowOffset.bestDx;
-        const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 2.5);
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 2.5);
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 3.5);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 3.5);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {
           filledOptions.push(optIdx);
         }

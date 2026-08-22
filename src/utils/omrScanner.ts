@@ -232,69 +232,173 @@ export function getDynamicOMRQuestionLayout(
 }
 
 /**
- * Samples paper brightness independently for a single column of bubbles and derives
- * a local "gray guard" darkness threshold for that column.
+ * Corrects uneven lighting (shadows, glare hot-spots, vignetting, one edge of the
+ * page darker than the other) across a handheld phone photo by estimating a smooth
+ * background-brightness map (a heavy Gaussian blur, which washes out bubbles/text
+ * but preserves slow lighting gradients) and dividing it out of the original image.
+ * The result reads as evenly-lit "paper white" everywhere on the page.
  *
- * WHY THIS EXISTS: lighting is rarely uniform across a handheld photo of a full page —
- * the side of the sheet furthest from the light source (or under a shadow/crease) reads
- * measurably darker even where the paper is blank. A single global threshold calibrated
- * from one region (e.g. only the first column) will misjudge bubbles in a differently-lit
- * column: too lenient there and empty bubbles start passing as "filled" (causing false
- * MULTIPLE flags), too strict and lightly-filled bubbles get missed entirely. Calibrating
- * per column makes each column's fill decision relative to its own local paper-white level.
+ * WHY THIS MATTERS: this is the single biggest lever against bubbles being missed
+ * "randomly" from scan to scan. A shadow or glare gradient across a phone photo
+ * means the SAME pen darkness produces a different raw grayscale value depending on
+ * where on the page the bubble happens to sit. Any threshold — fixed or adaptive —
+ * calibrated against one region of such a photo will misjudge bubbles elsewhere.
+ * Flattening the illumination first means every bubble's raw grayscale can be
+ * trusted as "ink darkness" alone, independent of where it sits on the page.
  */
-function calibrateColumnGuard(
-  warpedGray: any,
-  colConf: OMRColumnConfig,
-  qConf: OMRQuestionLayout,
-  sections: any[],
-  numQuestions: number,
-  bestDx: number,
-  bestDy: number
-): number {
-  const samples: number[] = [];
-  const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+function normalizeIllumination(cv: any, grayMat: any): any {
+  let background = new cv.Mat();
+  let grayFloat = new cv.Mat();
+  let bgFloat = new cv.Mat();
+  let divided = new cv.Mat();
+  let normalized = new cv.Mat();
 
-  for (const slot of slots) {
-    if (slot.type !== 'question') continue;
-    const y = getScaledY(colConf.yStart + slot.slotIdx * qConf.yStep, bestDy);
-    for (let o = 0; o < Math.min(4, colConf.xOptions.length); o++) {
-      const x = colConf.xOptions[o] + bestDx;
-      samples.push(calculateBubbleAverageGray(warpedGray, x, y, 2.5));
-    }
+  try {
+    // Kernel large enough to blur away bubbles/text/lines but track slow lighting
+    // gradients across the page. Must be odd.
+    let k = Math.round(Math.min(grayMat.cols, grayMat.rows) / 10);
+    if (k % 2 === 0) k += 1;
+    k = Math.max(31, k);
+
+    cv.GaussianBlur(grayMat, background, new cv.Size(k, k), 0);
+
+    grayMat.convertTo(grayFloat, cv.CV_32F);
+    // +1 avoids division by zero in near-black regions (printed anchors, etc.)
+    background.convertTo(bgFloat, cv.CV_32F, 1, 1);
+
+    // (gray / background) * 255 -> flattens local brightness back to a 0-255 range
+    // where "paper white" reads consistently as ~255 across the whole page.
+    cv.divide(grayFloat, bgFloat, divided, 255.0);
+    divided.convertTo(normalized, cv.CV_8U);
+
+    return normalized;
+  } finally {
+    background.delete();
+    grayFloat.delete();
+    bgFloat.delete();
+    divided.delete();
   }
-
-  samples.sort((a, b) => a - b);
-  // Use the 75th percentile as a robust "paper white" estimate for this column
-  // (a small minority of samples will be genuinely filled bubbles / dark ink; the
-  // majority — used here — represent this column's local blank-paper brightness).
-  const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
-  return Math.min(118, whitePaperLevel - 50);
 }
 
 /**
- * Same idea as calibrateColumnGuard, but scoped to the Roll No digit grid so that its
- * fill threshold is derived from brightness local to that specific region of the page,
- * rather than borrowed from the question columns.
+ * Otsu's method adapted to a plain 1-D array of numeric samples (rather than an
+ * image histogram). Finds the cut point that maximizes between-class variance,
+ * i.e. the value that best splits a bimodal distribution into two groups.
+ *
+ * WHY THIS REPLACES HAND-PICKED CONSTANTS: the old code decided "filled vs blank"
+ * with fixed magic numbers (subtract 50 from an estimated paper-white level, cap at
+ * 118, require 15/25-point gaps, etc.), each tuned for one lighting condition and
+ * one pen. Those constants are exactly why the same physical sheet gives different
+ * results scan to scan — a slightly darker or lighter photo silently shifts every
+ * bubble's raw value out from under a fixed cutoff. Otsu instead looks at the ACTUAL
+ * distribution of "how much darker is this bubble than its own row's blank
+ * baseline" across every bubble on THIS sheet, and finds the natural gap between
+ * the large population of blanks (clustered near zero) and the smaller population
+ * of genuine marks (clustered much higher) — self-calibrating on every single scan.
  */
-function calibrateRollNoGuard(
-  warpedGray: any,
-  sidConf: any,
-  rollNoDigits: number,
-  bestDx: number,
-  bestDy: number
-): number {
-  const samples: number[] = [];
-  for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-    const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
-    for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-      const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-      samples.push(calculateBubbleAverageGray(warpedGray, x, y, 3.0));
+function otsuThreshold(values: number[], numBins = 256): number {
+  if (values.length === 0) return 0;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max === min) return min;
+
+  const hist = new Array(numBins).fill(0);
+  const binWidth = (max - min) / numBins;
+  for (const v of values) {
+    let bin = Math.floor((v - min) / binWidth);
+    if (bin >= numBins) bin = numBins - 1;
+    if (bin < 0) bin = 0;
+    hist[bin]++;
+  }
+
+  const total = values.length;
+  let sumAll = 0;
+  for (let i = 0; i < numBins; i++) sumAll += i * hist[i];
+
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let bestBin = 0;
+
+  for (let i = 0; i < numBins; i++) {
+    wB += hist[i];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+
+    sumB += i * hist[i];
+    const mB = sumB / wB;
+    const mF = (sumAll - sumB) / wF;
+    const varBetween = wB * wF * (mB - mF) * (mB - mF);
+
+    if (varBetween > maxVar) {
+      maxVar = varBetween;
+      bestBin = i;
     }
   }
-  samples.sort((a, b) => a - b);
-  const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
-  return Math.min(118, whitePaperLevel - 50);
+
+  return min + bestBin * binWidth;
+}
+
+/**
+ * Assesses whether a captured photo is even usable before spending time trying to
+ * scan it — catching the two most common phone-camera failure modes that make
+ * bubble detection unreliable: motion/focus blur (variance of the Laplacian) and
+ * blown-out glare/very low contrast (a flattened brightness histogram). Call this
+ * BEFORE scanOMRSheet and prompt a retake if `usable` is false — this fixes far
+ * more "random" misses than any post-hoc thresholding trick, because no amount of
+ * clever thresholding can recover ink detail that motion blur or glare destroyed.
+ */
+export function assessCaptureQuality(
+  sourceImage: HTMLCanvasElement | HTMLImageElement
+): { usable: boolean; blurScore: number; contrastScore: number; warnings: string[] } {
+  const cv = window.cv;
+  const warnings: string[] = [];
+  if (!cv) return { usable: true, blurScore: 0, contrastScore: 0, warnings };
+
+  let src = new cv.Mat();
+  let gray = new cv.Mat();
+  let lap = new cv.Mat();
+  let mean = new cv.Mat();
+  let stddev = new cv.Mat();
+
+  try {
+    src = cv.imread(sourceImage);
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // Blur detection: sharp images have high-variance Laplacian response;
+    // blurry/out-of-focus images are smooth, so variance collapses toward zero.
+    cv.Laplacian(gray, lap, cv.CV_64F);
+    cv.meanStdDev(lap, mean, stddev);
+    const lapStd = stddev.doubleAt(0, 0);
+    const blurScore = lapStd * lapStd; // variance
+
+    // Contrast / glare detection: a well-lit page of mostly white paper with dark
+    // ink should have a wide spread of gray values. A photo blown out by flash
+    // glare or shot in flat, dim light collapses that spread.
+    cv.meanStdDev(gray, mean, stddev);
+    const contrastScore = stddev.doubleAt(0, 0);
+
+    if (blurScore < 40) {
+      warnings.push('Photo looks blurry — hold the phone steady and refocus, then retake.');
+    }
+    if (contrastScore < 25) {
+      warnings.push('Low contrast detected — reduce glare/shadow or improve lighting, then retake.');
+    }
+
+    return {
+      usable: blurScore >= 40 && contrastScore >= 25,
+      blurScore,
+      contrastScore,
+      warnings
+    };
+  } finally {
+    src.delete();
+    gray.delete();
+    lap.delete();
+    mean.delete();
+    stddev.delete();
+  }
 }
 
 /**
@@ -599,8 +703,14 @@ export async function scanOMRSheet(
     let warped = bestWarpedMat;
 
     // Convert warped image to grayscale for bubble average intensity scan
-    warpedGray = new cv.Mat();
-    cv.cvtColor(warped, warpedGray, cv.COLOR_RGBA2GRAY);
+    let warpedGrayRaw = new cv.Mat();
+    cv.cvtColor(warped, warpedGrayRaw, cv.COLOR_RGBA2GRAY);
+
+    // Flatten out any residual shadow/glare gradient across the warped page BEFORE
+    // any bubble is measured. See normalizeIllumination() for why this is the fix
+    // for bubbles being missed inconsistently between scans.
+    warpedGray = normalizeIllumination(cv, warpedGrayRaw);
+    warpedGrayRaw.delete();
 
     warpedBin = new cv.Mat();
     cv.adaptiveThreshold(
@@ -706,56 +816,72 @@ export async function scanOMRSheet(
 
     const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
 
-    // 5.8. Calibrate a LOCAL gray-guard darkness threshold PER COLUMN (instead of one global
-    // threshold sampled only from the first ~30 questions). Handheld photos rarely have
-    // uniform lighting across the full page — a shadow or angle that darkens the right-hand
-    // columns relative to the left will make a single global threshold wrong for that side of
-    // the page, causing bubbles there to flip between "missed" and "false MULTIPLE" across
-    // repeated scans of the same sheet. Calibrating per column fixes each column's decision
-    // to its own local paper-white level.
-    const columnGuard: number[] = qConf.columns.map((colConf) =>
-      calibrateColumnGuard(warpedGray, colConf, qConf, sections, numQuestions, bestDx, bestDy)
-    );
-    console.log("[OMR Scanner] Per-column gray guard thresholds:", columnGuard);
+    // ================================================================
+    // 6 & 7. Two-pass, self-calibrated bubble classification (Roll No + Answers)
+    // ----------------------------------------------------------------
+    // PASS 1 (gather): for every bubble on the sheet, measure how much darker it
+    // is than its OWN row/column's blank-paper baseline (the average of the two
+    // lightest bubbles in that same row/column). This "fill depth" is already
+    // self-normalized against local lighting and pen pressure for that specific
+    // row, on top of the page-wide illumination flattening done earlier.
+    //
+    // PASS 2 (decide): pool every fill-depth value from the ENTIRE sheet and run
+    // Otsu's method over that pool to find the natural split between the large
+    // population of blank bubbles (clustered near zero) and the smaller
+    // population of genuinely marked ones. This replaces the old fixed
+    // constants (-50, -15, -25, cap at 118) that were tuned for one lighting
+    // condition/pen and silently misfired — inconsistently — for others. See
+    // normalizeIllumination() and otsuThreshold() above for the full rationale.
+    // ================================================================
 
-    // Separate local guard for the Roll No digit grid (own region of the page, calibrated
-    // independently rather than reusing a question-column threshold).
-    const rollNoGuardThreshold = calibrateRollNoGuard(warpedGray, sidConf, rollNoDigits, bestDx, bestDy);
-    console.log("[OMR Scanner] Roll No gray guard threshold:", rollNoGuardThreshold);
+    interface BubbleSample { avgGray: number; avgBin: number; }
+    interface RowRecord {
+      kind: 'roll' | 'question';
+      key: number; // colIdx for roll digits, question number for answers
+      samples: BubbleSample[];
+      baseline: number;
+      fillDepths: number[];
+    }
 
-    // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks with box-level auto-alignment
-    let studentNum = '';
+    const computeBaseline = (grays: number[]): number => {
+      // Robust "blank paper" estimate for this row/column: average of the two
+      // lightest bubbles (rather than just the single lightest), so one blank
+      // bubble catching a glint of glare doesn't skew the baseline.
+      const sorted = [...grays].sort((a, b) => b - a); // brightest first
+      if (sorted.length === 1) return sorted[0];
+      return (sorted[0] + sorted[1]) / 2;
+    };
+
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+    const allFillDepths: number[] = [];
 
+    // --- Roll No: Pass 1 (gather) ---
     const rollOffset = optimizeRollNoOffset(warpedBin, sidConf, rollNoDigits, bestDx, bestDy);
     console.log("[OMR Scanner] Calibrated Roll No local offset (dx/dy):", rollOffset.bestDx, rollOffset.bestDy);
 
+    const rollRecords: RowRecord[] = [];
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
       const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx + rollOffset.bestDx;
-      const filledRows: number[] = [];
-
+      const samples: BubbleSample[] = [];
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy + rollOffset.bestDy);
-        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 3.0);
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-        if (avgBin > 80 && avgGray < rollNoGuardThreshold) {
-          filledRows.push(rowIdx);
-        }
+        samples.push({
+          avgGray: calculateBubbleAverageGray(warpedGray, x, y, 3.0),
+          avgBin: calculateBubbleAverageGray(warpedBin, x, y, 3.0)
+        });
       }
-
-      if (filledRows.length === 1) {
-        studentNum += digitValuesList[filledRows[0]].toString();
-      } else {
-        studentNum += '0';
-      }
+      const baseline = computeBaseline(samples.map(s => s.avgGray));
+      const fillDepths = samples.map(s => baseline - s.avgGray);
+      fillDepths.forEach(fd => allFillDepths.push(fd));
+      rollRecords.push({ kind: 'roll', key: colIdx, samples, baseline, fillDepths });
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with Continuous Dynamic 2D Warp Tracking (CD2DWT)
+    // 7. Scan Answers (Dynamic Grid Layout) — Pass 1 (gather) with Continuous
+    // Dynamic 2D Warp Tracking (CD2DWT) for per-row alignment, unchanged from before.
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
     const questionOffsets: Record<number, { dx: number; dy: number }> = {};
 
-    // Initialize accumulated horizontal (Dx) and vertical (Dy) shifts for each grid column
     const colAccumulatedDx: Record<number, number> = {};
     const colAccumulatedDy: Record<number, number> = {};
     qConf.columns.forEach((_, idx) => {
@@ -763,8 +889,10 @@ export async function scanOMRSheet(
       colAccumulatedDy[idx] = 0;
     });
 
+    const questionRecords: Record<number, RowRecord> = {};
+
     for (let q = 1; q <= numQuestions; q++) {
-      let colConf = null;
+      let colConf: OMRColumnConfig | null = null;
       let colIdx = -1;
       for (let i = 0; i < qConf.columns.length; i++) {
         const col = qConf.columns[i];
@@ -779,9 +907,6 @@ export async function scanOMRSheet(
         answers[q] = '';
         continue;
       }
-
-      // Local gray-guard threshold for THIS question's column
-      const grayGuardThreshold = columnGuard[colIdx];
 
       const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
       const is5Option = sec && sec.questionType === '5 option';
@@ -800,70 +925,78 @@ export async function scanOMRSheet(
 
       const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
       const xOptions = Array.from({ length: numOptions }, (_, o) =>
-        (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]) + currentAccDx
+        (o === 4 ? colConf!.xOptions[3] + 25 : colConf!.xOptions[o]) + currentAccDx
       );
 
       const rowOffset = optimizeRowOffset(warpedBin, xOptions, predictedY, numOptions, bestDx);
-
       const localY = predictedY + rowOffset.bestDy;
 
-      // Track exact coordinates offsets (both horizontal and vertical tracking) for UI overlay rendering
       questionOffsets[q] = {
         dx: bestDx + currentAccDx + rowOffset.bestDx,
         dy: currentAccDy + rowOffset.bestDy
       };
-
-      // Update the accumulators for this column with the local offset correction (with 0.75 damping to stabilize feedback loop)
       colAccumulatedDx[colIdx] = currentAccDx + rowOffset.bestDx * 0.75;
       colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy * 0.75;
 
-      const optionMetrics = Array.from({ length: numOptions }, (_, optIdx) => {
-        const x = xOptions[optIdx] + bestDx + rowOffset.bestDx;
-        const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 3.5);
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 3.5);
-        return { optIdx, avgBin, avgGray };
+      const samples: BubbleSample[] = xOptions.map((xo) => {
+        const x = xo + bestDx + rowOffset.bestDx;
+        return {
+          avgGray: calculateBubbleAverageGray(warpedGray, x, localY, 3.5),
+          avgBin: calculateBubbleAverageGray(warpedBin, x, localY, 3.5)
+        };
       });
 
-      // Find the lowest (darkest) and second lowest grayscale values in the row
-      let minVal = 256;
-      let minIdx = -1;
-      let secondMinVal = 256;
-      for (let i = 0; i < numOptions; i++) {
-        const gVal = optionMetrics[i].avgGray;
-        if (gVal < minVal) {
-          secondMinVal = minVal;
-          minVal = gVal;
-          minIdx = i;
-        } else if (gVal < secondMinVal) {
-          secondMinVal = gVal;
+      const baseline = computeBaseline(samples.map(s => s.avgGray));
+      const fillDepths = samples.map(s => baseline - s.avgGray);
+      fillDepths.forEach(fd => allFillDepths.push(fd));
+      questionRecords[q] = { kind: 'question', key: q, samples, baseline, fillDepths };
+    }
+
+    // --- Pass 2 (decide): self-calibrated global cut point ---
+    const finiteDepths = allFillDepths.filter((v) => Number.isFinite(v));
+    const otsuCut = otsuThreshold(finiteDepths);
+
+    // Safety rails: never trust a cut so low that faint paper texture/print noise
+    // would register as "filled" (floor), and never demand darkness beyond what a
+    // real pencil/light-pen mark can produce (ceiling) — Otsu is self-calibrating
+    // but a badly-lit or nearly-blank sheet can still push it to an unreasonable
+    // extreme, so these rails keep it within a sane, empirically safe band.
+    const fillDepthCutoff = Math.min(90, Math.max(20, otsuCut));
+    console.log("[OMR Scanner] Self-calibrated fill-depth cutoff (Otsu):", fillDepthCutoff.toFixed(1), "raw:", otsuCut.toFixed(1));
+
+    const classifyRow = (rec: RowRecord): number[] => {
+      const filled: number[] = [];
+      const depths = rec.fillDepths;
+      const maxDepth = Math.max(...depths);
+      for (let i = 0; i < depths.length; i++) {
+        const isDarkEnough = depths[i] >= fillDepthCutoff;
+        const isBinaryDense = rec.samples[i].avgBin > 60; // ink actually present, not just faint shadow
+        // A genuine mark must also stand out from THIS row's own darkest other
+        // option — guards against a shadow/crease darkening the whole row evenly
+        // (which would otherwise still clear the global cutoff for every option).
+        const isRowOutlier = depths[i] >= maxDepth - 20;
+        if (isDarkEnough && isBinaryDense && isRowOutlier) {
+          filled.push(i);
         }
       }
+      return filled;
+    };
 
-      const filledOptions: number[] = [];
-      for (let i = 0; i < numOptions; i++) {
-        const metric = optionMetrics[i];
+    // --- Roll No: Pass 2 (decide) ---
+    let studentNum = '';
+    for (const rec of rollRecords) {
+      const filled = classifyRow(rec);
+      studentNum += filled.length === 1 ? digitValuesList[filled[0]].toString() : '0';
+    }
 
-        // 1. Absolute Guard Checks (must pass binarized density and absolute grayscale threshold,
-        //    now using this question's LOCAL column threshold rather than a global one)
-        const passesAbsolute = metric.avgBin > 80 && metric.avgGray < grayGuardThreshold;
-
-        // 2. Relative Contrast Checks (to distinguish true fill from crease shadows and paper reflections)
-        // A bubble is filled if it is either extremely dark, or is the row minimum with a solid contrast gap.
-        // isExtremelyDark now ALSO requires the option to be darker than the row's own runner-up
-        // (metric.avgGray < secondMinVal), not just darker than the global guard. This prevents a
-        // shadow that darkens two options in the same row roughly equally from tripping both of
-        // them into "filled", which previously produced false MULTIPLE-mark flags.
-        const isExtremelyDark = metric.avgGray < grayGuardThreshold - 15 && metric.avgGray < secondMinVal;
-        const hasSolidContrastGap = minIdx === i && minVal < secondMinVal - 25;
-
-        if (passesAbsolute && (isExtremelyDark || hasSolidContrastGap)) {
-          filledOptions.push(metric.optIdx);
-        }
-      }
-
-      if (filledOptions.length === 1) {
-        answers[q] = OPTIONS_FIVE[filledOptions[0]];
-      } else if (filledOptions.length > 1) {
+    // --- Answers: Pass 2 (decide) ---
+    for (let q = 1; q <= numQuestions; q++) {
+      const rec = questionRecords[q];
+      if (!rec) { answers[q] = ''; continue; }
+      const filled = classifyRow(rec);
+      if (filled.length === 1) {
+        answers[q] = OPTIONS_FIVE[filled[0]];
+      } else if (filled.length > 1) {
         answers[q] = 'MULTIPLE';
       } else {
         answers[q] = '';

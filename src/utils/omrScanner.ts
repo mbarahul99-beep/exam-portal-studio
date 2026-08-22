@@ -758,17 +758,46 @@ export async function scanOMRSheet(
         dy: currentAccDy + rowOffset.bestDy
       };
 
-      // Update the accumulators for this column with the local offset correction (direct tracking to prevent lag)
-      colAccumulatedDx[colIdx] = currentAccDx + rowOffset.bestDx;
-      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy;
+      // Update the accumulators for this column with the local offset correction (with 0.75 damping to stabilize feedback loop)
+      colAccumulatedDx[colIdx] = currentAccDx + rowOffset.bestDx * 0.75;
+      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy * 0.75;
 
-      const filledOptions: number[] = [];
-      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+      const optionMetrics = Array.from({ length: numOptions }, (_, optIdx) => {
         const x = xOptions[optIdx] + bestDx + rowOffset.bestDx;
         const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 3.5);
         const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 3.5);
-        if (avgBin > 80 && avgGray < grayGuardThreshold) {
-          filledOptions.push(optIdx);
+        return { optIdx, avgBin, avgGray };
+      });
+
+      // Find the lowest (darkest) and second lowest grayscale values in the row
+      let minVal = 256;
+      let minIdx = -1;
+      let secondMinVal = 256;
+      for (let i = 0; i < numOptions; i++) {
+        const gVal = optionMetrics[i].avgGray;
+        if (gVal < minVal) {
+          secondMinVal = minVal;
+          minVal = gVal;
+          minIdx = i;
+        } else if (gVal < secondMinVal) {
+          secondMinVal = gVal;
+        }
+      }
+
+      const filledOptions: number[] = [];
+      for (let i = 0; i < numOptions; i++) {
+        const metric = optionMetrics[i];
+        
+        // 1. Absolute Guard Checks (must pass binarized density and absolute grayscale threshold)
+        const passesAbsolute = metric.avgBin > 80 && metric.avgGray < grayGuardThreshold;
+        
+        // 2. Relative Contrast Checks (to distinguish true fill from crease shadows and paper reflections)
+        // A bubble is filled if it is either extremely dark, or is the row minimum with a solid contrast gap
+        const isExtremelyDark = metric.avgGray < grayGuardThreshold - 15;
+        const hasSolidContrastGap = minIdx === i && minVal < secondMinVal - 25;
+        
+        if (passesAbsolute && (isExtremelyDark || hasSolidContrastGap)) {
+          filledOptions.push(metric.optIdx);
         }
       }
 

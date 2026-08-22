@@ -22,7 +22,7 @@ export function getScaledY(rawY: number, dy: number): number {
 export const OMR_CONFIG = {
   width: 1000,
   height: 1414,
-  
+
   // Anchors target coordinates (centers of the black squares)
   anchors: {
     tl: { x: 70, y: 70 },
@@ -102,9 +102,7 @@ export function getColumnSlots(
   let qNum = qStart;
 
   while (qNum <= qEnd && qNum <= totalQuestions) {
-
-
-    // 2. We are starting a group of up to 5 questions.
+    // We are starting a group of up to 5 questions.
     // Before the group, we insert an option-header slot
     slots.push({
       type: 'option-header',
@@ -112,7 +110,7 @@ export function getColumnSlots(
       nextQNum: qNum
     });
 
-    // 3. Insert up to 5 questions in the current group
+    // Insert up to 5 questions in the current group
     for (let i = 0; i < 5; i++) {
       if (qNum > qEnd || qNum > totalQuestions) break;
 
@@ -156,7 +154,6 @@ export function getDynamicOMRQuestionLayout(
   const colWidth = availWidth / numCols;
 
   // 3. Question distribution
-  // 3. Question distribution (equal question counts per column to keep bottom spacing identical)
   const colCounts = Array(numCols).fill(0);
   const base = Math.floor(total / numCols);
   const rem = total % numCols;
@@ -234,6 +231,71 @@ export function getDynamicOMRQuestionLayout(
   };
 }
 
+/**
+ * Samples paper brightness independently for a single column of bubbles and derives
+ * a local "gray guard" darkness threshold for that column.
+ *
+ * WHY THIS EXISTS: lighting is rarely uniform across a handheld photo of a full page —
+ * the side of the sheet furthest from the light source (or under a shadow/crease) reads
+ * measurably darker even where the paper is blank. A single global threshold calibrated
+ * from one region (e.g. only the first column) will misjudge bubbles in a differently-lit
+ * column: too lenient there and empty bubbles start passing as "filled" (causing false
+ * MULTIPLE flags), too strict and lightly-filled bubbles get missed entirely. Calibrating
+ * per column makes each column's fill decision relative to its own local paper-white level.
+ */
+function calibrateColumnGuard(
+  warpedGray: any,
+  colConf: OMRColumnConfig,
+  qConf: OMRQuestionLayout,
+  sections: any[],
+  numQuestions: number,
+  bestDx: number,
+  bestDy: number
+): number {
+  const samples: number[] = [];
+  const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+
+  for (const slot of slots) {
+    if (slot.type !== 'question') continue;
+    const y = getScaledY(colConf.yStart + slot.slotIdx * qConf.yStep, bestDy);
+    for (let o = 0; o < Math.min(4, colConf.xOptions.length); o++) {
+      const x = colConf.xOptions[o] + bestDx;
+      samples.push(calculateBubbleAverageGray(warpedGray, x, y, 2.5));
+    }
+  }
+
+  samples.sort((a, b) => a - b);
+  // Use the 75th percentile as a robust "paper white" estimate for this column
+  // (a small minority of samples will be genuinely filled bubbles / dark ink; the
+  // majority — used here — represent this column's local blank-paper brightness).
+  const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
+  return Math.min(118, whitePaperLevel - 50);
+}
+
+/**
+ * Same idea as calibrateColumnGuard, but scoped to the Roll No digit grid so that its
+ * fill threshold is derived from brightness local to that specific region of the page,
+ * rather than borrowed from the question columns.
+ */
+function calibrateRollNoGuard(
+  warpedGray: any,
+  sidConf: any,
+  rollNoDigits: number,
+  bestDx: number,
+  bestDy: number
+): number {
+  const samples: number[] = [];
+  for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+    const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
+    for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+      const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+      samples.push(calculateBubbleAverageGray(warpedGray, x, y, 3.0));
+    }
+  }
+  samples.sort((a, b) => a - b);
+  const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
+  return Math.min(118, whitePaperLevel - 50);
+}
 
 /**
  * Main OMR Scanner function. Processes an source image (HTMLCanvasElement, HTMLImageElement, or ImageData)
@@ -265,11 +327,11 @@ export async function scanOMRSheet(
   try {
     // 2. Preprocessing
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    
+
     // Apply Gaussian blur to smooth out noise
     let ksize = new cv.Size(5, 5);
     cv.GaussianBlur(gray, blurred, ksize, 0);
-    
+
     // Apply adaptive thresholding to get binary black/white image (handling shadow variations)
     cv.adaptiveThreshold(
       blurred,
@@ -295,7 +357,7 @@ export async function scanOMRSheet(
     const findBestQuadInCandidates = (cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>) => {
       const sorted = [...cands].sort((a, b) => b.area - a.area);
       const topCands = sorted.slice(0, 15);
-      
+
       let bestQuad: { tl: any; tr: any; bl: any; br: any } | null = null;
       let maxQuadArea = 0;
 
@@ -305,11 +367,11 @@ export async function scanOMRSheet(
             for (let k = j + 1; k < topCands.length; k++) {
               for (let l = k + 1; l < topCands.length; l++) {
                 const pts = [topCands[i], topCands[j], topCands[k], topCands[l]];
-                
+
                 const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
                 const tl = sortedBySum[0];
                 const br = sortedBySum[3];
-                
+
                 const remaining = [sortedBySum[1], sortedBySum[2]];
                 const sortedByDiff = remaining.sort((a, b) => (a.center.x - a.center.y) - (b.center.x - b.center.y));
                 const bl = sortedByDiff[0];
@@ -338,7 +400,7 @@ export async function scanOMRSheet(
                 const quadArea = avgW * avgH;
                 const isSheetSizeValid = quadArea > pageArea * 0.15;
 
-                const isAnchorSizeValid = 
+                const isAnchorSizeValid =
                   (tl.rect.width >= avgW * 0.015 && tl.rect.width <= avgW * 0.08) &&
                   (tr.rect.width >= avgW * 0.015 && tr.rect.width <= avgW * 0.08) &&
                   (bl.rect.width >= avgW * 0.015 && bl.rect.width <= avgW * 0.08) &&
@@ -398,7 +460,7 @@ export async function scanOMRSheet(
 
         const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
         const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.30;
-        
+
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
         const isSolid = solidity >= 0.68;
@@ -511,7 +573,6 @@ export async function scanOMRSheet(
         }
 
         // Orientation verification: Roll number grid alignment naturally maximizes contrastScore.
-        // Purely using contrastScore completely prevents false positive rotation penalties on large question sheets.
         const orientationScore = contrastScore;
 
         if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
@@ -556,7 +617,6 @@ export async function scanOMRSheet(
     cv.imshow(debugWarpedCanvas, warped);
 
     // 5.2. Auto-Calibrate Vertical Scan Offset
-    // Scans range of vertical shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDy = 0;
     let minAvgIntensity = 256;
     const sidConf = OMR_CONFIG.studentId;
@@ -594,7 +654,6 @@ export async function scanOMRSheet(
     console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
 
     // 5.3. Auto-Calibrate Horizontal Scan Offset
-    // Scans range of horizontal shifts from -12px to +12px to find the alignment that maximizes bubble darkness contrast
     let bestDx = 0;
     let minAvgIntensityDx = 256;
     for (let dx = -20; dx <= 20; dx += 1) {
@@ -629,7 +688,6 @@ export async function scanOMRSheet(
     }
     console.log("[OMR Scanner] Calibrated horizontal offset:", bestDx, "px");
 
-    // 5.5. Booklet Code Set (Always default to 'A' as booklet code system is removed)
     let bookletSet = 'A';
 
     // Load custom OMR layout settings from storage to match printed sheet configuration
@@ -648,28 +706,22 @@ export async function scanOMRSheet(
 
     const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
 
-    // 5.8. Sample paper brightness dynamically from question bubbles to adapt grayscale thresholds to current lighting
-    const samples: number[] = [];
-    for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
-      let colConf = null;
-      for (const col of qConf.columns) {
-        if (q >= col.qStart && q <= col.qEnd) { colConf = col; break; }
-      }
-      if (!colConf) continue;
-      const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
-      const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
-      if (!qSlot) continue;
-      const slotIndex = qSlot.slotIdx;
-      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
-      for (let o = 0; o < Math.min(4, colConf.xOptions.length); o++) {
-        const x = colConf.xOptions[o] + bestDx;
-        samples.push(calculateBubbleAverageGray(warpedGray, x, y, 2.5));
-      }
-    }
-    samples.sort((a, b) => a - b);
-    const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
-    const grayGuardThreshold = Math.min(118, whitePaperLevel - 50);
-    console.log("[OMR Scanner] Paper white level:", whitePaperLevel, "gray guard threshold:", grayGuardThreshold);
+    // 5.8. Calibrate a LOCAL gray-guard darkness threshold PER COLUMN (instead of one global
+    // threshold sampled only from the first ~30 questions). Handheld photos rarely have
+    // uniform lighting across the full page — a shadow or angle that darkens the right-hand
+    // columns relative to the left will make a single global threshold wrong for that side of
+    // the page, causing bubbles there to flip between "missed" and "false MULTIPLE" across
+    // repeated scans of the same sheet. Calibrating per column fixes each column's decision
+    // to its own local paper-white level.
+    const columnGuard: number[] = qConf.columns.map((colConf) =>
+      calibrateColumnGuard(warpedGray, colConf, qConf, sections, numQuestions, bestDx, bestDy)
+    );
+    console.log("[OMR Scanner] Per-column gray guard thresholds:", columnGuard);
+
+    // Separate local guard for the Roll No digit grid (own region of the page, calibrated
+    // independently rather than reusing a question-column threshold).
+    const rollNoGuardThreshold = calibrateRollNoGuard(warpedGray, sidConf, rollNoDigits, bestDx, bestDy);
+    console.log("[OMR Scanner] Roll No gray guard threshold:", rollNoGuardThreshold);
 
     // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks with box-level auto-alignment
     let studentNum = '';
@@ -686,7 +738,7 @@ export async function scanOMRSheet(
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy + rollOffset.bestDy);
         const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 3.0);
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-        if (avgBin > 80 && avgGray < grayGuardThreshold) {
+        if (avgBin > 80 && avgGray < rollNoGuardThreshold) {
           filledRows.push(rowIdx);
         }
       }
@@ -728,6 +780,9 @@ export async function scanOMRSheet(
         continue;
       }
 
+      // Local gray-guard threshold for THIS question's column
+      const grayGuardThreshold = columnGuard[colIdx];
+
       const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
       const is5Option = sec && sec.questionType === '5 option';
       const numOptions = is5Option ? 5 : 4;
@@ -739,15 +794,15 @@ export async function scanOMRSheet(
         continue;
       }
       const slotIndex = qSlot.slotIdx;
-      
+
       const currentAccDx = colAccumulatedDx[colIdx] ?? 0;
       const currentAccDy = colAccumulatedDy[colIdx] ?? 0;
-      
+
       const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
-      const xOptions = Array.from({ length: numOptions }, (_, o) => 
+      const xOptions = Array.from({ length: numOptions }, (_, o) =>
         (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]) + currentAccDx
       );
-      
+
       const rowOffset = optimizeRowOffset(warpedBin, xOptions, predictedY, numOptions, bestDx);
 
       const localY = predictedY + rowOffset.bestDy;
@@ -787,15 +842,20 @@ export async function scanOMRSheet(
       const filledOptions: number[] = [];
       for (let i = 0; i < numOptions; i++) {
         const metric = optionMetrics[i];
-        
-        // 1. Absolute Guard Checks (must pass binarized density and absolute grayscale threshold)
+
+        // 1. Absolute Guard Checks (must pass binarized density and absolute grayscale threshold,
+        //    now using this question's LOCAL column threshold rather than a global one)
         const passesAbsolute = metric.avgBin > 80 && metric.avgGray < grayGuardThreshold;
-        
+
         // 2. Relative Contrast Checks (to distinguish true fill from crease shadows and paper reflections)
-        // A bubble is filled if it is either extremely dark, or is the row minimum with a solid contrast gap
-        const isExtremelyDark = metric.avgGray < grayGuardThreshold - 15;
+        // A bubble is filled if it is either extremely dark, or is the row minimum with a solid contrast gap.
+        // isExtremelyDark now ALSO requires the option to be darker than the row's own runner-up
+        // (metric.avgGray < secondMinVal), not just darker than the global guard. This prevents a
+        // shadow that darkens two options in the same row roughly equally from tripping both of
+        // them into "filled", which previously produced false MULTIPLE-mark flags.
+        const isExtremelyDark = metric.avgGray < grayGuardThreshold - 15 && metric.avgGray < secondMinVal;
         const hasSolidContrastGap = minIdx === i && minVal < secondMinVal - 25;
-        
+
         if (passesAbsolute && (isExtremelyDark || hasSolidContrastGap)) {
           filledOptions.push(metric.optIdx);
         }
@@ -911,7 +971,7 @@ function optimizeRowOffset(
       const targetDx = bestDx + dx;
       const targetDy = bestDy + dy;
       if (targetDx < -10 || targetDx > 10 || targetDy < -12 || targetDy > 12) continue;
-      
+
       let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {
         const cx = xOptions[o] + globalDx + targetDx;
@@ -991,9 +1051,6 @@ function optimizeRollNoOffset(
   return { bestDx: fineBestDx, bestDy: fineBestDy };
 }
 
-
-
-
 /**
  * Calculates the average grayscale intensity of pixels inside a circular bubble ROI.
  * Highly robust against bubble outlines and characters printed in dark grayscale ink.
@@ -1021,8 +1078,6 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
   }
   return count > 0 ? sum / count : 255;
 }
-
-
 
 let smallCanvas: HTMLCanvasElement | null = null;
 let smallCtx: CanvasRenderingContext2D | null = null;
@@ -1091,7 +1146,7 @@ export function findOMRSheetCornersLive(
       // Anchors must be black square marks (at least 0.012% of image area)
       const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
       const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.30;
-      
+
       // Check solidity (anchors are solid black squares)
       const cArea = cv.contourArea(cnt);
       const solidity = area > 0 ? cArea / area : 0;
@@ -1120,12 +1175,12 @@ export function findOMRSheetCornersLive(
         for (let k = j + 1; k < sorted.length; k++) {
           for (let l = k + 1; l < sorted.length; l++) {
             const pts = [sorted[i], sorted[j], sorted[k], sorted[l]];
-            
+
             // Sort corners geometrically
             const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
             const tl = sortedBySum[0];
             const br = sortedBySum[3];
-            
+
             const remaining = [sortedBySum[1], sortedBySum[2]];
             const sortedByDiff = remaining.sort((a, b) => (a.center.x - a.center.y) - (b.center.x - b.center.y));
             const bl = sortedByDiff[0];
@@ -1144,7 +1199,7 @@ export function findOMRSheetCornersLive(
             const avgW = (wTop + wBot) / 2;
             const avgH = (hLeft + hRight) / 2;
             if (avgW === 0) continue;
-            
+
             const ratio = avgH / avgW;
             const isRatioValid = (ratio >= 1.15 && ratio <= 1.7); // Portrait A4 ratio is ~1.41
             const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
@@ -1152,12 +1207,10 @@ export function findOMRSheetCornersLive(
             const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
 
             // Strict constraints:
-            // 1. Minimum sheet size check: detected quad must cover at least 15% of the viewfinder
             const quadArea = avgW * avgH;
             const isSheetSizeValid = quadArea > pageArea * 0.15;
 
-            // 2. Anchor size proportional to sheet width: anchors must be between 2% and 8% of sheet width
-            const isAnchorSizeValid = 
+            const isAnchorSizeValid =
               (tl.rect.width >= avgW * 0.02 && tl.rect.width <= avgW * 0.08) &&
               (tr.rect.width >= avgW * 0.02 && tr.rect.width <= avgW * 0.08) &&
               (bl.rect.width >= avgW * 0.02 && bl.rect.width <= avgW * 0.08) &&

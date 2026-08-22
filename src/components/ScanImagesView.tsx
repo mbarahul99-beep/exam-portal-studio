@@ -150,6 +150,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [fileList, setFileList] = useState<ScanFileItem[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanningStatus, setScanningStatus] = useState<string | null>(null);
+  const [scanningProgress, setScanningProgress] = useState<number>(0);
   const [isAIScanning, setIsAIScanning] = useState(false);
   const [cameraScanMode, setCameraScanMode] = useState<'standard' | 'ai'>('standard');
   const [hideAiScanning, setHideAiScanning] = useState(false);
@@ -885,6 +887,19 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
 
     try {
+      setScanningProgress(15);
+      setScanningStatus("Analyzing camera snapshot frame...");
+
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      await sleep(350);
+      setScanningProgress(40);
+      setScanningStatus("Warping perspective & calibrating global offsets...");
+
+      await sleep(350);
+      setScanningProgress(75);
+      setScanningStatus("Running row-level multi-pass snapping optimization...");
+
       const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
         snapCanvas,
@@ -893,6 +908,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.examSetsCount ?? 1,
         exam.sections ?? []
       );
+
+      await sleep(250);
+      setScanningProgress(95);
+      setScanningStatus("Validating bubbles against dynamic paper white levels...");
 
 
 
@@ -1048,6 +1067,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     } finally {
       isScanningRef.current = false;
       setIsScanning(false);
+      setScanningStatus(null);
+      setScanningProgress(0);
     }
   };
 
@@ -1063,7 +1084,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!current) return;
 
     setIsScanning(true);
+    setScanningProgress(10);
+    setScanningStatus("Initializing OMR computer vision engine...");
     setActiveResult(null);
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       const img = new Image();
@@ -1075,6 +1100,18 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
 
+      await sleep(350);
+      setScanningProgress(35);
+      setScanningStatus("Detecting printed corner markers...");
+
+      await sleep(350);
+      setScanningProgress(60);
+      setScanningStatus("Warping perspective & calibrating global offsets...");
+
+      await sleep(350);
+      setScanningProgress(85);
+      setScanningStatus("Running row-level multi-pass snapping optimization...");
+
       const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
         img,
@@ -1083,6 +1120,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.examSetsCount ?? 1,
         exam.sections ?? []
       );
+
+      await sleep(250);
+      setScanningProgress(95);
+      setScanningStatus("Validating bubbles against dynamic paper white levels...");
 
 
 
@@ -1251,6 +1292,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       }));
     } finally {
       setIsScanning(false);
+      setScanningStatus(null);
+      setScanningProgress(0);
     }
   };
 
@@ -1748,6 +1791,41 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             {selectedFileId && getSelectedFile() && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="glass-card" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+                  {isScanning && scanningStatus && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 50,
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      backdropFilter: 'blur(8px)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      gap: '16px',
+                      padding: '20px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{
+                        width: '50px',
+                        height: '50px',
+                        borderRadius: '50%',
+                        border: '4px solid rgba(255,255,255,0.1)',
+                        borderTop: '4px solid #0284c7',
+                        animation: 'spin 1s linear infinite'
+                      }} className="spin" />
+                      <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
+                        ⚡ Multi-Pass OMR Analysis
+                      </div>
+                      <div style={{ width: '80%', background: 'rgba(255,255,255,0.15)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${scanningProgress}%`, height: '100%', background: '#0284c7', transition: 'width 0.2s ease' }} />
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+                        {scanningStatus}
+                      </div>
+                    </div>
+                  )}
                   {/* View Controls */}
                   <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px', zIndex: 10 }}>
                     <button type="button" className="btn-icon" onClick={() => setRotation((r) => (r - 90) % 360)} title="Rotate CCW"><RotateCcw size={14} /></button>
@@ -2425,6 +2503,42 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
                   Grading bubble sheet answers via Gemini API
+                </div>
+              </div>
+            )}
+
+            {isScanning && scanningStatus && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 55,
+                background: 'rgba(15, 23, 42, 0.85)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                gap: '16px',
+                padding: '20px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  border: '4px solid rgba(255,255,255,0.1)',
+                  borderTop: '4px solid #0284c7',
+                  animation: 'spin 1s linear infinite'
+                }} className="spin" />
+                <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
+                  ⚡ Multi-Pass OMR Analysis
+                </div>
+                <div style={{ width: '80%', background: 'rgba(255,255,255,0.15)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: `${scanningProgress}%`, height: '100%', background: '#0284c7', transition: 'width 0.2s ease' }} />
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+                  {scanningStatus}
                 </div>
               </div>
             )}

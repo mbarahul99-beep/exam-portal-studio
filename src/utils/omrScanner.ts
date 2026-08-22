@@ -670,16 +670,19 @@ export async function scanOMRSheet(
     const grayGuardThreshold = Math.min(145, whitePaperLevel - 50);
     console.log("[OMR Scanner] Paper white level:", whitePaperLevel, "gray guard threshold:", grayGuardThreshold);
 
-    // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks
+    // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks with box-level auto-alignment
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
+    const rollOffset = optimizeRollNoOffset(warpedBin, sidConf, rollNoDigits, bestDx, bestDy);
+    console.log("[OMR Scanner] Calibrated Roll No local offset (dx/dy):", rollOffset.bestDx, rollOffset.bestDy);
+
     for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
+      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx + rollOffset.bestDx;
       const filledRows: number[] = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
+        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy + rollOffset.bestDy);
         const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 3.0);
         const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {
@@ -694,7 +697,7 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks
+    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks with row-level auto-alignment
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
@@ -725,11 +728,15 @@ export async function scanOMRSheet(
       const slotIndex = qSlot.slotIdx;
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       
+      const xOptions = Array.from({ length: numOptions }, (_, o) => (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]));
+      const rowOffset = optimizeRowOffset(warpedBin, xOptions, y, 2.5, numOptions, bestDx);
+
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 2.5);
-        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
+        const x = xOptions[optIdx] + bestDx + rowOffset.bestDx;
+        const localY = y + rowOffset.bestDy;
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, localY, 2.5);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, localY, 2.5);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {
           filledOptions.push(optIdx);
         }
@@ -773,6 +780,93 @@ export async function scanOMRSheet(
     if (bestWarpedMat && !bestWarpedMat.isDeleted()) bestWarpedMat.delete();
     throw err;
   }
+}
+
+interface RowOffsetResult {
+  bestDx: number;
+  bestDy: number;
+}
+
+/**
+ * Automatically optimizes alignment offsets for a question row by minimizing
+ * binarized intensity of empty options, excluding the highest-filled option.
+ */
+function optimizeRowOffset(
+  binMatrix: any,
+  xOptions: number[],
+  y: number,
+  r: number,
+  numOptions: number,
+  globalDx: number
+): RowOffsetResult {
+  let minScore = 999999;
+  let bestDx = 0;
+  let bestDy = 0;
+
+  for (let dy = -5; dy <= 5; dy += 2) {
+    for (let dx = -5; dx <= 5; dx += 2) {
+      const intensities: number[] = [];
+      for (let o = 0; o < numOptions; o++) {
+        const x = xOptions[o] + globalDx + dx;
+        const avgBin = calculateBubbleAverageGray(binMatrix, x, y + dy, r);
+        intensities.push(avgBin);
+      }
+      intensities.sort((a, b) => a - b);
+      let score = 0;
+      for (let i = 0; i < numOptions - 1; i++) {
+        score += intensities[i];
+      }
+      if (score < minScore) {
+        minScore = score;
+        bestDx = dx;
+        bestDy = dy;
+      }
+    }
+  }
+
+  return { bestDx, bestDy };
+}
+
+/**
+ * Automatically optimizes alignment offsets for the Roll Number grid
+ * by minimizing binarized intensity of empty rows in each digit column.
+ */
+function optimizeRollNoOffset(
+  binMatrix: any,
+  sidConf: any,
+  rollNoDigits: number,
+  globalDx: number,
+  globalDy: number
+): RowOffsetResult {
+  let minScore = 999999;
+  let bestDx = 0;
+  let bestDy = 0;
+
+  for (let dy = -5; dy <= 5; dy += 2) {
+    for (let dx = -5; dx <= 5; dx += 2) {
+      let totalScore = 0;
+      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+        const x = sidConf.xStart + colIdx * sidConf.xStep + globalDx + dx;
+        const intensities: number[] = [];
+        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, globalDy + dy);
+          const avgBin = calculateBubbleAverageGray(binMatrix, x, y, 3.0);
+          intensities.push(avgBin);
+        }
+        intensities.sort((a, b) => a - b);
+        for (let i = 0; i < 9; i++) {
+          totalScore += intensities[i];
+        }
+      }
+      if (totalScore < minScore) {
+        minScore = totalScore;
+        bestDx = dx;
+        bestDy = dy;
+      }
+    }
+  }
+
+  return { bestDx, bestDy };
 }
 
 

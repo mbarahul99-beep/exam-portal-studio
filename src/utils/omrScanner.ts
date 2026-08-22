@@ -729,7 +729,7 @@ export async function scanOMRSheet(
       const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
       
       const xOptions = Array.from({ length: numOptions }, (_, o) => (o === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[o]));
-      const rowOffset = optimizeRowOffset(warpedBin, xOptions, y, 2.5, numOptions, bestDx);
+      const rowOffset = optimizeRowOffset(warpedBin, xOptions, y, numOptions, bestDx);
 
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
@@ -788,48 +788,90 @@ interface RowOffsetResult {
 }
 
 /**
- * Automatically optimizes alignment offsets for a question row by minimizing
- * binarized intensity of empty options, excluding the highest-filled option.
+ * Calculates alignment score by maximizing outer printed outline ring pixels (radius = 8)
+ * and minimizing center region pixels (radius = 2.5) for empty bubbles.
+ */
+function getBubbleOutlineScore(binMatrix: any, cx: number, cy: number): number {
+  const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
+
+  const r = 8;
+  const offsets = [
+    [r, 0], [-r, 0], [0, r], [0, -r],
+    [6, 6], [-6, 6], [6, -6], [-6, -6]
+  ];
+  let ringSum = 0;
+  for (let i = 0; i < 8; i++) {
+    const dx = offsets[i][0];
+    const dy = offsets[i][1];
+    ringSum += calculateBubbleAverageGray(binMatrix, cx + dx, cy + dy, 1.0);
+  }
+  const ringVal = ringSum / 8;
+
+  // Maximize outline ring overlaps while minimizing center overlap
+  return ringVal - centerVal;
+}
+
+/**
+ * Automatically optimizes alignment offsets for a question row by maximizing
+ * outer printed outline ring correlation across empty options.
  */
 function optimizeRowOffset(
   binMatrix: any,
   xOptions: number[],
   y: number,
-  r: number,
   numOptions: number,
   globalDx: number
 ): RowOffsetResult {
-  let minScore = 999999;
+  let maxScore = -999999;
   let bestDx = 0;
   let bestDy = 0;
 
-  for (let dy = -5; dy <= 5; dy += 2) {
-    for (let dx = -5; dx <= 5; dx += 2) {
-      const intensities: number[] = [];
+  // 1. Coarse search in steps of 2px
+  for (let dy = -6; dy <= 6; dy += 2) {
+    for (let dx = -6; dx <= 6; dx += 2) {
+      let totalRowScore = 0;
       for (let o = 0; o < numOptions; o++) {
-        const x = xOptions[o] + globalDx + dx;
-        const avgBin = calculateBubbleAverageGray(binMatrix, x, y + dy, r);
-        intensities.push(avgBin);
+        const cx = xOptions[o] + globalDx + dx;
+        const cy = y + dy;
+        totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
       }
-      intensities.sort((a, b) => a - b);
-      let score = 0;
-      for (let i = 0; i < numOptions - 1; i++) {
-        score += intensities[i];
-      }
-      if (score < minScore) {
-        minScore = score;
+      if (totalRowScore > maxScore) {
+        maxScore = totalRowScore;
         bestDx = dx;
         bestDy = dy;
       }
     }
   }
 
-  return { bestDx, bestDy };
+  // 2. Fine-tune search in steps of 1px
+  let fineBestDx = bestDx;
+  let fineBestDy = bestDy;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const targetDx = bestDx + dx;
+      const targetDy = bestDy + dy;
+      if (targetDx < -6 || targetDx > 6 || targetDy < -6 || targetDy > 6) continue;
+      
+      let totalRowScore = 0;
+      for (let o = 0; o < numOptions; o++) {
+        const cx = xOptions[o] + globalDx + targetDx;
+        const cy = y + targetDy;
+        totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
+      }
+      if (totalRowScore > maxScore) {
+        maxScore = totalRowScore;
+        fineBestDx = targetDx;
+        fineBestDy = targetDy;
+      }
+    }
+  }
+
+  return { bestDx: fineBestDx, bestDy: fineBestDy };
 }
 
 /**
  * Automatically optimizes alignment offsets for the Roll Number grid
- * by minimizing binarized intensity of empty rows in each digit column.
+ * by maximizing printed outline ring correlation across empty digit bubbles.
  */
 function optimizeRollNoOffset(
   binMatrix: any,
@@ -838,35 +880,55 @@ function optimizeRollNoOffset(
   globalDx: number,
   globalDy: number
 ): RowOffsetResult {
-  let minScore = 999999;
+  let maxScore = -999999;
   let bestDx = 0;
   let bestDy = 0;
 
-  for (let dy = -5; dy <= 5; dy += 2) {
-    for (let dx = -5; dx <= 5; dx += 2) {
+  // 1. Coarse search in steps of 2px
+  for (let dy = -6; dy <= 6; dy += 2) {
+    for (let dx = -6; dx <= 6; dx += 2) {
       let totalScore = 0;
       for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
         const x = sidConf.xStart + colIdx * sidConf.xStep + globalDx + dx;
-        const intensities: number[] = [];
         for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
           const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, globalDy + dy);
-          const avgBin = calculateBubbleAverageGray(binMatrix, x, y, 3.0);
-          intensities.push(avgBin);
-        }
-        intensities.sort((a, b) => a - b);
-        for (let i = 0; i < 9; i++) {
-          totalScore += intensities[i];
+          totalScore += getBubbleOutlineScore(binMatrix, x, y);
         }
       }
-      if (totalScore < minScore) {
-        minScore = totalScore;
+      if (totalScore > maxScore) {
+        maxScore = totalScore;
         bestDx = dx;
         bestDy = dy;
       }
     }
   }
 
-  return { bestDx, bestDy };
+  // 2. Fine-tune search in steps of 1px
+  let fineBestDx = bestDx;
+  let fineBestDy = bestDy;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const targetDx = bestDx + dx;
+      const targetDy = bestDy + dy;
+      if (targetDx < -6 || targetDx > 6 || targetDy < -6 || targetDy > 6) continue;
+
+      let totalScore = 0;
+      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
+        const x = sidConf.xStart + colIdx * sidConf.xStep + globalDx + targetDx;
+        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, globalDy + targetDy);
+          totalScore += getBubbleOutlineScore(binMatrix, x, y);
+        }
+      }
+      if (totalScore > maxScore) {
+        maxScore = totalScore;
+        fineBestDx = targetDx;
+        fineBestDy = targetDy;
+      }
+    }
+  }
+
+  return { bestDx: fineBestDx, bestDy: fineBestDy };
 }
 
 

@@ -647,21 +647,30 @@ export async function scanOMRSheet(
 
     const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
 
-    // 5.8. Sample paper brightness dynamically to adapt grayscale thresholds to current lighting
+    // 5.8. Sample paper brightness dynamically from question bubbles to adapt grayscale thresholds to current lighting
     const samples: number[] = [];
-    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx;
-      for (let rowIdx = 0; rowIdx < 10; rowIdx += 2) {
-        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        samples.push(calculateBubbleAverageGray(warpedGray, x, y, 3.0));
+    for (let q = 1; q <= Math.min(numQuestions, 30); q++) {
+      let colConf = null;
+      for (const col of qConf.columns) {
+        if (q >= col.qStart && q <= col.qEnd) { colConf = col; break; }
+      }
+      if (!colConf) continue;
+      const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+      const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
+      if (!qSlot) continue;
+      const slotIndex = qSlot.slotIdx;
+      const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy);
+      for (let o = 0; o < Math.min(4, colConf.xOptions.length); o++) {
+        const x = colConf.xOptions[o] + bestDx;
+        samples.push(calculateBubbleAverageGray(warpedGray, x, y, 2.5));
       }
     }
     samples.sort((a, b) => a - b);
     const whitePaperLevel = samples.length > 0 ? samples[Math.floor(samples.length * 0.75)] : 220;
-    const grayGuardThreshold = Math.min(145, whitePaperLevel - 60);
-    console.log("[OMR Scanner] Auto-calibrated paper white level:", whitePaperLevel, "gray guard threshold:", grayGuardThreshold);
+    const grayGuardThreshold = Math.min(145, whitePaperLevel - 50);
+    console.log("[OMR Scanner] Paper white level:", whitePaperLevel, "gray guard threshold:", grayGuardThreshold);
 
-    // 6. Scan Roll No (rollNoDigits digits) using binarized image and local snap neighborhood search
+    // 6. Scan Roll No (rollNoDigits digits) using binarized and grayscale double-guard checks
     let studentNum = '';
     const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
@@ -671,7 +680,8 @@ export async function scanOMRSheet(
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-        const { avgBin, avgGray } = getLocalBubbleScan(warpedBin, warpedGray, x, y, 3.0);
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 3.0);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {
           filledRows.push(rowIdx);
         }
@@ -684,7 +694,7 @@ export async function scanOMRSheet(
       }
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) using binarized image and local snap neighborhood search
+    // 7. Scan Answers (Dynamic Grid Layout) using binarized and grayscale double-guard checks
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
 
@@ -718,7 +728,8 @@ export async function scanOMRSheet(
       const filledOptions: number[] = [];
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
         const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + bestDx;
-        const { avgBin, avgGray } = getLocalBubbleScan(warpedBin, warpedGray, x, y, 2.5);
+        const avgBin = calculateBubbleAverageGray(warpedBin, x, y, 2.5);
+        const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 2.5);
         if (avgBin > 80 && avgGray < grayGuardThreshold) {
           filledOptions.push(optIdx);
         }
@@ -764,43 +775,6 @@ export async function scanOMRSheet(
   }
 }
 
-interface BubbleScanResult {
-  avgBin: number;
-  avgGray: number;
-}
-
-/**
- * Searches a small neighborhood to center perfectly on the bubble,
- * returning both the binarized and raw grayscale average intensities.
- */
-function getLocalBubbleScan(
-  binMatrix: any,
-  grayMatrix: any,
-  cx: number,
-  cy: number,
-  r: number
-): BubbleScanResult {
-  let minAvgBin = 255;
-  let bestDx = 0;
-  let bestDy = 0;
-
-  // Search neighborhood of [-6, 6] pixels with step of 2px for warp/fold tolerance
-  for (let dy = -6; dy <= 6; dy += 2) {
-    for (let dx = -6; dx <= 6; dx += 2) {
-      const avgBin = calculateBubbleAverageGray(binMatrix, cx + dx, cy + dy, r);
-      if (avgBin < minAvgBin) {
-        minAvgBin = avgBin;
-        bestDx = dx;
-        bestDy = dy;
-      }
-    }
-  }
-
-  return {
-    avgBin: calculateBubbleAverageGray(binMatrix, cx + bestDx, cy + bestDy, r),
-    avgGray: calculateBubbleAverageGray(grayMatrix, cx + bestDx, cy + bestDy, r)
-  };
-}
 
 
 

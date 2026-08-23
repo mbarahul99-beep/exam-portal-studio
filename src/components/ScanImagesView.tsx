@@ -2736,7 +2736,7 @@ interface EditScannedSheetModalProps {
   refreshSubmissions: () => void;
 }
 
-const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam, students, onClose, refreshSubmissions }) => {
+export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam, students, onClose, refreshSubmissions }) => {
   const [rollOrSearchInput, setRollOrSearchInput] = useState(() => {
     if (sub.studentId > 0) {
       const s = students.find(item => item.id === sub.studentId);
@@ -2871,10 +2871,14 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
         // Run database saves and trigger cloud updates immediately in background
         if (targetStudentId !== sub.studentId) {
           // Delete old local
-          await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).delete();
+          if (sub.id) {
+            await db.submissions.delete(sub.id);
+          } else {
+            await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).delete();
+          }
           
           // Trigger old cloud deletion in background
-          if (sub.studentId > 0) {
+          if (sub.studentId > 0 && sub.id) {
             import('../utils/cloudSync').then(({ deleteSubmissionFromCloud }) => {
               deleteSubmissionFromCloud(sub.id!).catch(console.warn);
             });
@@ -2902,17 +2906,29 @@ const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ sub, exam
           }
         } else {
           // Modify local
-          await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).modify({
-            score: liveScore,
-            answers: editedAnswers,
-            bookletSet: selectedBookletSet,
-            detectedRollNum: sub.detectedRollNum || rollOrSearchInput
-          });
+          if (sub.id) {
+            await db.submissions.update(sub.id, {
+              score: liveScore,
+              answers: editedAnswers,
+              bookletSet: selectedBookletSet,
+              detectedRollNum: sub.detectedRollNum || rollOrSearchInput
+            });
+          } else {
+            await db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).modify({
+              score: liveScore,
+              answers: editedAnswers,
+              bookletSet: selectedBookletSet,
+              detectedRollNum: sub.detectedRollNum || rollOrSearchInput
+            });
+          }
 
           // Trigger cloud sync in background
           if (sub.studentId > 0) {
             import('../utils/cloudSync').then(({ syncSubmissionToCloud }) => {
-              db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).first().then(updatedSub => {
+              const queryPromise = sub.id 
+                ? db.submissions.get(sub.id) 
+                : db.submissions.where('[examId+studentId]').equals([exam.id!, sub.studentId!]).first();
+              queryPromise.then(updatedSub => {
                 if (updatedSub) syncSubmissionToCloud(updatedSub).catch(console.warn);
               });
             });

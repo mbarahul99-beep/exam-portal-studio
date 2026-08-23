@@ -28,10 +28,11 @@ import {
   ArrowUp,
   ArrowDown,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
+  Edit
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
-import { ScanImagesView } from './ScanImagesView';
+import { ScanImagesView, EditScannedSheetModal } from './ScanImagesView';
 import { ResponseAnalysisView } from './ResponseAnalysisView';
 import { PublishResultsModal } from './PublishResultsModal';
 import { getWhatsAppConfig, sendWhatsAppTemplateMessage } from '../utils/whatsappService';
@@ -123,6 +124,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number; bookletSet?: string } | null>(null);
   const [viewingOnlineSubmission, setViewingOnlineSubmission] = useState<{ studentName: string; submission: ExamSubmission } | null>(null);
+  const [editingSubmission, setEditingSubmission] = useState<ExamSubmission | null>(null);
   const [activeAnswerKeySet, setActiveAnswerKeySet] = useState<string>('A');
   const [editableKeys, setEditableKeys] = useState<Record<string, Record<number, string>>>(() => {
     const initialKeys: Record<string, Record<number, string>> = {};
@@ -432,8 +434,9 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [broadcastLog, setBroadcastLog] = useState<{ name: string; status: 'success' | 'warning' | 'error'; details: string }[]>([]);
   const [isCancelRequested, setIsCancelRequested] = useState(false);
 
-  // Submissions and class statistics (Deduplicated by studentId to guarantee exactly 1 record per student)
-  const rawExamSubs = submissions.filter(s => s.examId === exam.id);
+  // Submissions and class statistics (Deduplicated by studentId to guarantee exactly 1 record per student, filtering out unknown/deleted candidates)
+  const studentIdsSet = new Set(students.map(s => s.id));
+  const rawExamSubs = submissions.filter(s => s.examId === exam.id && s.studentId > 0 && studentIdsSet.has(s.studentId));
   const examSubsMap = new Map<number, ExamSubmission>();
   rawExamSubs.forEach(sub => {
     if (!examSubsMap.has(sub.studentId) || (sub.id && sub.id > (examSubsMap.get(sub.studentId)?.id || 0))) {
@@ -1638,6 +1641,31 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                             <Eye size={14} /> Sheet
                           </button>
                         )}
+
+                        <button 
+                          type="button"
+                          title="Edit Submission"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingSubmission(row as any);
+                          }}
+                          style={{
+                            background: '#f8fafc',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '16px',
+                            padding: '4px 10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Edit size={14} /> Edit
+                        </button>
 
                         <button 
                           type="button"
@@ -3598,7 +3626,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           </div>
         </div>
       )}
-
+      {editingSubmission && (
+        <EditScannedSheetModal
+          sub={editingSubmission}
+          exam={exam}
+          students={students}
+          onClose={() => setEditingSubmission(null)}
+          refreshSubmissions={pullCloudUpdatesToIndexedDB}
+        />
+      )}
     </div>
   );
 };

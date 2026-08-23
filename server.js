@@ -273,6 +273,12 @@ const initDatabase = async () => {
           ON e1.title = e2.title AND e1.className = e2.className AND e1.id < e2.id
         `);
         
+        // 1b. Clean up orphaned exams for classes that no longer exist
+        await conn.query(`
+          DELETE FROM exams 
+          WHERE className NOT IN (SELECT name FROM classes)
+        `);
+
         // 2. Clean up orphaned questions and submissions
         await conn.query(`
           DELETE FROM questions 
@@ -968,6 +974,9 @@ app.delete('/api/classes/:name', async (req, res) => {
   const { name } = req.params;
   try {
     // Cascading delete: Clean up child records linked to this class
+    await pool.query('DELETE FROM questions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM submissions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM exams WHERE className = ?', [name]);
     await pool.query('DELETE FROM submissions WHERE studentId IN (SELECT id FROM students WHERE className = ?)', [name]);
     await pool.query('DELETE FROM attendance WHERE className = ?', [name]);
     await pool.query('DELETE FROM students WHERE className = ?', [name]);

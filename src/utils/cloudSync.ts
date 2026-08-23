@@ -445,12 +445,21 @@ export async function pullCloudUpdatesToIndexedDB() {
     if (data.exams && Array.isArray(data.exams)) {
       const serverExamIds = new Set(data.exams.map((e: any) => Number(e.id)));
       const serverExamTitles = new Set(data.exams.map((e: any) => e.title));
+      
+      const localClasses = await db.classes.toArray();
+      const activeClassNames = new Set(localClasses.map(c => c.name.toLowerCase()));
+      
       const localExams = await db.exams.toArray();
       for (const le of localExams) {
-        if (le.id && !serverExamIds.has(le.id) && le.syncState === 'synced') {
+        const isOrphanClass = le.className && !activeClassNames.has(le.className.toLowerCase());
+        if (le.id && (!serverExamIds.has(le.id) || isOrphanClass) && le.syncState === 'synced') {
           await db.exams.delete(le.id);
+          await db.submissions.where('examId').equals(le.id).delete();
+          await db.questions.where('examId').equals(le.id).delete();
         } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1') && le.id && le.syncState === 'synced') {
           await db.exams.delete(le.id);
+          await db.submissions.where('examId').equals(le.id).delete();
+          await db.questions.where('examId').equals(le.id).delete();
         }
       }
       for (const ex of data.exams) {

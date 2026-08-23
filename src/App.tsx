@@ -2566,7 +2566,21 @@ export default function App() {
                                   e.stopPropagation();
                                   if (confirm(`Are you sure you want to delete class "${cls.name}"?`)) {
                                     await deleteClassFromCloud(cls.name);
+                                    
+                                    // Fetch exams for this class to cascade delete local submissions and questions
+                                    const examsToDelete = await db.exams.where('className').equals(cls.name).toArray();
+                                    const examIds = examsToDelete.map(ex => ex.id).filter(Boolean) as number[];
+                                    
                                     await db.classes.where('name').equalsIgnoreCase(cls.name).delete();
+                                    await db.students.where('className').equals(cls.name).delete();
+                                    await db.attendance.where('className').equals(cls.name).delete();
+                                    
+                                    if (examIds.length > 0) {
+                                      await db.exams.where('className').equals(cls.name).delete();
+                                      await db.submissions.where('examId').anyOf(examIds).delete();
+                                      await db.questions.where('examId').anyOf(examIds).delete();
+                                    }
+                                    
                                     pullCloudUpdatesToIndexedDB();
                                   }
                                 }}

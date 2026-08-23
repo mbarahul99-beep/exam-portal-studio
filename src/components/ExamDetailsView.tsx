@@ -314,16 +314,71 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           return { ...sec, qStart: start, qEnd: end };
         });
 
-        const healed = nonPlaceholders.map((qVal, idx) => {
-          const qNum = idx + 1;
-          const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
-          return {
-            ...qVal,
-            subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
-            sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A'
-          };
+        const totalQuestions = sectionsWithRanges.reduce((acc, sec) => acc + sec.qCount, 0) || exam.numQuestions || 180;
+
+        // Initialize full list of empty placeholder slots matching exam sections
+        const healedList: any[] = [];
+        sectionsWithRanges.forEach(sec => {
+          for (let i = 0; i < sec.qCount; i++) {
+            const qNum = sec.qStart + i;
+            healedList.push({
+              examId: exam.id!,
+              qNum,
+              sectionName: sec.sectionName,
+              subjectName: sec.subjectName,
+              questionText: '',
+              options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+              correctOptionIdx: 0,
+              explanation: '',
+              questionImage: '',
+              difficulty: 'Easy' as const
+            });
+          }
         });
-        setQuestions(healed);
+
+        // Place each non-placeholder question in its correct slot based on subject & section
+        const sectionCounters: Record<string, number> = {};
+        let wasRealigned = false;
+        nonPlaceholders.forEach((qVal) => {
+          const subName = qVal.subjectName || 'Subject 1';
+          const secName = qVal.sectionName || 'Section 1';
+          const key = `${subName.toLowerCase().trim()}|${secName.toLowerCase().trim()}`;
+          
+          const secConfig = sectionsWithRanges.find(sec => 
+            sec.subjectName.toLowerCase().trim() === subName.toLowerCase().trim() &&
+            sec.sectionName.toLowerCase().trim() === secName.toLowerCase().trim()
+          );
+
+          if (secConfig) {
+            const counter = sectionCounters[key] || 0;
+            const qNum = secConfig.qStart + counter;
+            if (qNum <= secConfig.qEnd) {
+              const targetIdx = qNum - 1;
+              const origIdxInDb = dbQs.findIndex(x => x.id === qVal.id);
+              if (origIdxInDb !== targetIdx) {
+                wasRealigned = true;
+              }
+              healedList[targetIdx] = {
+                ...healedList[targetIdx],
+                id: qVal.id,
+                questionText: qVal.questionText,
+                options: qVal.options,
+                correctOptionIdx: qVal.correctOptionIdx,
+                explanation: qVal.explanation || '',
+                questionImage: qVal.questionImage || '',
+                difficulty: qVal.difficulty || 'Easy'
+              };
+              sectionCounters[key] = counter + 1;
+            }
+          }
+        });
+
+        if (wasRealigned || dbQs.length !== totalQuestions) {
+          console.log("Self-healing exam questions structure and answer key alignment...");
+          await saveQuestionsToDbAndSync(healedList);
+        } else {
+          setQuestions(healedList);
+        }
 
         // 2. Fetch list of question banks
         const banks = await db.questionBanks.toArray();
@@ -997,12 +1052,15 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     // Ensure all question records have clean data and match target schema
     const cleanQuestions = updatedQuestions.map(q => ({
       examId: exam.id!,
+      subjectName: q.subjectName,
       sectionName: q.sectionName,
       questionText: (q.questionText || '').trim(),
       options: q.options ? q.options.map((o: string) => (o || '').trim()) : ['', '', '', ''],
       correctOptionIdx: Number(q.correctOptionIdx || 0),
       explanation: (q.explanation || '').trim(),
-      questionImage: q.questionImage || undefined
+      questionImage: q.questionImage || undefined,
+      difficulty: q.difficulty || 'Easy',
+      syncState: 'pending' as const
     }));
 
     // 1. Delete and insert into IndexedDB to get fresh IDs
@@ -1038,16 +1096,26 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     await db.exams.update(exam.id, {
       numQuestions: reloaded.length,
       answerKey: newAnswerKey,
-      answerKeys: updatedAnswerKeys
+      answerKeys: updatedAnswerKeys,
+      syncState: 'pending'
     });
     
     // 4. POST to server MySQL DB
     try {
-      await fetch('/api/questions', {
+      const syncRes = await fetch('/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ examId: exam.id, questions: cleanQuestions })
+        body: JSON.stringify({ examId: exam.id, questions: cleanQuestions.map(({ syncState, ...qFields }) => qFields) })
       });
+      if (syncRes.ok) {
+        await db.transaction('rw', db.questions, async () => {
+          for (const eq of reloaded) {
+            if (eq.id) {
+              await db.questions.update(eq.id, { syncState: 'synced' });
+            }
+          }
+        });
+      }
     } catch (err) {
       console.warn("MySQL questions sync warning:", err);
     }
@@ -1069,7 +1137,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       return;
     }
 
-    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName && q.questionText.trim() !== '');
     const sectionConfig = exam.sections?.find((s: any) => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
     const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
     
@@ -1078,24 +1146,40 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       return;
     }
 
-    const newQ = {
-      examId: exam.id!,
-      subjectName: selectedSubjectName,
-      sectionName: selectedSectionName || 'Section A',
-      questionText: libQ.questionText,
-      options: [...libQ.options],
-      correctOptionIdx: libQ.correctOptionIdx,
-      explanation: libQ.explanation || '',
-      questionImage: libQ.questionImage || undefined
-    };
+    const allSlots = [...questions];
+    const targetSlot = allSlots.find(q => 
+      q.subjectName === selectedSubjectName && 
+      q.sectionName === selectedSectionName && 
+      q.questionText.trim() === ''
+    );
 
-    const updated = [...questions, newQ];
-    await saveQuestionsToDbAndSync(updated);
+    if (targetSlot) {
+      targetSlot.questionText = libQ.questionText;
+      targetSlot.options = [...libQ.options];
+      targetSlot.correctOptionIdx = libQ.correctOptionIdx;
+      targetSlot.explanation = libQ.explanation || '';
+      targetSlot.questionImage = libQ.questionImage || undefined;
+      targetSlot.difficulty = libQ.difficulty || 'Easy';
+      await saveQuestionsToDbAndSync(allSlots);
+    }
   };
 
   const handleDeleteQuestion = async (qId: number) => {
     if (!confirm("Are you sure you want to delete this question?")) return;
-    const updated = questions.filter(q => q.id !== qId);
+    const updated = questions.map(q => {
+      if (q.id === qId) {
+        return {
+          ...q,
+          questionText: '',
+          options: q.options.length === 5 ? ['', '', '', '', ''] : ['', '', '', ''],
+          correctOptionIdx: 0,
+          explanation: '',
+          questionImage: undefined,
+          difficulty: 'Easy' as const
+        };
+      }
+      return q;
+    });
     await saveQuestionsToDbAndSync(updated);
   };
 
@@ -2570,7 +2654,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {sections.filter(s => s.subjectName === selectedSubjectName).map((sec, sIdx) => {
                         const isActive = selectedSectionName === sec.sectionName;
-                        const count = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === sec.sectionName).length;
+                        const count = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === sec.sectionName && q.questionText.trim() !== '').length;
                         return (
                           <button
                             key={`sec-tab-${sIdx}`}
@@ -2624,7 +2708,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+                    const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName && q.questionText.trim() !== '');
                     const sectionConfig = exam.sections?.find((s: any) => s.subjectName === selectedSubjectName && s.sectionName === selectedSectionName);
                     const maxAllowed = sectionConfig ? Number(sectionConfig.qCount) : (exam.numQuestions || 15);
                     
@@ -2633,18 +2717,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                       return;
                     }
 
-                    const newQ = {
-                      examId: exam.id!,
-                      subjectName: selectedSubjectName,
-                      sectionName: selectedSectionName || 'Section A',
-                      questionText: '',
-                      options: ['', '', '', ''],
-                      correctOptionIdx: 0,
-                      explanation: '',
-                      difficulty: 'Easy' as const
-                    };
-                    const updated = [...questions, newQ];
-                    await saveQuestionsToDbAndSync(updated);
+                    const allSlots = [...questions];
+                    const targetSlot = allSlots.find(q => 
+                      q.subjectName === selectedSubjectName && 
+                      q.sectionName === selectedSectionName && 
+                      q.questionText.trim() === ''
+                    );
+
+                    if (targetSlot) {
+                      targetSlot.questionText = 'New Question';
+                      targetSlot.options = ['', '', '', ''];
+                      targetSlot.correctOptionIdx = 0;
+                      targetSlot.explanation = '';
+                      targetSlot.difficulty = 'Easy';
+                      await saveQuestionsToDbAndSync(allSlots);
+                    }
                   }}
                   className="btn-primary"
                   style={{
@@ -2664,7 +2751,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   + Add Question
                 </button>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Total in Section: <strong>{questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName).length}</strong>
+                  Total in Section: <strong>{questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName && q.questionText.trim() !== '').length}</strong>
                 </span>
               </div>
             </div>
@@ -2672,7 +2759,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             {/* List of current questions in the selected section */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {(() => {
-                const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName);
+                const sectionQuestions = questions.filter(q => q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName && q.questionText.trim() !== '');
                 if (sectionQuestions.length === 0) {
                   return (
                     <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

@@ -1033,9 +1033,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       }
 
       const optionLetters = ['A', 'B', 'C', 'D', 'E'];
-      const newQNum = exam.numQuestions + 1;
 
-      // 1. Create Question record
+      // 1. Create/Update Question record
       let targetSubjectName = selectedBank?.subject || 'Subject 1';
       let targetSectionName = selectedSectionName;
 
@@ -1045,17 +1044,86 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         targetSectionName = secName;
       }
 
-      await db.questions.add({
-        examId: exam.id!,
-        subjectName: targetSubjectName,
-        sectionName: targetSectionName || 'General',
-        questionText: selectedBankQ.questionText,
-        options: [...selectedBankQ.options],
-        correctOptionIdx: selectedBankQ.correctOptionIdx,
-        explanation: selectedBankQ.explanation || '',
-        questionImage: selectedBankQ.questionImage || undefined,
-        syncState: 'pending'
+      // Calculate section ranges dynamically
+      let qCursor = 1;
+      const sectionsWithRanges = (exam.sections || []).map(sec => {
+        const start = qCursor;
+        const end = qCursor + sec.qCount - 1;
+        qCursor = end + 1;
+        return { ...sec, qStart: start, qEnd: end };
       });
+
+      const sectionConfig = sectionsWithRanges.find(sec => 
+        sec.subjectName.toLowerCase().trim() === targetSubjectName.toLowerCase().trim() &&
+        sec.sectionName.toLowerCase().trim() === targetSectionName.toLowerCase().trim()
+      );
+
+      if (!sectionConfig) {
+        alert(`Could not find section configurations matching "${targetSubjectName} - ${targetSectionName}" in this exam.`);
+        return;
+      }
+
+      // Find all existing questions for this exam
+      const allExamQs = await db.questions.where('examId').equals(exam.id!).toArray();
+
+      // Find how many questions are already filled in this specific section
+      const filledInSection = allExamQs.filter((qVal, idx) => {
+        const qNum = idx + 1;
+        const isInSectionRange = qNum >= sectionConfig.qStart && qNum <= sectionConfig.qEnd;
+        return isInSectionRange && qVal.questionText.trim() !== '';
+      });
+
+      const N = filledInSection.length;
+      const newQNum = sectionConfig.qStart + N;
+
+      if (newQNum > sectionConfig.qEnd) {
+        alert(`This section "${targetSubjectName} - ${targetSectionName}" is already full (limit: ${sectionConfig.qCount} questions).`);
+        return;
+      }
+
+      const currentLength = allExamQs.length;
+      if (currentLength < newQNum) {
+        // Pad with placeholders up to the new question slot
+        for (let i = currentLength; i < newQNum - 1; i++) {
+          const slotQNum = i + 1;
+          const matchedSec = sectionsWithRanges.find(sec => slotQNum >= sec.qStart && slotQNum <= sec.qEnd);
+          await db.questions.add({
+            examId: exam.id!,
+            subjectName: matchedSec?.subjectName || targetSubjectName,
+            sectionName: matchedSec?.sectionName || 'General',
+            questionText: '',
+            options: matchedSec?.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+            correctOptionIdx: 0,
+            explanation: '',
+            syncState: 'pending'
+          });
+        }
+        // Add actual question
+        await db.questions.add({
+          examId: exam.id!,
+          subjectName: targetSubjectName,
+          sectionName: targetSectionName || 'General',
+          questionText: selectedBankQ.questionText,
+          options: [...selectedBankQ.options],
+          correctOptionIdx: selectedBankQ.correctOptionIdx,
+          explanation: selectedBankQ.explanation || '',
+          questionImage: selectedBankQ.questionImage || undefined,
+          syncState: 'pending'
+        });
+      } else {
+        // Update the existing placeholder at newQNum - 1
+        const targetQ = allExamQs[newQNum - 1];
+        await db.questions.update(targetQ.id!, {
+          subjectName: targetSubjectName,
+          sectionName: targetSectionName || 'General',
+          questionText: selectedBankQ.questionText,
+          options: [...selectedBankQ.options],
+          correctOptionIdx: selectedBankQ.correctOptionIdx,
+          explanation: selectedBankQ.explanation || '',
+          questionImage: selectedBankQ.questionImage || undefined,
+          syncState: 'pending'
+        });
+      }
 
       // 2. Update Exam parameters
       const updatedKey = { ...exam.answerKey };
@@ -1069,7 +1137,7 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       }
 
       await db.exams.update(exam.id!, {
-        numQuestions: newQNum,
+        numQuestions: Math.max(exam.numQuestions, newQNum),
         answerKey: updatedKey,
         answerKeys: Object.keys(updatedKeys).length > 0 ? updatedKeys : undefined,
         syncState: 'pending'
@@ -1080,17 +1148,17 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       if (updatedExam) {
         await syncExamToCloud(updatedExam);
       }
-      const allExamQs = await db.questions.where('examId').equals(exam.id!).toArray();
+      const allExamQsUpdated = await db.questions.where('examId').equals(exam.id!).toArray();
       try {
         const syncRes = await fetch('/api/questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ examId: exam.id!, questions: allExamQs.map(({ syncState, ...qFields }) => qFields) })
+          body: JSON.stringify({ examId: exam.id!, questions: allExamQsUpdated.map(({ syncState, ...qFields }) => qFields) })
         });
         if (syncRes.ok) {
           // Mark all exam questions as synced!
           await db.transaction('rw', db.questions, async () => {
-            for (const eq of allExamQs) {
+            for (const eq of allExamQsUpdated) {
               if (eq.id) {
                 await db.questions.update(eq.id, { syncState: 'synced' });
               }

@@ -12,6 +12,7 @@ export interface Student {
   faceDescriptor?: number[]; // Vector embedding for facial biometrics
   faceDescriptors?: number[][]; // Multiple profile templates: [Center, Left, Right]
   facePhoto?: string; // Base64 or image URL for face biometric image
+  syncState?: 'synced' | 'pending';
 }
 
 export interface QuestionBank {
@@ -21,6 +22,7 @@ export interface QuestionBank {
   subject: string;
   topic: string;
   createdAt: Date;
+  syncState?: 'synced' | 'pending';
 }
 
 export interface BankQuestion {
@@ -33,6 +35,7 @@ export interface BankQuestion {
   explanation?: string;
   questionImage?: string; // Base64 or URL
   createdAt?: Date;
+  syncState?: 'synced' | 'pending';
 }
 
 export interface ClassEntity {
@@ -40,6 +43,7 @@ export interface ClassEntity {
   name: string;
   state: 'Synced' | 'Pending';
   createdAt: Date;
+  syncState?: 'synced' | 'pending';
 }
 
 export interface ExamSubject {
@@ -85,6 +89,7 @@ export interface Exam {
   difficulties?: Record<number, 'Easy' | 'Moderate' | 'Difficult'>; // Question-wise difficulty levels for offline OMR
   loginOption?: 'roll_phone' | 'roll_email' | 'roll_only' | 'passcode';
   passcode?: string;
+  syncState?: 'synced' | 'pending';
 }
 
 export interface Question {
@@ -98,6 +103,7 @@ export interface Question {
   explanation: string;
   questionImage?: string; // Base64 or URL
   difficulty?: 'Easy' | 'Moderate' | 'Difficult'; // Question-wise difficulty level for online exam
+  syncState?: 'synced' | 'pending';
 }
 
 export interface ExamSubmission {
@@ -114,6 +120,7 @@ export interface ExamSubmission {
   bookletSet?: string;
   accessToken?: string; // Cryptographic unguessable access key for public report sharing
   detectedRollNum?: string; // Original detected roll number string from scanning
+  syncState?: 'synced' | 'pending';
 }
 
 export interface SystemSetting {
@@ -131,6 +138,7 @@ export interface AttendanceRecord {
   remarks?: string;
   createdAt: Date;
   attendanceMethod?: 'Manual' | 'QR' | 'Face';
+  syncState?: 'synced' | 'pending';
 }
 
 export interface PendingRegistration {
@@ -144,6 +152,7 @@ export interface PendingRegistration {
   whatsappNumber?: string;
   createdAt: Date;
   status: 'pending' | 'approved' | 'rejected';
+  syncState?: 'synced' | 'pending';
 }
 
 export interface Teacher {
@@ -154,6 +163,7 @@ export interface Teacher {
   phone?: string;
   email?: string;
   createdAt: Date;
+  syncState?: 'synced' | 'pending';
 }
 
 class AppDatabase extends Dexie {

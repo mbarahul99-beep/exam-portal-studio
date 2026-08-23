@@ -632,6 +632,51 @@ app.post('/api/bank-questions', async (req, res) => {
   }
 });
 
+app.post('/api/bank-questions/bulk', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { questions } = req.body;
+  if (!Array.isArray(questions)) return res.status(400).json({ error: 'Invalid parameters' });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const results = [];
+    for (const q of questions) {
+      const { id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, questionImage, createdAt } = q;
+      const optionsJson = Array.isArray(options) ? JSON.stringify(options) : options;
+      const query = `
+        INSERT INTO bank_questions (id, bankId, questionText, options, correctOptionIdx, difficulty, explanation, questionImage, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          bankId = VALUES(bankId),
+          questionText = VALUES(questionText),
+          options = VALUES(options),
+          correctOptionIdx = VALUES(correctOptionIdx),
+          difficulty = VALUES(difficulty),
+          explanation = VALUES(explanation),
+          questionImage = VALUES(questionImage),
+          createdAt = VALUES(createdAt);
+      `;
+      const createdTime = createdAt ? new Date(createdAt) : new Date();
+      const targetId = (id && Number(id) > 0) ? Number(id) : null;
+      const [resObj] = await conn.query(query, [targetId, bankId, questionText, optionsJson, correctOptionIdx, difficulty, explanation || null, questionImage || null, createdTime]);
+      
+      results.push({
+        localId: id,
+        serverId: targetId || resObj.insertId
+      });
+    }
+    await conn.commit();
+    res.json({ success: true, results });
+  } catch (err) {
+    await conn.rollback();
+    console.error("Bulk bank questions save error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 app.delete('/api/bank-questions/:id', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const qId = req.params.id;

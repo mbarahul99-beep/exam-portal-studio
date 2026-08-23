@@ -8,6 +8,7 @@ import {
   deleteQuestionBankFromCloud, 
   syncBankQuestionToCloud, 
   deleteBankQuestionFromCloud,
+  syncBankQuestionsBulkToCloud,
   syncExamToCloud 
 } from '../utils/cloudSync';
 import { 
@@ -486,11 +487,18 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
       });
 
       if (importedList.length > 0) {
-        for (const item of importedList) {
-          const insertedId = await db.questionBank.add(item);
-          item.id = insertedId;
-          await syncBankQuestionToCloud(item);
-        }
+        const insertedQuestions: BankQuestion[] = [];
+        await db.transaction('rw', db.questionBank, async () => {
+          for (const item of importedList) {
+            const qItem = { ...item, syncState: 'pending' as const };
+            const insertedId = await db.questionBank.add(qItem);
+            insertedQuestions.push({ ...qItem, id: insertedId });
+          }
+        });
+
+        // Sync to cloud in bulk
+        await syncBankQuestionsBulkToCloud(insertedQuestions);
+
         setCsvFeedback({
           success: true,
           message: `Successfully imported ${importedList.length} questions into bank!${skippedLines > 0 ? ` (Skipped ${skippedLines} invalid lines)` : ''}`
@@ -946,31 +954,35 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
 
     setIsSavingSelected(true);
     try {
-      const promises = toImport.map(async (q) => {
-        const item: BankQuestion = {
-          bankId: selectedBank.id!,
-          questionText: q.questionText,
-          options: Array.isArray(q.options) ? q.options.filter(Boolean) : ['', '', '', ''],
-          correctOptionIdx: typeof q.correctOptionIdx === 'number' ? q.correctOptionIdx : 0,
-          difficulty: q.difficulty || 'medium',
-          explanation: q.explanation || undefined,
-          questionImage: q.questionImage || undefined,
-          createdAt: new Date()
-        };
+      const insertedQuestions: BankQuestion[] = [];
+      await db.transaction('rw', db.questionBank, async () => {
+        for (const q of toImport) {
+          const item: BankQuestion = {
+            bankId: selectedBank.id!,
+            questionText: q.questionText,
+            options: Array.isArray(q.options) ? q.options.filter(Boolean) : ['', '', '', ''],
+            correctOptionIdx: typeof q.correctOptionIdx === 'number' ? q.correctOptionIdx : 0,
+            difficulty: q.difficulty || 'medium',
+            explanation: q.explanation || undefined,
+            questionImage: q.questionImage || undefined,
+            createdAt: new Date(),
+            syncState: 'pending'
+          };
 
-        // Extract diagrams if parsed inside HTML fallback
-        const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
-        if (imgMatch && imgMatch[1]) {
-          item.questionImage = imgMatch[1];
-          item.questionText = q.questionText.replace(/<img[^>]+>/g, '').trim();
+          // Extract diagrams if parsed inside HTML fallback
+          const imgMatch = q.questionText.match(/<img[^>]+src="([^">]+)"/);
+          if (imgMatch && imgMatch[1]) {
+            item.questionImage = imgMatch[1];
+            item.questionText = q.questionText.replace(/<img[^>]+>/g, '').trim();
+          }
+
+          const insertedId = await db.questionBank.add(item);
+          insertedQuestions.push({ ...item, id: insertedId });
         }
-
-        const insertedId = await db.questionBank.add(item);
-        item.id = insertedId;
-        await syncBankQuestionToCloud(item);
       });
 
-      await Promise.all(promises);
+      // Sync to cloud in bulk
+      await syncBankQuestionsBulkToCloud(insertedQuestions);
 
       alert(`Successfully imported ${toImport.length} questions into bank: ${selectedBank?.name}!`);
       setParsedQuestions([]);
@@ -1041,7 +1053,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
         options: [...selectedBankQ.options],
         correctOptionIdx: selectedBankQ.correctOptionIdx,
         explanation: selectedBankQ.explanation || '',
-        questionImage: selectedBankQ.questionImage || undefined
+        questionImage: selectedBankQ.questionImage || undefined,
+        syncState: 'pending'
       });
 
       // 2. Update Exam parameters
@@ -1058,7 +1071,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       await db.exams.update(exam.id!, {
         numQuestions: newQNum,
         answerKey: updatedKey,
-        answerKeys: Object.keys(updatedKeys).length > 0 ? updatedKeys : undefined
+        answerKeys: Object.keys(updatedKeys).length > 0 ? updatedKeys : undefined,
+        syncState: 'pending'
       });
 
       // 3. Sync updated exam parameters & questions list to Hostinger MySQL
@@ -1068,11 +1082,21 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
       }
       const allExamQs = await db.questions.where('examId').equals(exam.id!).toArray();
       try {
-        await fetch('/api/questions', {
+        const syncRes = await fetch('/api/questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ examId: exam.id!, questions: allExamQs })
+          body: JSON.stringify({ examId: exam.id!, questions: allExamQs.map(({ syncState, ...qFields }) => qFields) })
         });
+        if (syncRes.ok) {
+          // Mark all exam questions as synced!
+          await db.transaction('rw', db.questions, async () => {
+            for (const eq of allExamQs) {
+              if (eq.id) {
+                await db.questions.update(eq.id, { syncState: 'synced' });
+              }
+            }
+          });
+        }
       } catch (err) {
         console.warn("MySQL questions sync warning:", err);
       }

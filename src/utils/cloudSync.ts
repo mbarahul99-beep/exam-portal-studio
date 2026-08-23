@@ -2,11 +2,14 @@ import { db, type Student, type Exam, type ExamSubmission, type PendingRegistrat
 
 export async function syncAttendanceToCloud(record: AttendanceRecord) {
   try {
-    await fetch('/api/attendance', {
+    const res = await fetch('/api/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record)
     });
+    if (res.ok && record.id) {
+      await db.attendance.update(record.id, { syncState: 'synced' });
+    }
   } catch (err) {
     console.warn("Cloud sync attendance failed:", err);
   }
@@ -33,7 +36,7 @@ export async function syncExamToCloud(exam: Exam) {
           const examObj = await db.exams.get(oldId);
           if (examObj) {
             await db.exams.delete(oldId);
-            await db.exams.add({ ...examObj, id: newId });
+            await db.exams.add({ ...examObj, id: newId, syncState: 'synced' });
           }
           
           const qs = await db.questions.where('examId').equals(oldId).toArray();
@@ -52,6 +55,8 @@ export async function syncExamToCloud(exam: Exam) {
             }
           }
         });
+      } else {
+        await db.exams.update(exam.id!, { syncState: 'synced' });
       }
     }
   } catch (err) {
@@ -61,11 +66,14 @@ export async function syncExamToCloud(exam: Exam) {
 
 export async function syncStudentToCloud(student: Student) {
   try {
-    await fetch('/api/students', {
+    const res = await fetch('/api/students', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(student)
     });
+    if (res.ok && student.id) {
+      await db.students.update(student.id, { syncState: 'synced' });
+    }
   } catch (err) {
     console.warn("Cloud sync student failed:", err);
   }
@@ -74,11 +82,14 @@ export async function syncStudentToCloud(student: Student) {
 export async function syncSubmissionToCloud(sub: ExamSubmission) {
   if (sub.studentId < 0) return; // Skip temporary placeholders for unknown candidates
   try {
-    await fetch('/api/submissions', {
+    const res = await fetch('/api/submissions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sub)
     });
+    if (res.ok && sub.id) {
+      await db.submissions.update(sub.id, { syncState: 'synced' });
+    }
   } catch (err) {
     console.warn("Cloud sync submission failed:", err);
   }
@@ -86,11 +97,14 @@ export async function syncSubmissionToCloud(sub: ExamSubmission) {
 
 export async function syncClassToCloud(cls: ClassEntity) {
   try {
-    await fetch('/api/classes', {
+    const res = await fetch('/api/classes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cls)
     });
+    if (res.ok && cls.id) {
+      await db.classes.update(cls.id, { syncState: 'synced' });
+    }
   } catch (err) {
     console.warn("Cloud sync class failed:", err);
   }
@@ -98,11 +112,14 @@ export async function syncClassToCloud(cls: ClassEntity) {
 
 export async function syncPendingRegistrationToCloud(reg: PendingRegistration) {
   try {
-    await fetch('/api/register-student', {
+    const res = await fetch('/api/register-student', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reg)
     });
+    if (res.ok && reg.id) {
+      await db.pendingRegistrations.update(reg.id, { syncState: 'synced' });
+    }
   } catch (err) {
     console.warn("Cloud sync pending registration failed:", err);
   }
@@ -177,7 +194,7 @@ export async function syncQuestionBankToCloud(bank: QuestionBank) {
           const bankObj = await db.questionBanks.get(oldId);
           if (bankObj) {
             await db.questionBanks.delete(oldId);
-            await db.questionBanks.add({ ...bankObj, id: newId });
+            await db.questionBanks.add({ ...bankObj, id: newId, syncState: 'synced' });
           }
           
           const allQs = await db.questionBank.toArray();
@@ -190,6 +207,8 @@ export async function syncQuestionBankToCloud(bank: QuestionBank) {
             }
           }
         });
+      } else {
+        await db.questionBanks.update(bank.id!, { syncState: 'synced' });
       }
     }
   } catch (err) {
@@ -221,12 +240,52 @@ export async function syncBankQuestionToCloud(q: BankQuestion) {
         const qObj = await db.questionBank.get(oldId);
         if (qObj) {
           await db.questionBank.delete(oldId);
-          await db.questionBank.add({ ...qObj, id: newId });
+          await db.questionBank.add({ ...qObj, id: newId, syncState: 'synced' });
         }
+      } else {
+        await db.questionBank.update(q.id!, { syncState: 'synced' });
       }
     }
   } catch (err) {
     console.warn("Cloud sync bank question failed:", err);
+  }
+}
+
+export async function syncBankQuestionsBulkToCloud(questions: BankQuestion[]) {
+  if (questions.length === 0) return;
+  try {
+    const payload = questions.map(q => {
+      const { syncState, ...fields } = q;
+      return {
+        ...fields,
+        id: q.syncState === 'synced' ? q.id : null
+      };
+    });
+
+    const res = await fetch('/api/bank-questions/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions: payload })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.results)) {
+        await db.transaction('rw', db.questionBank, async () => {
+          for (const resObj of data.results) {
+            const localId = Number(resObj.localId);
+            const serverId = Number(resObj.serverId);
+            const qObj = await db.questionBank.get(localId);
+            if (qObj) {
+              await db.questionBank.delete(localId);
+              await db.questionBank.add({ ...qObj, id: serverId, syncState: 'synced' });
+            }
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("Cloud bulk sync bank questions failed:", err);
   }
 }
 
@@ -299,10 +358,10 @@ export async function pullCloudUpdatesToIndexedDB() {
     if (data.students && Array.isArray(data.students)) {
       const serverStudentIds = new Set(data.students.map((s: any) => s.id));
       
-      // Delete local students no longer on MySQL server
+      // Delete local students no longer on MySQL server (only if they were already synced)
       const localStudents = await db.students.toArray();
       for (const ls of localStudents) {
-        if (ls.id && !serverStudentIds.has(ls.id) && !ls.email?.includes('@appexjind.in')) {
+        if (ls.id && !serverStudentIds.has(ls.id) && !ls.email?.includes('@appexjind.in') && ls.syncState === 'synced') {
           await db.students.delete(ls.id);
         }
       }
@@ -323,7 +382,7 @@ export async function pullCloudUpdatesToIndexedDB() {
             if (duplicate && duplicate.id) {
               await db.students.delete(duplicate.id);
             }
-            await db.students.add({ id: st.id, ...studentFields });
+            await db.students.add({ id: st.id, ...studentFields, syncState: 'synced' });
           } else {
             const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
             const facePhoto = st.facePhoto || existing.facePhoto;
@@ -331,7 +390,8 @@ export async function pullCloudUpdatesToIndexedDB() {
             if (!isRecordEqual(existing, merged)) {
               await db.students.put({
                 id: st.id,
-                ...merged
+                ...merged,
+                syncState: 'synced'
               });
             }
           }
@@ -346,7 +406,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverClassNames = new Set(data.classes.map((c: any) => c.name));
       const localClasses = await db.classes.toArray();
       for (const lc of localClasses) {
-        if (lc.name && !serverClassNames.has(lc.name) && lc.id) {
+        if (lc.name && !serverClassNames.has(lc.name) && lc.id && lc.syncState === 'synced') {
           await db.classes.delete(lc.id);
         }
       }
@@ -356,10 +416,10 @@ export async function pullCloudUpdatesToIndexedDB() {
           const { id: mysqlId, ...classFields } = cls;
           const existing = await db.classes.where('name').equalsIgnoreCase(cls.name).first();
           if (!existing) {
-            await db.classes.add({ id: cls.id, ...classFields });
+            await db.classes.add({ id: cls.id, ...classFields, syncState: 'synced' });
           } else {
             if (!isRecordEqual(existing, classFields)) {
-              await db.classes.update(existing.id!, classFields);
+              await db.classes.update(existing.id!, { ...classFields, syncState: 'synced' });
             }
           }
         } catch (err) {
@@ -375,7 +435,7 @@ export async function pullCloudUpdatesToIndexedDB() {
         try {
           const existing = await db.classes.where('name').equalsIgnoreCase(clsName as string).first();
           if (!existing) {
-            await db.classes.add({ name: clsName as string, state: 'Synced', createdAt: new Date() });
+            await db.classes.add({ name: clsName as string, state: 'Synced', createdAt: new Date(), syncState: 'synced' });
           }
         } catch {}
       }
@@ -387,9 +447,9 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverExamTitles = new Set(data.exams.map((e: any) => e.title));
       const localExams = await db.exams.toArray();
       for (const le of localExams) {
-        if (le.id && !serverExamIds.has(le.id)) {
+        if (le.id && !serverExamIds.has(le.id) && le.syncState === 'synced') {
           await db.exams.delete(le.id);
-        } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1') && le.id) {
+        } else if (!serverExamTitles.has(le.title) && le.title.includes('NEET Practice Test 1') && le.id && le.syncState === 'synced') {
           await db.exams.delete(le.id);
         }
       }
@@ -472,11 +532,12 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (!existing) {
             await db.exams.add({
               ...examFields,
-              id: Number(ex.id)
+              id: Number(ex.id),
+              syncState: 'synced'
             });
           } else {
             if (!isRecordEqual(existing, examFields)) {
-              await db.exams.update(Number(ex.id), examFields);
+              await db.exams.update(Number(ex.id), { ...examFields, syncState: 'synced' });
             }
           }
         } catch (err) {
@@ -490,7 +551,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverSubIds = new Set(data.submissions.map((s: any) => s.id));
       const localSubs = await db.submissions.toArray();
       for (const ls of localSubs) {
-        if (ls.id && !serverSubIds.has(ls.id)) {
+        if (ls.id && !serverSubIds.has(ls.id) && ls.syncState === 'synced') {
           await db.submissions.delete(ls.id);
         }
       }
@@ -511,11 +572,11 @@ export async function pullCloudUpdatesToIndexedDB() {
             .toArray();
 
           if (matchingSubs.length === 0) {
-            await db.submissions.add({ id: sub.id, ...subFields });
+            await db.submissions.add({ id: sub.id, ...subFields, syncState: 'synced' });
           } else {
             // Update the primary submission record & remove any duplicate local rows
             if (matchingSubs[0].id && !isRecordEqual(matchingSubs[0], subFields)) {
-              await db.submissions.update(matchingSubs[0].id, subFields);
+              await db.submissions.update(matchingSubs[0].id, { ...subFields, syncState: 'synced' });
             }
             for (let i = 1; i < matchingSubs.length; i++) {
               if (matchingSubs[i].id) {
@@ -535,7 +596,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const activeExamIds = new Set(activeExams.map(e => e.id).filter(Boolean));
       const allSubmissions = await db.submissions.toArray();
       for (const sub of allSubmissions) {
-        if (!activeExamIds.has(sub.examId) && sub.id) {
+        if (!activeExamIds.has(sub.examId) && sub.id && sub.syncState === 'synced') {
           await db.submissions.delete(sub.id);
           try {
             await fetch(`/api/submissions/${sub.id}`, { method: 'DELETE' });
@@ -546,14 +607,17 @@ export async function pullCloudUpdatesToIndexedDB() {
 
     // 5. Sync Questions
     if (data.questions && Array.isArray(data.questions)) {
-      // Find all unique examIds present in the incoming exams list
       const serverExamIds = new Set<number>(data.exams ? data.exams.map((e: any) => Number(e.id)) : []);
       
       try {
         await db.transaction('rw', db.questions, async () => {
           // Delete local questions for all exams that are synced from server to prevent duplicates
+          // BUT only if we don't have any locally pending additions for that exam!
           for (const examId of serverExamIds) {
-            await db.questions.where('examId').equals(examId).delete();
+            const pendingCount = await db.questions.where('examId').equals(examId).filter(q => q.syncState === 'pending').count();
+            if (pendingCount === 0) {
+              await db.questions.where('examId').equals(examId).delete();
+            }
           }
 
           // Prepare clean questions list for bulkAdd
@@ -562,7 +626,15 @@ export async function pullCloudUpdatesToIndexedDB() {
             const { id: mysqlId, ...qFields } = q;
             qFields.examId = Number(qFields.examId);
             qFields.correctOptionIdx = Number(qFields.correctOptionIdx);
-            qListToAdd.push(qFields);
+            
+            const existingQ = await db.questions.where('examId').equals(qFields.examId)
+              .and(localQ => localQ.questionText === qFields.questionText).first();
+            
+            if (!existingQ) {
+              qListToAdd.push({ ...qFields, syncState: 'synced' });
+            } else {
+              await db.questions.update(existingQ.id!, { ...qFields, syncState: 'synced' });
+            }
           }
           
           if (qListToAdd.length > 0) {
@@ -579,7 +651,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverTeacherUserIds = new Set(data.teachers.map((t: any) => t.userId));
       const localTeachers = await db.teachers.toArray();
       for (const lt of localTeachers) {
-        if (lt.userId && !serverTeacherUserIds.has(lt.userId) && lt.id) {
+        if (lt.userId && !serverTeacherUserIds.has(lt.userId) && lt.id && lt.syncState === 'synced') {
           await db.teachers.delete(lt.id);
         }
       }
@@ -589,9 +661,9 @@ export async function pullCloudUpdatesToIndexedDB() {
           const { id: mysqlId, ...tFields } = t;
           const existing = await db.teachers.where('userId').equals(t.userId).first();
           if (!existing) {
-            await db.teachers.add({ id: t.id, ...tFields });
+            await db.teachers.add({ id: t.id, ...tFields, syncState: 'synced' });
           } else {
-            await db.teachers.update(existing.id!, tFields);
+            await db.teachers.update(existing.id!, { ...tFields, syncState: 'synced' });
           }
         } catch (err) {
           console.warn("Error syncing teacher item:", err);
@@ -604,7 +676,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const serverAttendanceIds = new Set(data.attendance.map((a: any) => a.id));
       const localAttendance = await db.attendance.toArray();
       for (const la of localAttendance) {
-        if (la.id && !serverAttendanceIds.has(la.id)) {
+        if (la.id && !serverAttendanceIds.has(la.id) && la.syncState === 'synced') {
           await db.attendance.delete(la.id);
         }
       }
@@ -612,13 +684,12 @@ export async function pullCloudUpdatesToIndexedDB() {
       for (const att of data.attendance) {
         try {
           const { id: mysqlId, ...attFields } = att;
-          // Find existing by ID or composite key [date+studentId]
           const existing = await db.attendance.get(att.id) || await db.attendance.where('[date+studentId]').equals([att.date, att.studentId]).first();
           if (!existing) {
-            await db.attendance.add({ id: att.id, ...attFields });
+            await db.attendance.add({ id: att.id, ...attFields, syncState: 'synced' });
           } else {
             if (!isRecordEqual(existing, attFields)) {
-              await db.attendance.update(existing.id!, attFields);
+              await db.attendance.update(existing.id!, { ...attFields, syncState: 'synced' });
             }
           }
         } catch (err) {
@@ -635,10 +706,10 @@ export async function pullCloudUpdatesToIndexedDB() {
         if (Array.isArray(pendingData)) {
           const serverIds = new Set(pendingData.map(r => r.id));
 
-          // Delete local pending registrations that are no longer pending on the server
+          // Delete local pending registrations that are no longer pending on the server (only if synced)
           const localPending = await db.pendingRegistrations.where('status').equals('pending').toArray();
           for (const localReg of localPending) {
-            if (localReg.id && !serverIds.has(localReg.id)) {
+            if (localReg.id && !serverIds.has(localReg.id) && localReg.syncState === 'synced') {
               await db.pendingRegistrations.delete(localReg.id);
             }
           }
@@ -648,9 +719,9 @@ export async function pullCloudUpdatesToIndexedDB() {
               reg.fatherName = reg.fatherName || reg.fathername || reg.father_name;
               const existing = await db.pendingRegistrations.get(reg.id);
               if (!existing) {
-                await db.pendingRegistrations.add(reg);
+                await db.pendingRegistrations.add({ ...reg, syncState: 'synced' });
               } else {
-                await db.pendingRegistrations.put(reg);
+                await db.pendingRegistrations.put({ ...reg, syncState: 'synced' });
               }
             } catch {}
           }
@@ -693,7 +764,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const localBanks = await db.questionBanks.toArray();
       for (const lb of localBanks) {
         const isNew = lb.createdAt && (new Date().getTime() - new Date(lb.createdAt).getTime() < 300000);
-        if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics" && !isNew) {
+        if (lb.id && !serverBankIds.has(lb.id) && lb.name !== "NEET / JEE - Core Library: Mixed Topics" && !isNew && lb.syncState === 'synced') {
           await db.questionBanks.delete(lb.id);
         }
       }
@@ -713,7 +784,8 @@ export async function pullCloudUpdatesToIndexedDB() {
               targetExam: b.targetExam,
               subject: b.subject,
               topic: b.topic,
-              createdAt: new Date(b.createdAt)
+              createdAt: new Date(b.createdAt),
+              syncState: 'synced'
             });
           } else {
             if (!isRecordEqual(existing, incoming)) {
@@ -723,7 +795,8 @@ export async function pullCloudUpdatesToIndexedDB() {
                 targetExam: b.targetExam,
                 subject: b.subject,
                 topic: b.topic,
-                createdAt: new Date(b.createdAt)
+                createdAt: new Date(b.createdAt),
+                syncState: 'synced'
               });
             }
           }
@@ -743,7 +816,7 @@ export async function pullCloudUpdatesToIndexedDB() {
       const localQs = await db.questionBank.toArray();
       for (const lq of localQs) {
         const isNew = lq.createdAt && (new Date().getTime() - new Date(lq.createdAt).getTime() < 300000);
-        if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId && !isNew) {
+        if (lq.id && !serverQIds.has(lq.id) && lq.bankId !== defaultBankId && !isNew && lq.syncState === 'synced') {
           await db.questionBank.delete(lq.id);
         }
       }
@@ -769,7 +842,8 @@ export async function pullCloudUpdatesToIndexedDB() {
               difficulty: q.difficulty,
               explanation: q.explanation || undefined,
               questionImage: q.questionImage || undefined,
-              createdAt: new Date(q.createdAt)
+              createdAt: new Date(q.createdAt),
+              syncState: 'synced'
             });
           } else {
             if (!isRecordEqual(existing, incoming)) {
@@ -782,7 +856,8 @@ export async function pullCloudUpdatesToIndexedDB() {
                 difficulty: q.difficulty,
                 explanation: q.explanation || undefined,
                 questionImage: q.questionImage || undefined,
-                createdAt: new Date(q.createdAt)
+                createdAt: new Date(q.createdAt),
+                syncState: 'synced'
               });
             }
           }

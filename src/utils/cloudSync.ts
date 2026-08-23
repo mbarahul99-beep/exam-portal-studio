@@ -867,6 +867,181 @@ export async function pullCloudUpdatesToIndexedDB() {
       }
     }
 
+    // 11. Run self-healing check on all exams
+    try {
+      const allExams = await db.exams.toArray();
+      for (const exam of allExams) {
+        if (!exam.id) continue;
+        const dbQs = await db.questions.where('examId').equals(exam.id).toArray();
+        const nonPlaceholders = dbQs.filter(q => q.questionText && q.questionText.trim() !== '');
+        if (nonPlaceholders.length === 0) continue;
+
+        let qCursor = 1;
+        const sectionsWithRanges = (exam.sections || []).map(sec => {
+          const start = qCursor;
+          const end = qCursor + sec.qCount - 1;
+          qCursor = end + 1;
+          return { ...sec, qStart: start, qEnd: end };
+        });
+
+        const totalQuestions = sectionsWithRanges.reduce((acc, sec) => acc + sec.qCount, 0) || exam.numQuestions || 180;
+
+        // Check if they are misaligned
+        const sectionCounters: Record<string, number> = {};
+        let wasRealigned = false;
+        nonPlaceholders.forEach((qVal) => {
+          const subName = qVal.subjectName || 'Subject 1';
+          const secName = qVal.sectionName || 'Section 1';
+          const key = `${subName.toLowerCase().trim()}|${secName.toLowerCase().trim()}`;
+          
+          const secConfig = sectionsWithRanges.find(sec => 
+            sec.subjectName.toLowerCase().trim() === subName.toLowerCase().trim() &&
+            sec.sectionName.toLowerCase().trim() === secName.toLowerCase().trim()
+          );
+
+          if (secConfig) {
+            const counter = sectionCounters[key] || 0;
+            const qNum = secConfig.qStart + counter;
+            const targetIdx = qNum - 1;
+            const origIdxInDb = dbQs.findIndex(x => x.id === qVal.id);
+            if (origIdxInDb !== targetIdx) {
+              wasRealigned = true;
+            }
+            sectionCounters[key] = counter + 1;
+          }
+        });
+
+        if (wasRealigned || dbQs.length !== totalQuestions) {
+          console.log(`[Self-Healer] Realignment needed for Exam: ${exam.title} (ID: ${exam.id})`);
+          
+          // Re-build healed list
+          const healedList: any[] = [];
+          sectionsWithRanges.forEach(sec => {
+            for (let i = 0; i < sec.qCount; i++) {
+              const qNum = sec.qStart + i;
+              healedList.push({
+                examId: exam.id!,
+                qNum,
+                sectionName: sec.sectionName,
+                subjectName: sec.subjectName,
+                questionText: '',
+                options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+                correctOptionIdx: 0,
+                explanation: '',
+                questionImage: '',
+                difficulty: 'Easy' as const
+              });
+            }
+          });
+
+          const sectionCounters2: Record<string, number> = {};
+          nonPlaceholders.forEach((qVal) => {
+            const subName = qVal.subjectName || 'Subject 1';
+            const secName = qVal.sectionName || 'Section 1';
+            const key = `${subName.toLowerCase().trim()}|${secName.toLowerCase().trim()}`;
+            
+            const secConfig = sectionsWithRanges.find(sec => 
+              sec.subjectName.toLowerCase().trim() === subName.toLowerCase().trim() &&
+              sec.sectionName.toLowerCase().trim() === secName.toLowerCase().trim()
+            );
+
+            if (secConfig) {
+              const counter = sectionCounters2[key] || 0;
+              const qNum = secConfig.qStart + counter;
+              if (qNum <= secConfig.qEnd) {
+                const targetIdx = qNum - 1;
+                healedList[targetIdx] = {
+                  ...healedList[targetIdx],
+                  id: qVal.id,
+                  questionText: qVal.questionText,
+                  options: qVal.options,
+                  correctOptionIdx: qVal.correctOptionIdx,
+                  explanation: qVal.explanation || '',
+                  questionImage: qVal.questionImage || '',
+                  difficulty: qVal.difficulty || 'Easy'
+                };
+                sectionCounters2[key] = counter + 1;
+              }
+            }
+          });
+
+          // Save healed questions to local IndexedDB
+          const cleanQuestions = healedList.map(q => ({
+            examId: exam.id!,
+            subjectName: q.subjectName,
+            sectionName: q.sectionName,
+            questionText: (q.questionText || '').trim(),
+            options: q.options ? q.options.map((o: string) => (o || '').trim()) : ['', '', '', ''],
+            correctOptionIdx: Number(q.correctOptionIdx || 0),
+            explanation: (q.explanation || '').trim(),
+            questionImage: q.questionImage || undefined,
+            difficulty: q.difficulty || 'Easy',
+            syncState: 'pending' as const
+          }));
+
+          await db.questions.where('examId').equals(exam.id).delete();
+          await db.questions.bulkAdd(cleanQuestions);
+          const reloaded = await db.questions.where('examId').equals(exam.id).toArray();
+
+          // Save healed answerKey to local IndexedDB
+          const newAnswerKey: Record<number, string> = {};
+          reloaded.forEach((q, index) => {
+            newAnswerKey[index + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
+          });
+
+          const updatedAnswerKeys: Record<string, Record<number, string>> = {};
+          const setsCount = exam.examSetsCount || 1;
+          const setNames = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+          setNames.forEach(setName => {
+            const existingSetKey = exam.answerKeys?.[setName] || (setName === 'A' ? exam.answerKey : {}) || {};
+            const newSetKey: Record<number, string> = {};
+            for (let qNum = 1; qNum <= reloaded.length; qNum++) {
+              if (setName === 'A') {
+                newSetKey[qNum] = newAnswerKey[qNum] || 'A';
+              } else {
+                newSetKey[qNum] = existingSetKey[qNum] || 'A';
+              }
+            }
+            updatedAnswerKeys[setName] = newSetKey;
+          });
+
+          await db.exams.update(exam.id, {
+            numQuestions: reloaded.length,
+            answerKey: newAnswerKey,
+            answerKeys: updatedAnswerKeys,
+            syncState: 'pending'
+          });
+
+          // Sync to cloud MySQL DB
+          try {
+            const syncRes = await fetch('/api/questions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ examId: exam.id, questions: cleanQuestions.map(({ syncState, ...qFields }) => qFields) })
+            });
+            if (syncRes.ok) {
+              await db.transaction('rw', db.questions, async () => {
+                for (const eq of reloaded) {
+                  if (eq.id) {
+                    await db.questions.update(eq.id, { syncState: 'synced' });
+                  }
+                }
+              });
+            }
+          } catch {}
+
+          try {
+            const freshExam = await db.exams.get(exam.id);
+            if (freshExam) {
+              await syncExamToCloud(freshExam);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn("Background self-healer check failed:", err);
+    }
+
     console.log("✅ Cloud sync from Hostinger MySQL completed successfully.");
   } catch (err) {
     console.warn("Cloud sync pull failed:", err);

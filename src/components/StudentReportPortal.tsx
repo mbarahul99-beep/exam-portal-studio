@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb, Users, CheckCircle2, Check, AlertCircle } from 'lucide-react';
+import { LogOut, Award, BookOpen, TrendingUp, Activity, Calendar, ChevronLeft, Download, CheckCircle, XCircle, MinusCircle, Camera, X, Lightbulb, Users, CheckCircle2, Check, AlertCircle, Clock } from 'lucide-react';
 import { db, type Exam, type ExamSubmission } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StudentReportPrint } from './StudentReportPrint';
@@ -16,6 +16,7 @@ interface StudentReportPortalProps {
   onClose?: () => void;
   preSelectedExamId?: number;
   publicMode?: boolean;
+  onStartExam?: (examId: number) => void;
 }
 
 function getPieSectorPath(startPercent: number, endPercent: number): string {
@@ -38,7 +39,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   adminMode = false,
   onClose,
   preSelectedExamId,
-  publicMode = false
+  publicMode = false,
+  onStartExam
 }) => {
   const [activeAnalysisSub, setActiveAnalysisSub] = useState<(ExamSubmission & { exam: Exam; studentRank: number; totalStudents: number; classAvg: number }) | null>(null);
   const [selectedChartDiff, setSelectedChartDiff] = useState<'Easy' | 'Moderate' | 'Difficult' | null>(null);
@@ -115,7 +117,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   // Dynamic Header Logo Scaling States
   const [logoHeight, setLogoHeight] = useState<number>(42);
   const [logoNameHeight, setLogoNameHeight] = useState<number>(38);
-  const [activeTab, setActiveTab] = useState<'exams' | 'attendance'>('exams');
+  const [activeTab, setActiveTab] = useState<'exams' | 'attendance' | 'online-exams'>('exams');
 
   useEffect(() => {
     const loadBranding = () => {
@@ -192,6 +194,17 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
   const allSubmissions = useLiveQuery(() => db.submissions.toArray()) || [];
   const allQuestions = useLiveQuery(() => db.questions.toArray()) || [];
   const studentAttendance = useLiveQuery(() => db.attendance.where('studentId').equals(numStudentId).toArray(), [numStudentId]) || [];
+
+  // Fetch online exams configured for the student's class
+  const onlineExams = React.useMemo(() => {
+    if (!student) return [];
+    return exams.filter(exam => {
+      const isForClass = exam.className === student.className;
+      const isPublic = exam.status === 'public';
+      const isOnline = exam.startsAt !== undefined || exam.durationMins !== undefined || exam.loginOption !== undefined;
+      return isForClass && isPublic && isOnline;
+    });
+  }, [exams, student]);
 
   // Match exam, calculate rank, and class average for each submission
   const examMap = new Map(exams.map(e => [e.id, e]));
@@ -1761,6 +1774,27 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         >
                           <Calendar size={14} /> Attendance
                         </button>
+                        <button
+                          onClick={() => setActiveTab('online-exams')}
+                          style={{
+                            border: 'none',
+                            background: activeTab === 'online-exams' ? '#ffffff' : 'transparent',
+                            color: activeTab === 'online-exams' ? '#2563eb' : '#64748b',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontSize: '0.82rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: activeTab === 'online-exams' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                            transition: 'all 0.2s ease',
+                            outline: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Activity size={14} /> Online Exams
+                        </button>
                       </div>
 
                       <button 
@@ -2151,6 +2185,143 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     </>
                   );
                 })()}
+              </div>
+            )}
+
+            {activeTab === 'online-exams' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Live & Upcoming Exams</h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>Take online exams configured for your target class: {student?.className}</p>
+                  </div>
+                </div>
+
+                {onlineExams.length === 0 ? (
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '48px', textAlign: 'center', color: '#64748b' }}>
+                    <BookOpen size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
+                    <p style={{ margin: 0, fontWeight: 'bold' }}>No online exams available</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>There are currently no active or scheduled online exams for your class.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                    {onlineExams.map(exam => {
+                      const hasSubmitted = submissions.some(sub => sub.examId === exam.id);
+                      const startsAtDate = exam.startsAt ? new Date(exam.startsAt) : null;
+                      const isUpcoming = startsAtDate && startsAtDate.getTime() > Date.now();
+
+                      return (
+                        <div 
+                          key={exam.id} 
+                          style={{ 
+                            background: '#fff', 
+                            border: '1px solid #e2e8f0', 
+                            borderRadius: '16px', 
+                            padding: '24px', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            justifyContent: 'space-between', 
+                            boxShadow: '0 4px 10px rgba(0,0,0,0.01)',
+                            position: 'relative'
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                              <span style={{ 
+                                fontSize: '0.72rem', 
+                                background: hasSubmitted ? '#dcfce7' : isUpcoming ? '#fef3c7' : '#dbeafe', 
+                                color: hasSubmitted ? '#15803d' : isUpcoming ? '#b45309' : '#2563eb', 
+                                fontWeight: 800, 
+                                padding: '4px 10px', 
+                                borderRadius: '12px',
+                                textTransform: 'uppercase'
+                              }}>
+                                {hasSubmitted ? 'Completed' : isUpcoming ? 'Upcoming' : 'Active Now'}
+                              </span>
+                              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'bold' }}>{exam.numQuestions} Questions</span>
+                            </div>
+
+                            <h4 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>{exam.title}</h4>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', color: '#475569', marginBottom: '18px' }}>
+                              {exam.durationMins && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Clock size={13} style={{ color: '#94a3b8' }} />
+                                  <span>Duration: <strong>{exam.durationMins} Mins</strong></span>
+                                </div>
+                              )}
+                              {startsAtDate && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Calendar size={13} style={{ color: '#94a3b8' }} />
+                                  <span>Starts: <strong>{startsAtDate.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong></span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            {hasSubmitted ? (
+                              <button 
+                                disabled 
+                                style={{ 
+                                  width: '100%', 
+                                  padding: '10px', 
+                                  borderRadius: '10px', 
+                                  background: '#f1f5f9', 
+                                  color: '#94a3b8', 
+                                  border: 'none', 
+                                  fontWeight: 'bold', 
+                                  fontSize: '0.85rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
+                                }}
+                              >
+                                <Check size={16} /> Exam Submitted
+                              </button>
+                            ) : isUpcoming ? (
+                              <button 
+                                disabled 
+                                style={{ 
+                                  width: '100%', 
+                                  padding: '10px', 
+                                  borderRadius: '10px', 
+                                  background: '#f8fafc', 
+                                  color: '#64748b', 
+                                  border: '1px solid #e2e8f0', 
+                                  fontWeight: 'bold', 
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                Upcoming Exam
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => onStartExam && onStartExam(exam.id!)}
+                                style={{ 
+                                  width: '100%', 
+                                  padding: '10px', 
+                                  borderRadius: '10px', 
+                                  background: 'var(--primary)', 
+                                  color: '#fff', 
+                                  border: 'none', 
+                                  fontWeight: 'bold', 
+                                  fontSize: '0.85rem',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 4px 10px rgba(37, 99, 235, 0.2)',
+                                  transition: 'background 0.2s'
+                                }}
+                              >
+                                Start Exam
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

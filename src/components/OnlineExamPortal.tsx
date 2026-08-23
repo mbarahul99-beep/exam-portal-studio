@@ -21,12 +21,13 @@ import { MathRenderer } from './MathRenderer';
 interface OnlineExamPortalProps {
   examId: number;
   onClose: () => void;
+  preLoggedInStudentId?: number;
 }
 
 // Option letters mapper
 const OPTIONS = ['A', 'B', 'C', 'D'];
 
-export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onClose }) => {
+export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onClose, preLoggedInStudentId }) => {
   const [exam, setExam] = useState<Exam | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -120,6 +121,15 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
           // Generate high-fidelity mock questions dynamically aligned with answerKey
           setQuestionsList(generateMockQuestions(examObj.numQuestions, examObj.answerKey, examId));
         }
+
+        if (preLoggedInStudentId) {
+          const matched = await db.students.get(preLoggedInStudentId);
+          if (matched) {
+            setStudent(matched);
+            setExamState('instructions');
+          }
+        }
+
         setLoading(false);
       } catch (err: any) {
         setErrorMsg(`Failed to load exam: ${err.message}`);
@@ -127,7 +137,7 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
       }
     };
     loadExam();
-  }, [examId]);
+  }, [examId, preLoggedInStudentId]);
 
   // 2. Track Window Focus Blurs (Cheating Tab Switches)
   useEffect(() => {

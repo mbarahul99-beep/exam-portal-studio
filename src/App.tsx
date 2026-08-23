@@ -133,6 +133,7 @@ export default function App() {
       return val ? Number(val) : null;
     }
   );
+  const [activeOnlineExamId, setActiveOnlineExamId] = useState<number | null>(null);
   const [sessionTeacherId, setSessionTeacherId] = useState<number | null>(
     () => {
       const val = localStorage.getItem('appex_session_teacher_id');
@@ -2060,11 +2061,21 @@ export default function App() {
   }
 
   if (sessionRole === 'student') {
+    if (activeOnlineExamId !== null) {
+      return (
+        <OnlineExamPortal 
+          examId={activeOnlineExamId}
+          preLoggedInStudentId={sessionStudentId!}
+          onClose={() => setActiveOnlineExamId(null)}
+        />
+      );
+    }
     return (
       <>
         <StudentReportPortal 
           studentId={sessionStudentId!} 
           onLogout={handleLogout}
+          onStartExam={(examId) => setActiveOnlineExamId(examId)}
         />
         <InstallPWAPrompt forceShow={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
       </>

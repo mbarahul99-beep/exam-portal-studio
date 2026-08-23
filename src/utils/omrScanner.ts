@@ -627,16 +627,6 @@ export async function scanOMRSheet(
       }
     ];
 
-    // Calculate physical aspect ratio of the quadrilateral in the original camera frame
-    const wTopPhys = Math.sqrt((tlMarker.center.x - trMarker.center.x) ** 2 + (tlMarker.center.y - trMarker.center.y) ** 2);
-    const wBotPhys = Math.sqrt((blMarker.center.x - brMarker.center.x) ** 2 + (blMarker.center.y - brMarker.center.y) ** 2);
-    const hLeftPhys = Math.sqrt((tlMarker.center.x - blMarker.center.x) ** 2 + (tlMarker.center.y - blMarker.center.y) ** 2);
-    const hRightPhys = Math.sqrt((trMarker.center.x - brMarker.center.x) ** 2 + (trMarker.center.y - brMarker.center.y) ** 2);
-    
-    const avgWPhys = (wTopPhys + wBotPhys) / 2;
-    const avgHPhys = (hLeftPhys + hRightPhys) / 2;
-    const physRatio = avgWPhys > 0 ? avgHPhys / avgWPhys : 1.0;
-
     bestWarpedMat = null;
     let maxOrientationContrast = -1;
     let bestConfig = anchorConfigs[1]; // default to 70px anchors
@@ -656,10 +646,6 @@ export async function scanOMRSheet(
       currentYStartOffset = config.yStartOffset;
 
       for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
-        // Enforce physical aspect ratio to skip 90 degree mismatched warp rotations
-        if (physRatio > 1.08 && (rotIdx === 1 || rotIdx === 3)) continue;
-        if (physRatio < 0.92 && (rotIdx === 0 || rotIdx === 2)) continue;
-
         const rot = candidateRotations[rotIdx];
         const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
           rot[0].center.x, rot[0].center.y,
@@ -975,7 +961,7 @@ export async function scanOMRSheet(
     // real pencil/light-pen mark can produce (ceiling) — Otsu is self-calibrating
     // but a badly-lit or nearly-blank sheet can still push it to an unreasonable
     // extreme, so these rails keep it within a sane, empirically safe band.
-    const fillDepthCutoff = Math.min(45, Math.max(20, otsuCut));
+    const fillDepthCutoff = Math.min(90, Math.max(20, otsuCut));
     console.log("[OMR Scanner] Self-calibrated fill-depth cutoff (Otsu):", fillDepthCutoff.toFixed(1), "raw:", otsuCut.toFixed(1));
 
     const classifyRow = (rec: RowRecord): number[] => {
@@ -984,7 +970,7 @@ export async function scanOMRSheet(
       const maxDepth = Math.max(...depths);
       for (let i = 0; i < depths.length; i++) {
         const isDarkEnough = depths[i] >= fillDepthCutoff;
-        const isBinaryDense = rec.samples[i].avgBin > 50; // ink actually present, not just faint shadow
+        const isBinaryDense = rec.samples[i].avgBin > 60; // ink actually present, not just faint shadow
         // A genuine mark must also stand out from THIS row's own darkest other
         // option — guards against a shadow/crease darkening the whole row evenly
         // (which would otherwise still clear the global cutoff for every option).

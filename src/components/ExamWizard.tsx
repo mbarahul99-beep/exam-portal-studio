@@ -231,20 +231,53 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
               return { ...sec, qStart: start, qEnd: end };
             });
 
-            const list = nonPlaceholders.map((qVal, idx) => {
-              const qNum = idx + 1;
-              const matchedSec = sectionsWithRanges.find(sec => qNum >= sec.qStart && qNum <= sec.qEnd);
-              return {
-                qNum: qNum,
-                sectionName: qVal.sectionName || matchedSec?.sectionName || 'Section A',
-                subjectName: qVal.subjectName || matchedSec?.subjectName || 'Subject 1',
-                questionText: qVal.questionText,
-                options: qVal.options,
-                correctOptionIdx: qVal.correctOptionIdx,
-                explanation: qVal.explanation || '',
-                questionImage: qVal.questionImage || ''
-              };
+            // Initialize full list of empty placeholder slots matching exam sections
+            const list: any[] = [];
+            sectionsWithRanges.forEach(sec => {
+              for (let i = 0; i < sec.qCount; i++) {
+                const qNum = sec.qStart + i;
+                list.push({
+                  qNum,
+                  sectionName: sec.sectionName,
+                  subjectName: sec.subjectName,
+                  questionText: '',
+                  options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
+                  correctOptionIdx: 0,
+                  explanation: '',
+                  questionImage: ''
+                });
+              }
             });
+
+            // Place each non-placeholder question in its correct slot based on subject & section
+            const sectionCounters: Record<string, number> = {};
+            nonPlaceholders.forEach((qVal) => {
+              const subName = qVal.subjectName || 'Subject 1';
+              const secName = qVal.sectionName || 'Section 1';
+              const key = `${subName.toLowerCase().trim()}|${secName.toLowerCase().trim()}`;
+              
+              const secConfig = sectionsWithRanges.find(sec => 
+                sec.subjectName.toLowerCase().trim() === subName.toLowerCase().trim() &&
+                sec.sectionName.toLowerCase().trim() === secName.toLowerCase().trim()
+              );
+
+              if (secConfig) {
+                const counter = sectionCounters[key] || 0;
+                const qNum = secConfig.qStart + counter;
+                if (qNum <= secConfig.qEnd) {
+                  const targetSlot = list.find(item => item.qNum === qNum);
+                  if (targetSlot) {
+                    targetSlot.questionText = qVal.questionText;
+                    targetSlot.options = qVal.options;
+                    targetSlot.correctOptionIdx = qVal.correctOptionIdx;
+                    targetSlot.explanation = qVal.explanation || '';
+                    targetSlot.questionImage = qVal.questionImage || '';
+                  }
+                  sectionCounters[key] = counter + 1;
+                }
+              }
+            });
+
             setQuestionsState(list);
           } else {
             setQuestionsState([]);

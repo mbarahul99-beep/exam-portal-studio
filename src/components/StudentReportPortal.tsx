@@ -1809,7 +1809,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               );
             })()}
 
-            {activeTab === 'exams' ? (
+            {activeTab === 'exams' && (
               <>
 
             {/* KPI Cards Row */}
@@ -2055,7 +2055,9 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
               </div>
             </div>
           </>
-        ) : (
+        )}
+
+        {activeTab === 'attendance' && (
               /* Attendance View */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {(() => {

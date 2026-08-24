@@ -1580,10 +1580,16 @@ Return the result as a JSON object matching the requested schema.`;
 
 // Delete Student OMR Submission Record API
 app.post('/api/admin/delete-submission', async (req, res) => {
-  const { examId, studentId } = req.body;
+  const { id, examId, studentId } = req.body;
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   try {
-    await pool.query('DELETE FROM submissions WHERE examId = ? AND studentId = ?', [examId, studentId]);
+    if (id) {
+      await pool.query('DELETE FROM submissions WHERE id = ?', [id]);
+    } else if (examId && studentId) {
+      await pool.query('DELETE FROM submissions WHERE examId = ? AND studentId = ?', [examId, studentId]);
+    } else {
+      return res.status(400).json({ error: 'Missing id or examId and studentId' });
+    }
     res.json({ success: true, message: 'Submission record deleted successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });

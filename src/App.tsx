@@ -2609,6 +2609,11 @@ export default function App() {
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (confirm(`Are you sure you want to delete class "${cls.name}"?`)) {
+                                    const deletedClasses: string[] = JSON.parse(localStorage.getItem('sync_deleted_classes') || '[]');
+                                    if (!deletedClasses.some(name => name.toLowerCase() === cls.name.toLowerCase())) {
+                                      deletedClasses.push(cls.name);
+                                      localStorage.setItem('sync_deleted_classes', JSON.stringify(deletedClasses));
+                                    }
                                     await deleteClassFromCloud(cls.name);
                                     
                                     // Fetch exams for this class to cascade delete local submissions and questions
@@ -3099,7 +3104,14 @@ export default function App() {
                                             onClick={async () => {
                                               setStudentMenuOpenId(null);
                                               if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
-                                                if (s.id) await deleteStudentFromCloud(s.id);
+                                                if (s.id) {
+                                                  const deletedStudents: number[] = JSON.parse(localStorage.getItem('sync_deleted_students') || '[]');
+                                                  if (!deletedStudents.includes(s.id)) {
+                                                    deletedStudents.push(s.id);
+                                                    localStorage.setItem('sync_deleted_students', JSON.stringify(deletedStudents));
+                                                  }
+                                                  await deleteStudentFromCloud(s.id);
+                                                }
                                                 await db.students.delete(s.id!);
                                                 await db.submissions.where('studentId').equals(s.id!).delete();
                                                 pullCloudUpdatesToIndexedDB();

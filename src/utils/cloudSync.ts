@@ -362,6 +362,65 @@ export async function pullCloudUpdatesToIndexedDB() {
     }
     const data = await res.json();
 
+    // Retrieve deleted queues from localStorage to prevent server-deleted restores
+    const deletedStudents: number[] = JSON.parse(localStorage.getItem('sync_deleted_students') || '[]');
+    const deletedClasses: string[] = JSON.parse(localStorage.getItem('sync_deleted_classes') || '[]');
+    const deletedExams: number[] = JSON.parse(localStorage.getItem('sync_deleted_exams') || '[]');
+    const deletedSubmissions: number[] = JSON.parse(localStorage.getItem('sync_deleted_submissions') || '[]');
+
+    // 0. Retries & Filters for deleted records to ensure they never restore
+    if (data.students && Array.isArray(data.students)) {
+      const serverStudentIds = new Set(data.students.map((s: any) => Number(s.id)));
+      const nextDeletedStudents = deletedStudents.filter(id => {
+        if (serverStudentIds.has(id)) {
+          deleteStudentFromCloud(id).catch(console.warn);
+          return true; // Keep in queue to retry
+        }
+        return false; // Server successfully deleted it
+      });
+      localStorage.setItem('sync_deleted_students', JSON.stringify(nextDeletedStudents));
+      data.students = data.students.filter((s: any) => !deletedStudents.includes(Number(s.id)));
+    }
+
+    if (data.classes && Array.isArray(data.classes)) {
+      const serverClassNames = new Set(data.classes.map((c: any) => c.name.toLowerCase()));
+      const nextDeletedClasses = deletedClasses.filter(name => {
+        if (serverClassNames.has(name.toLowerCase())) {
+          deleteClassFromCloud(name).catch(console.warn);
+          return true; // Keep in queue to retry
+        }
+        return false; // Server successfully deleted it
+      });
+      localStorage.setItem('sync_deleted_classes', JSON.stringify(nextDeletedClasses));
+      data.classes = data.classes.filter((c: any) => !deletedClasses.some(name => name.toLowerCase() === c.name.toLowerCase()));
+    }
+
+    if (data.exams && Array.isArray(data.exams)) {
+      const serverExamIds = new Set(data.exams.map((e: any) => Number(e.id)));
+      const nextDeletedExams = deletedExams.filter(id => {
+        if (serverExamIds.has(id)) {
+          deleteExamFromCloud(id).catch(console.warn);
+          return true; // Keep in queue to retry
+        }
+        return false; // Server successfully deleted it
+      });
+      localStorage.setItem('sync_deleted_exams', JSON.stringify(nextDeletedExams));
+      data.exams = data.exams.filter((e: any) => !deletedExams.includes(Number(e.id)));
+    }
+
+    if (data.submissions && Array.isArray(data.submissions)) {
+      const serverSubIds = new Set(data.submissions.map((s: any) => Number(s.id)));
+      const nextDeletedSubmissions = deletedSubmissions.filter(id => {
+        if (serverSubIds.has(id)) {
+          deleteSubmissionFromCloud(id).catch(console.warn);
+          return true; // Keep in queue to retry
+        }
+        return false; // Server successfully deleted it
+      });
+      localStorage.setItem('sync_deleted_submissions', JSON.stringify(nextDeletedSubmissions));
+      data.submissions = data.submissions.filter((s: any) => !deletedSubmissions.includes(Number(s.id)));
+    }
+
     // 1. Sync Students (Add/Update & Purge Deleted)
     if (data.students && Array.isArray(data.students)) {
       const serverStudentIds = new Set(data.students.map((s: any) => s.id));

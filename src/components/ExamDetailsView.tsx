@@ -531,6 +531,13 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
 
     try {
       const sub = examSubs.find(s => s.id === submissionId);
+      if (submissionId) {
+        const deletedSubmissions: number[] = JSON.parse(localStorage.getItem('sync_deleted_submissions') || '[]');
+        if (!deletedSubmissions.includes(submissionId)) {
+          deletedSubmissions.push(submissionId);
+          localStorage.setItem('sync_deleted_submissions', JSON.stringify(deletedSubmissions));
+        }
+      }
       await db.submissions.delete(submissionId);
       
       if (sub) {
@@ -690,7 +697,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const handleDeleteExam = async () => {
     if (confirm(`Are you sure you want to delete "${exam.title}"? This will permanently delete the exam layout, correct answer keys, and all student graded submissions.`)) {
       try {
-        if (exam.id) await deleteExamFromCloud(exam.id);
+        if (exam.id) {
+          const deletedExams: number[] = JSON.parse(localStorage.getItem('sync_deleted_exams') || '[]');
+          if (!deletedExams.includes(exam.id)) {
+            deletedExams.push(exam.id);
+            localStorage.setItem('sync_deleted_exams', JSON.stringify(deletedExams));
+          }
+          await deleteExamFromCloud(exam.id);
+        }
         await db.exams.delete(exam.id!);
         await db.submissions.where('examId').equals(exam.id!).delete();
         await db.questions.where('examId').equals(exam.id!).delete();

@@ -249,7 +249,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                   options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
                   correctOptionIdx: 0,
                   explanation: '',
-                  questionImage: ''
+                  questionImage: '',
+                  difficulty: 'Easy'
                 });
               }
             });
@@ -277,6 +278,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                     targetSlot.correctOptionIdx = qVal.correctOptionIdx;
                     targetSlot.explanation = qVal.explanation || '';
                     targetSlot.questionImage = qVal.questionImage || '';
+                    targetSlot.difficulty = qVal.difficulty || 'Easy';
                   }
                   sectionCounters[key] = counter + 1;
                 }
@@ -396,7 +398,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
             options: [...qVal.options],
             correctOptionIdx: qVal.correctOptionIdx,
             explanation: qVal.explanation || '',
-            questionImage: qVal.questionImage || ''
+            questionImage: qVal.questionImage || '',
+            difficulty: qVal.difficulty || 'Easy'
           };
           updated.push(newQ);
           addedCount++;
@@ -407,7 +410,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
             options: [...qVal.options],
             correctOptionIdx: qVal.correctOptionIdx,
             explanation: qVal.explanation || '',
-            questionImage: qVal.questionImage || ''
+            questionImage: qVal.questionImage || '',
+            difficulty: qVal.difficulty || 'Easy'
           };
           addedCount++;
         }
@@ -559,7 +563,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
               options: sec.questionType === '5 option' ? ['', '', '', '', ''] : ['', '', '', ''],
               correctOptionIdx: 0,
               explanation: '',
-              questionImage: ''
+              questionImage: '',
+              difficulty: 'Easy'
             });
           }
         }
@@ -747,6 +752,28 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
         });
       }
 
+      // Generate difficulties mapping (truncated/extended to totalQuestions)
+      const finalDifficulties: Record<number, 'Easy' | 'Moderate' | 'Difficult'> = {};
+      if (examId) {
+        const existingExam = await db.exams.get(examId);
+        if (existingExam && existingExam.difficulties) {
+          Object.assign(finalDifficulties, existingExam.difficulties);
+        }
+      }
+      
+      if (examMode === 'online') {
+        questionsState.forEach((q) => {
+          finalDifficulties[q.qNum] = q.difficulty || 'Easy';
+        });
+      } else {
+        // Ensure all questions have a difficulty mapping
+        for (let q = 1; q <= totalQuestions; q++) {
+          if (!finalDifficulties[q]) {
+            finalDifficulties[q] = 'Easy';
+          }
+        }
+      }
+
       let finalExamId = examId;
       if (examId) {
         await db.exams.update(examId, {
@@ -764,6 +791,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           subjects: finalSubjects,
           sections: finalSections,
           answerKeys: finalAnswerKeys,
+          difficulties: finalDifficulties,
           startsAt: examMode === 'online' ? onlineStartsAt : undefined,
           durationMins: examMode === 'online' ? onlineDurationMins : undefined,
           loginOption: examMode === 'online' ? onlineLoginOption : undefined,
@@ -786,6 +814,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           subjects: finalSubjects,
           sections: finalSections,
           answerKeys: finalAnswerKeys,
+          difficulties: finalDifficulties,
           startsAt: examMode === 'online' ? onlineStartsAt : undefined,
           durationMins: examMode === 'online' ? onlineDurationMins : undefined,
           loginOption: examMode === 'online' ? onlineLoginOption : undefined,
@@ -823,7 +852,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           options: q.options.map((opt: string) => opt || ''),
           correctOptionIdx: q.correctOptionIdx,
           explanation: q.explanation || '',
-          questionImage: q.questionImage || undefined
+          questionImage: q.questionImage || undefined,
+          difficulty: q.difficulty || 'Easy'
         }));
         await db.questions.bulkAdd(questionRecords);
 
@@ -2109,7 +2139,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                                                 options: [...qVal.options],
                                                 correctOptionIdx: qVal.correctOptionIdx,
                                                 explanation: qVal.explanation || '',
-                                                questionImage: qVal.questionImage || ''
+                                                questionImage: qVal.questionImage || '',
+                                                difficulty: qVal.difficulty || 'Easy'
                                               };
                                             }
                                             return q;

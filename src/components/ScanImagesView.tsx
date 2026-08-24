@@ -10,7 +10,8 @@ import {
   Eye,
   Search,
   CheckCircle,
-  FileText
+  FileText,
+  Zap
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
 import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots, getScaledY } from '../utils/omrScanner';
@@ -189,6 +190,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -577,6 +580,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       activeStreamRef.current.getTracks().forEach(track => track.stop());
       activeStreamRef.current = null;
     }
+    setIsTorchOn(false);
   };
 
   // Start live camera stream
@@ -627,6 +631,26 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       
       // Synchronize selectedCameraId with the active stream's device ID to prevent loop resetting
       const activeTrack = stream.getVideoTracks()[0];
+      
+      // Apply Programmatic Autofocus and check Torch support
+      if (activeTrack) {
+        try {
+          const capabilities = (activeTrack.getCapabilities ? activeTrack.getCapabilities() : {}) as any;
+          setHasTorch(!!capabilities.torch);
+          
+          const constraintsToApply: any = {};
+          if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+            constraintsToApply.focusMode = 'continuous';
+          }
+          if (Object.keys(constraintsToApply).length > 0) {
+            await activeTrack.applyConstraints({ advanced: [constraintsToApply] });
+            console.log("✅ Continuous autofocus constraint applied successfully.");
+          }
+        } catch (e) {
+          console.warn("Failed to check capabilities or apply autofocus constraints:", e);
+        }
+      }
+
       const activeDeviceId = activeTrack?.getSettings()?.deviceId || '';
       
       if (activeDeviceId && videoInputs.some(d => d.deviceId === activeDeviceId)) {
@@ -638,6 +662,23 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       console.error("Camera access error:", err);
       alert("Unable to access camera. Please ensure camera permissions are granted.");
       setShowCameraModal(false);
+    }
+  };
+
+  const toggleTorch = async () => {
+    if (!activeStreamRef.current) return;
+    const track = activeStreamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextState = !isTorchOn;
+      await track.applyConstraints({
+        advanced: [{ torch: nextState } as any]
+      });
+      setIsTorchOn(nextState);
+      console.log(`🔦 Torch toggled: ${nextState}`);
+    } catch (err) {
+      console.error("Failed to toggle flashlight/torch:", err);
+      alert("Flashlight control is not supported or failed on this camera device.");
     }
   };
 
@@ -2332,17 +2373,44 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </div>
             </div>
 
-            {cameraDevices.length > 1 && (
-              <select 
-                value={selectedCameraId}
-                onChange={(e) => setSelectedCameraId(e.target.value)}
-                style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600 }}
-              >
-                {cameraDevices.map(d => (
-                  <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
-                ))}
-              </select>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {hasTorch && (
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  style={{
+                    background: isTorchOn ? 'var(--primary)' : '#f1f5f9',
+                    color: isTorchOn ? '#fff' : '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '16px',
+                    padding: '4px 12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Toggle Flashlight / Torch"
+                >
+                  <Zap size={14} fill={isTorchOn ? '#fff' : 'none'} />
+                  <span>{isTorchOn ? 'Flash On' : 'Flash Off'}</span>
+                </button>
+              )}
+
+              {cameraDevices.length > 1 && (
+                <select 
+                  value={selectedCameraId}
+                  onChange={(e) => setSelectedCameraId(e.target.value)}
+                  style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600 }}
+                >
+                  {cameraDevices.map(d => (
+                    <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
 
           <div className="clean-camera-viewport">

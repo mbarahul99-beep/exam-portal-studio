@@ -296,13 +296,13 @@ const initDatabase = async () => {
             'SELECT id FROM exams WHERE (title = "NEET TEST" AND className = "NEET 12TH") OR (title = "NEET T" AND className = "NEET")'
           );
           if (targetExams && targetExams.length > 0) {
-            const targetIds = targetExams.map((ex: any) => ex.id);
+            const targetIds = targetExams.map(ex => ex.id);
             await conn.query('DELETE FROM questions WHERE examId IN (?)', [targetIds]);
             await conn.query('DELETE FROM submissions WHERE examId IN (?)', [targetIds]);
             await conn.query('DELETE FROM exams WHERE id IN (?)', [targetIds]);
             console.log('✅ Target exams permanently deleted from Hostinger MySQL on startup!');
           }
-        } catch (e: any) {
+        } catch (e) {
           console.error('Failed to purge target exams:', e.message);
         }
         

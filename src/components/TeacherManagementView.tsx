@@ -116,7 +116,11 @@ export const TeacherManagementView: React.FC = () => {
     if (confirm(`Are you sure you want to delete teacher "${t.name}" (${t.userId})?`)) {
       try {
         await db.teachers.delete(t.id!);
-        await fetch(`/api/teachers/${encodeURIComponent(t.userId)}`, { method: 'DELETE' });
+        await fetch('/api/teachers/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: t.id })
+        });
         await pullCloudUpdatesToIndexedDB();
       } catch (err: any) {
         alert(`Failed to delete teacher: ${err.message}`);

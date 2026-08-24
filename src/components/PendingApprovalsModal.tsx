@@ -55,8 +55,10 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
         });
 
         // Delete the pending registration request from Hostinger MySQL server as it is approved
-        await fetch(`/api/pending-registrations/${reg.id}`, {
-          method: 'DELETE'
+        await fetch('/api/pending-registrations/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: reg.id })
         });
       } catch (err) {
         console.warn("MySQL sync optional fallback:", err);
@@ -73,7 +75,11 @@ export const PendingApprovalsModal: React.FC<PendingApprovalsModalProps> = ({ on
     if (!confirm("Are you sure you want to reject this registration request?")) return;
     try {
       await db.pendingRegistrations.delete(id);
-      await fetch(`/api/pending-registrations/${id}`, { method: 'DELETE' });
+      await fetch('/api/pending-registrations/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
     } catch (err: any) {
       alert(`Rejection error: ${err.message}`);
     }

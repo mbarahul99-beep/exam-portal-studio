@@ -125,9 +125,13 @@ export async function syncPendingRegistrationToCloud(reg: PendingRegistration) {
   }
 }
 
-export async function deleteStudentFromCloud(idOrNum: number | string) {
+export async function deleteStudentFromCloud(id: number) {
   try {
-    await fetch(`/api/students/${idOrNum}`, { method: 'DELETE' });
+    await fetch('/api/students/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete student cloud sync failed:", err);
   }
@@ -135,7 +139,11 @@ export async function deleteStudentFromCloud(idOrNum: number | string) {
 
 export async function deleteExamFromCloud(id: number) {
   try {
-    await fetch(`/api/exams/${id}`, { method: 'DELETE' });
+    await fetch('/api/exams/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete exam cloud sync failed:", err);
   }
@@ -143,7 +151,11 @@ export async function deleteExamFromCloud(id: number) {
 
 export async function deleteClassFromCloud(name: string) {
   try {
-    await fetch(`/api/classes/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    await fetch('/api/classes/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
   } catch (err) {
     console.warn("Delete class cloud sync failed:", err);
   }
@@ -163,15 +175,23 @@ export async function renameClassOnCloud(oldName: string, newName: string) {
 
 export async function deleteSubmissionFromCloud(id: number) {
   try {
-    await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+    await fetch('/api/submissions/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete submission cloud sync failed:", err);
   }
 }
 
-export async function deleteTeacherFromCloud(idOrUserId: number | string) {
+export async function deleteTeacherFromCloud(id: number | string) {
   try {
-    await fetch(`/api/teachers/${idOrUserId}`, { method: 'DELETE' });
+    await fetch('/api/teachers/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete teacher cloud sync failed:", err);
   }
@@ -218,7 +238,11 @@ export async function syncQuestionBankToCloud(bank: QuestionBank) {
 
 export async function deleteQuestionBankFromCloud(id: number) {
   try {
-    await fetch(`/api/question-banks/${id}`, { method: 'DELETE' });
+    await fetch('/api/question-banks/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete question bank cloud sync failed:", err);
   }
@@ -291,7 +315,11 @@ export async function syncBankQuestionsBulkToCloud(questions: BankQuestion[]) {
 
 export async function deleteBankQuestionFromCloud(id: number) {
   try {
-    await fetch(`/api/bank-questions/${id}`, { method: 'DELETE' });
+    await fetch('/api/bank-questions/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete bank question cloud sync failed:", err);
   }
@@ -299,7 +327,11 @@ export async function deleteBankQuestionFromCloud(id: number) {
 
 export async function deletePendingRegistrationFromCloud(id: number) {
   try {
-    await fetch(`/api/pending-registrations/${id}`, { method: 'DELETE' });
+    await fetch('/api/pending-registrations/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
   } catch (err) {
     console.warn("Delete pending registration cloud sync failed:", err);
   }
@@ -308,7 +340,7 @@ export async function deletePendingRegistrationFromCloud(id: number) {
 function isRecordEqual(local: any, server: any): boolean {
   if (!local) return false;
   for (const key of Object.keys(server)) {
-    if (key === 'id' || key === 'createdAt' || key === 'updatedAt') continue;
+    if (key === 'id' || key === 'createdAt' || key === 'updatedAt' || key === 'scannedAt' || key === 'syncState') continue;
     let localVal = local[key];
     let serverVal = server[key];
 
@@ -675,7 +707,11 @@ export async function pullCloudUpdatesToIndexedDB() {
         if (!activeExamIds.has(sub.examId) && sub.id && sub.syncState === 'synced') {
           await db.submissions.delete(sub.id);
           try {
-            await fetch(`/api/submissions/${sub.id}`, { method: 'DELETE' });
+            await fetch('/api/submissions/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: sub.id })
+            });
           } catch {}
         }
       }

@@ -289,6 +289,22 @@ const initDatabase = async () => {
           DELETE FROM submissions 
           WHERE examId NOT IN (SELECT id FROM exams)
         `);
+
+        // Permanent one-time deletion of target exams: "NEET TEST" (NEET 12TH) and "NEET T" (NEET)
+        try {
+          const [targetExams] = await conn.query(
+            'SELECT id FROM exams WHERE (title = "NEET TEST" AND className = "NEET 12TH") OR (title = "NEET T" AND className = "NEET")'
+          );
+          if (targetExams && targetExams.length > 0) {
+            const targetIds = targetExams.map((ex: any) => ex.id);
+            await conn.query('DELETE FROM questions WHERE examId IN (?)', [targetIds]);
+            await conn.query('DELETE FROM submissions WHERE examId IN (?)', [targetIds]);
+            await conn.query('DELETE FROM exams WHERE id IN (?)', [targetIds]);
+            console.log('✅ Target exams permanently deleted from Hostinger MySQL on startup!');
+          }
+        } catch (e: any) {
+          console.error('Failed to purge target exams:', e.message);
+        }
         
         // 3. Deduplicate questions table by removing duplicate questions linked to the same exam
         await conn.query(`
@@ -618,6 +634,16 @@ app.delete('/api/question-banks/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/question-banks/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('DELETE FROM question_banks WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/bank-questions', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
@@ -709,6 +735,16 @@ app.delete('/api/bank-questions/:id', async (req, res) => {
   const qId = req.params.id;
   try {
     await pool.query('DELETE FROM bank_questions WHERE id = ?', [qId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/bank-questions/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('DELETE FROM bank_questions WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -960,11 +996,33 @@ app.delete('/api/students/:id/face', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/students/delete-face', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('UPDATE students SET faceDescriptor = NULL, facePhoto = NULL WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Face record removed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Delete Student Record API
 app.delete('/api/students/:id', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM attendance WHERE studentId = ?', [id]);
+    await pool.query('DELETE FROM submissions WHERE studentId = ?', [id]);
+    await pool.query('DELETE FROM students WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Student deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/students/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
   try {
     await pool.query('DELETE FROM attendance WHERE studentId = ?', [id]);
     await pool.query('DELETE FROM submissions WHERE studentId = ?', [id]);
@@ -988,13 +1046,40 @@ app.delete('/api/exams/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/exams/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('DELETE FROM questions WHERE examId = ?', [id]);
+    await pool.query('DELETE FROM submissions WHERE examId = ?', [id]);
+    await pool.query('DELETE FROM exams WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Exam deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Delete Class API
 app.delete('/api/classes/:name', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { name } = req.params;
   try {
-    // Cascading delete: Clean up child records linked to this class
+    await pool.query('DELETE FROM questions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM submissions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM exams WHERE className = ?', [name]);
+    await pool.query('DELETE FROM submissions WHERE studentId IN (SELECT id FROM students WHERE className = ?)', [name]);
+    await pool.query('DELETE FROM attendance WHERE className = ?', [name]);
+    await pool.query('DELETE FROM students WHERE className = ?', [name]);
+    await pool.query('DELETE FROM classes WHERE name = ?', [name]);
+    res.json({ success: true, message: 'Class and all associated records deleted successfully from Cloud database!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/classes/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { name } = req.body;
+  try {
     await pool.query('DELETE FROM questions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
     await pool.query('DELETE FROM submissions WHERE examId IN (SELECT id FROM exams WHERE className = ?)', [name]);
     await pool.query('DELETE FROM exams WHERE className = ?', [name]);
@@ -1019,6 +1104,16 @@ app.delete('/api/submissions/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/submissions/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('DELETE FROM submissions WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Submission deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Delete Teacher API
 app.delete('/api/teachers/:id', async (req, res) => {
@@ -1031,11 +1126,31 @@ app.delete('/api/teachers/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/teachers/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
+  try {
+    await pool.query('DELETE FROM teachers WHERE id = ? OR userId = ?', [id, id]);
+    res.json({ success: true, message: 'Teacher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Delete Pending Registration API
 app.delete('/api/pending-registrations/:id', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database not initialized' });
   const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM pending_registrations WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Pending registration deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/pending-registrations/delete', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database not initialized' });
+  const { id } = req.body;
   try {
     await pool.query('DELETE FROM pending_registrations WHERE id = ?', [id]);
     res.json({ success: true, message: 'Pending registration deleted successfully' });

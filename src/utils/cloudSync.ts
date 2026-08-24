@@ -350,8 +350,16 @@ export async function pullCloudUpdatesToIndexedDB() {
   }
   isPullSyncing = true;
   try {
-    const res = await fetch('/api/sync/all');
-    if (!res.ok) return;
+    const res = await fetch(`/api/sync/all?_t=${Date.now()}`, {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+    if (!res.ok) {
+      isPullSyncing = false;
+      return;
+    }
     const data = await res.json();
 
     // 1. Sync Students (Add/Update & Purge Deleted)

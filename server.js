@@ -371,6 +371,14 @@ initDatabase();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Disable API caching globally for all Node.js Hostinger endpoints to prevent stale database state
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Ensure Uploads folder exists for scanned OMR images & face photos
 const uploadsDir = path.join(__dirname, 'uploads', 'omr_scans');
 if (!fs.existsSync(uploadsDir)) {

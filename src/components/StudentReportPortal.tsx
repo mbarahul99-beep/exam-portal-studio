@@ -432,16 +432,36 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       }
 
       // Difficulty level
-      let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+      let rawDiff = 'Easy';
       if (activeAnalysisSub.attemptType === 'Online') {
         const qObj = examQuestions[q - 1];
         if (qObj && qObj.difficulty) {
-          qDiff = qObj.difficulty;
+          rawDiff = qObj.difficulty;
         }
       } else {
-        if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[q]) {
-          qDiff = activeAnalysisSub.exam.difficulties[q];
+        let difficultiesObj: Record<string, any> = {};
+        if (activeAnalysisSub.exam.difficulties) {
+          if (typeof activeAnalysisSub.exam.difficulties === 'string') {
+            try {
+              difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
+            } catch (e) {
+              difficultiesObj = {};
+            }
+          } else {
+            difficultiesObj = activeAnalysisSub.exam.difficulties;
+          }
         }
+        if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
+          rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
+        }
+      }
+
+      let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+      const cleanDiff = String(rawDiff).trim().toLowerCase();
+      if (cleanDiff === 'moderate' || cleanDiff === 'medium') {
+        qDiff = 'Moderate';
+      } else if (cleanDiff === 'difficult' || cleanDiff === 'hard') {
+        qDiff = 'Difficult';
       }
 
       diffStats[qDiff].total += 1;
@@ -1364,13 +1384,33 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         
                         const secName = getQuestionSection(qNum, activeAnalysisSub.exam);
                         
-                        let qDiff = 'Easy';
+                        let rawDiff = 'Easy';
                         if (activeAnalysisSub.attemptType === 'Online') {
-                          if (qObj && qObj.difficulty) qDiff = qObj.difficulty;
+                          if (qObj && qObj.difficulty) rawDiff = qObj.difficulty;
                         } else {
-                          if (activeAnalysisSub.exam.difficulties && activeAnalysisSub.exam.difficulties[qNum]) {
-                            qDiff = activeAnalysisSub.exam.difficulties[qNum];
+                          let difficultiesObj: Record<string, any> = {};
+                          if (activeAnalysisSub.exam.difficulties) {
+                            if (typeof activeAnalysisSub.exam.difficulties === 'string') {
+                              try {
+                                difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
+                              } catch (e) {
+                                difficultiesObj = {};
+                              }
+                            } else {
+                              difficultiesObj = activeAnalysisSub.exam.difficulties;
+                            }
                           }
+                          if (difficultiesObj && (difficultiesObj[qNum] !== undefined || difficultiesObj[String(qNum)] !== undefined)) {
+                            rawDiff = difficultiesObj[qNum] !== undefined ? difficultiesObj[qNum] : difficultiesObj[String(qNum)];
+                          }
+                        }
+
+                        let qDiff = 'Easy';
+                        const cleanDiff = String(rawDiff).trim().toLowerCase();
+                        if (cleanDiff === 'moderate' || cleanDiff === 'medium') {
+                          qDiff = 'Moderate';
+                        } else if (cleanDiff === 'difficult' || cleanDiff === 'hard') {
+                          qDiff = 'Difficult';
                         }
 
                         let themeColor = '#cbd5e1';

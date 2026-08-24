@@ -152,16 +152,36 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     }
 
     // Difficulty level
-    let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+    let rawDiff = 'Easy';
     if (rawExam.startsAt) { // online exam
       const qObj = examQuestions[q - 1];
       if (qObj && qObj.difficulty) {
-        qDiff = qObj.difficulty;
+        rawDiff = qObj.difficulty;
       }
     } else {
-      if (exam.difficulties && exam.difficulties[q]) {
-        qDiff = exam.difficulties[q];
+      let difficultiesObj: Record<string, any> = {};
+      if (exam.difficulties) {
+        if (typeof exam.difficulties === 'string') {
+          try {
+            difficultiesObj = JSON.parse(exam.difficulties);
+          } catch (e) {
+            difficultiesObj = {};
+          }
+        } else {
+          difficultiesObj = exam.difficulties;
+        }
       }
+      if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
+        rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
+      }
+    }
+
+    let qDiff: 'Easy' | 'Moderate' | 'Difficult' = 'Easy';
+    const cleanDiff = String(rawDiff).trim().toLowerCase();
+    if (cleanDiff === 'moderate' || cleanDiff === 'medium') {
+      qDiff = 'Moderate';
+    } else if (cleanDiff === 'difficult' || cleanDiff === 'hard') {
+      qDiff = 'Difficult';
     }
 
     diffStats[qDiff].total += 1;

@@ -433,26 +433,25 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
 
       // Difficulty level
       let rawDiff = 'Easy';
-      if (activeAnalysisSub.attemptType === 'Online') {
+      let difficultiesObj: Record<string, any> = {};
+      if (activeAnalysisSub.exam.difficulties) {
+        if (typeof activeAnalysisSub.exam.difficulties === 'string') {
+          try {
+            difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
+          } catch (e) {
+            difficultiesObj = {};
+          }
+        } else {
+          difficultiesObj = activeAnalysisSub.exam.difficulties;
+        }
+      }
+
+      if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
+        rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
+      } else if (activeAnalysisSub.attemptType === 'Online') {
         const qObj = examQuestions[q - 1];
         if (qObj && qObj.difficulty) {
           rawDiff = qObj.difficulty;
-        }
-      } else {
-        let difficultiesObj: Record<string, any> = {};
-        if (activeAnalysisSub.exam.difficulties) {
-          if (typeof activeAnalysisSub.exam.difficulties === 'string') {
-            try {
-              difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
-            } catch (e) {
-              difficultiesObj = {};
-            }
-          } else {
-            difficultiesObj = activeAnalysisSub.exam.difficulties;
-          }
-        }
-        if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
-          rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
         }
       }
 
@@ -1385,24 +1384,23 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         const secName = getQuestionSection(qNum, activeAnalysisSub.exam);
                         
                         let rawDiff = 'Easy';
-                        if (activeAnalysisSub.attemptType === 'Online') {
-                          if (qObj && qObj.difficulty) rawDiff = qObj.difficulty;
-                        } else {
-                          let difficultiesObj: Record<string, any> = {};
-                          if (activeAnalysisSub.exam.difficulties) {
-                            if (typeof activeAnalysisSub.exam.difficulties === 'string') {
-                              try {
-                                difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
-                              } catch (e) {
-                                difficultiesObj = {};
-                              }
-                            } else {
-                              difficultiesObj = activeAnalysisSub.exam.difficulties;
+                        let difficultiesObj: Record<string, any> = {};
+                        if (activeAnalysisSub.exam.difficulties) {
+                          if (typeof activeAnalysisSub.exam.difficulties === 'string') {
+                            try {
+                              difficultiesObj = JSON.parse(activeAnalysisSub.exam.difficulties);
+                            } catch (e) {
+                              difficultiesObj = {};
                             }
+                          } else {
+                            difficultiesObj = activeAnalysisSub.exam.difficulties;
                           }
-                          if (difficultiesObj && (difficultiesObj[qNum] !== undefined || difficultiesObj[String(qNum)] !== undefined)) {
-                            rawDiff = difficultiesObj[qNum] !== undefined ? difficultiesObj[qNum] : difficultiesObj[String(qNum)];
-                          }
+                        }
+
+                        if (difficultiesObj && (difficultiesObj[qNum] !== undefined || difficultiesObj[String(qNum)] !== undefined)) {
+                          rawDiff = difficultiesObj[qNum] !== undefined ? difficultiesObj[qNum] : difficultiesObj[String(qNum)];
+                        } else if (activeAnalysisSub.attemptType === 'Online') {
+                          if (qObj && qObj.difficulty) rawDiff = qObj.difficulty;
                         }
 
                         let qDiff = 'Easy';

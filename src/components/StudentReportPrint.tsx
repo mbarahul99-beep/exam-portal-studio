@@ -153,26 +153,25 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
     // Difficulty level
     let rawDiff = 'Easy';
-    if (rawExam.startsAt) { // online exam
+    let difficultiesObj: Record<string, any> = {};
+    if (exam.difficulties) {
+      if (typeof exam.difficulties === 'string') {
+        try {
+          difficultiesObj = JSON.parse(exam.difficulties);
+        } catch (e) {
+          difficultiesObj = {};
+        }
+      } else {
+        difficultiesObj = exam.difficulties;
+      }
+    }
+
+    if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
+      rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
+    } else if (rawExam.startsAt) { // online exam
       const qObj = examQuestions[q - 1];
       if (qObj && qObj.difficulty) {
         rawDiff = qObj.difficulty;
-      }
-    } else {
-      let difficultiesObj: Record<string, any> = {};
-      if (exam.difficulties) {
-        if (typeof exam.difficulties === 'string') {
-          try {
-            difficultiesObj = JSON.parse(exam.difficulties);
-          } catch (e) {
-            difficultiesObj = {};
-          }
-        } else {
-          difficultiesObj = exam.difficulties;
-        }
-      }
-      if (difficultiesObj && (difficultiesObj[q] !== undefined || difficultiesObj[String(q)] !== undefined)) {
-        rawDiff = difficultiesObj[q] !== undefined ? difficultiesObj[q] : difficultiesObj[String(q)];
       }
     }
 

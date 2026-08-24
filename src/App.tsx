@@ -2620,6 +2620,41 @@ export default function App() {
                                     const examsToDelete = await db.exams.where('className').equals(cls.name).toArray();
                                     const examIds = examsToDelete.map(ex => ex.id).filter(Boolean) as number[];
                                     
+                                    // Fetch students for this class to cascade delete submissions
+                                    const studentsToDelete = await db.students.where('className').equals(cls.name).toArray();
+                                    const studentIds = studentsToDelete.map(s => s.id).filter(Boolean) as number[];
+
+                                    // Fetch all submissions to cascade delete
+                                    const subsByExam = examIds.length > 0 ? await db.submissions.where('examId').anyOf(examIds).toArray() : [];
+                                    const subsByStudent = studentIds.length > 0 ? await db.submissions.where('studentId').anyOf(studentIds).toArray() : [];
+                                    const subIds = Array.from(new Set([
+                                      ...subsByExam.map(s => s.id).filter(Boolean),
+                                      ...subsByStudent.map(s => s.id).filter(Boolean)
+                                    ])) as number[];
+
+                                    // Add to local sync deletion queues
+                                    if (studentIds.length > 0) {
+                                      const deletedStudents: number[] = JSON.parse(localStorage.getItem('sync_deleted_students') || '[]');
+                                      studentIds.forEach(id => {
+                                        if (!deletedStudents.includes(id)) deletedStudents.push(id);
+                                      });
+                                      localStorage.setItem('sync_deleted_students', JSON.stringify(deletedStudents));
+                                    }
+                                    if (examIds.length > 0) {
+                                      const deletedExams: number[] = JSON.parse(localStorage.getItem('sync_deleted_exams') || '[]');
+                                      examIds.forEach(id => {
+                                        if (!deletedExams.includes(id)) deletedExams.push(id);
+                                      });
+                                      localStorage.setItem('sync_deleted_exams', JSON.stringify(deletedExams));
+                                    }
+                                    if (subIds.length > 0) {
+                                      const deletedSubs: number[] = JSON.parse(localStorage.getItem('sync_deleted_submissions') || '[]');
+                                      subIds.forEach(id => {
+                                        if (!deletedSubs.includes(id)) deletedSubs.push(id);
+                                      });
+                                      localStorage.setItem('sync_deleted_submissions', JSON.stringify(deletedSubs));
+                                    }
+
                                     await db.classes.where('name').equalsIgnoreCase(cls.name).delete();
                                     await db.students.where('className').equals(cls.name).delete();
                                     await db.attendance.where('className').equals(cls.name).delete();
@@ -3110,6 +3145,18 @@ export default function App() {
                                                     deletedStudents.push(s.id);
                                                     localStorage.setItem('sync_deleted_students', JSON.stringify(deletedStudents));
                                                   }
+
+                                                  // Cascade delete submissions for this student
+                                                  const subsToDelete = await db.submissions.where('studentId').equals(s.id).toArray();
+                                                  const subIds = subsToDelete.map(sub => sub.id).filter(Boolean) as number[];
+                                                  if (subIds.length > 0) {
+                                                    const deletedSubs: number[] = JSON.parse(localStorage.getItem('sync_deleted_submissions') || '[]');
+                                                    subIds.forEach(id => {
+                                                      if (!deletedSubs.includes(id)) deletedSubs.push(id);
+                                                    });
+                                                    localStorage.setItem('sync_deleted_submissions', JSON.stringify(deletedSubs));
+                                                  }
+
                                                   await deleteStudentFromCloud(s.id);
                                                 }
                                                 await db.students.delete(s.id!);

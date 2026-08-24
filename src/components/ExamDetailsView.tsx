@@ -703,6 +703,18 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
             deletedExams.push(exam.id);
             localStorage.setItem('sync_deleted_exams', JSON.stringify(deletedExams));
           }
+
+          // Cascade delete submissions for this exam
+          const subsToDelete = await db.submissions.where('examId').equals(exam.id).toArray();
+          const subIds = subsToDelete.map(sub => sub.id).filter(Boolean) as number[];
+          if (subIds.length > 0) {
+            const deletedSubs: number[] = JSON.parse(localStorage.getItem('sync_deleted_submissions') || '[]');
+            subIds.forEach(id => {
+              if (!deletedSubs.includes(id)) deletedSubs.push(id);
+            });
+            localStorage.setItem('sync_deleted_submissions', JSON.stringify(deletedSubs));
+          }
+
           await deleteExamFromCloud(exam.id);
         }
         await db.exams.delete(exam.id!);

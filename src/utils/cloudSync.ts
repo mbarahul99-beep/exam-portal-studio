@@ -486,7 +486,7 @@ export async function pullCloudUpdatesToIndexedDB() {
             const faceDescriptor = st.faceDescriptor || existing.faceDescriptor;
             const facePhoto = st.facePhoto || existing.facePhoto;
             const merged = { ...studentFields, faceDescriptor, facePhoto };
-            if (!isRecordEqual(existing, merged)) {
+            if (!isRecordEqual(existing, merged) || existing.syncState !== 'synced') {
               await db.students.put({
                 id: st.id,
                 ...merged,
@@ -517,7 +517,7 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (!existing) {
             await db.classes.add({ id: cls.id, ...classFields, syncState: 'synced' });
           } else {
-            if (!isRecordEqual(existing, classFields)) {
+            if (!isRecordEqual(existing, classFields) || existing.syncState !== 'synced') {
               await db.classes.update(existing.id!, { ...classFields, syncState: 'synced' });
             }
           }
@@ -644,7 +644,7 @@ export async function pullCloudUpdatesToIndexedDB() {
               syncState: 'synced'
             });
           } else {
-            if (!isRecordEqual(existing, examFields)) {
+            if (!isRecordEqual(existing, examFields) || existing.syncState !== 'synced') {
               await db.exams.update(Number(ex.id), { ...examFields, syncState: 'synced' });
             }
           }
@@ -683,7 +683,7 @@ export async function pullCloudUpdatesToIndexedDB() {
             await db.submissions.add({ id: sub.id, ...subFields, syncState: 'synced' });
           } else {
             // Update the primary submission record & remove any duplicate local rows
-            if (matchingSubs[0].id && !isRecordEqual(matchingSubs[0], subFields)) {
+            if (matchingSubs[0].id && (!isRecordEqual(matchingSubs[0], subFields) || matchingSubs[0].syncState !== 'synced')) {
               await db.submissions.update(matchingSubs[0].id, { ...subFields, syncState: 'synced' });
             }
             for (let i = 1; i < matchingSubs.length; i++) {
@@ -800,7 +800,7 @@ export async function pullCloudUpdatesToIndexedDB() {
           if (!existing) {
             await db.attendance.add({ id: att.id, ...attFields, syncState: 'synced' });
           } else {
-            if (!isRecordEqual(existing, attFields)) {
+            if (!isRecordEqual(existing, attFields) || existing.syncState !== 'synced') {
               await db.attendance.update(existing.id!, { ...attFields, syncState: 'synced' });
             }
           }
@@ -900,7 +900,7 @@ export async function pullCloudUpdatesToIndexedDB() {
               syncState: 'synced'
             });
           } else {
-            if (!isRecordEqual(existing, incoming)) {
+            if (!isRecordEqual(existing, incoming) || existing.syncState !== 'synced') {
               await db.questionBanks.put({
                 id: b.id,
                 name: b.name,
@@ -958,7 +958,7 @@ export async function pullCloudUpdatesToIndexedDB() {
               syncState: 'synced'
             });
           } else {
-            if (!isRecordEqual(existing, incoming)) {
+            if (!isRecordEqual(existing, incoming) || existing.syncState !== 'synced') {
               await db.questionBank.put({
                 id: q.id,
                 bankId: q.bankId,

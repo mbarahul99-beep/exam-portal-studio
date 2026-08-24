@@ -246,6 +246,29 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     refreshSubmissions();
   }, [exam.id, fileList.length]);
 
+  // Clear any temporary unknown candidate submissions (studentId < 0) for this exam on screen mount/refresh
+  useEffect(() => {
+    const clearUnknownSubmissions = async () => {
+      if (exam.id) {
+        try {
+          const subs = await db.submissions.where('examId').equals(exam.id).toArray();
+          const unknownSubs = subs.filter(s => s.studentId < 0);
+          if (unknownSubs.length > 0) {
+            for (const sub of unknownSubs) {
+              if (sub.id) {
+                await db.submissions.delete(sub.id);
+              }
+            }
+            refreshSubmissions();
+          }
+        } catch (err) {
+          console.warn("Error clearing unknown submissions on mount:", err);
+        }
+      }
+    };
+    clearUnknownSubmissions();
+  }, [exam.id]);
+
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(1.0);

@@ -3,6 +3,20 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// Intercept global fetch to transparently support external cloud API URLs (Option B)
+const originalFetch = window.fetch;
+window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  if (apiBase) {
+    if (typeof input === 'string' && input.startsWith('/api/')) {
+      input = apiBase + input;
+    } else if (input instanceof URL && input.pathname.startsWith('/api/')) {
+      input = new URL(input.pathname + input.search, apiBase);
+    }
+  }
+  return originalFetch(input, init);
+};
+
 interface Props {
   children: ReactNode;
 }

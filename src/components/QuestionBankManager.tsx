@@ -235,10 +235,35 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({ onBack
   const [selectedSectionName, setSelectedSectionName] = useState<string>('');
   const [examSelectFeedback, setExamSelectFeedback] = useState<string | null>(null);
 
-  // Dexie live queries
+// Dexie live queries
   const questionBanks = useLiveQuery(() => db.questionBanks.toArray()) || [];
-  const allBankQuestions = useLiveQuery(() => db.questionBank.toArray()) || [];
   const examsList = useLiveQuery(() => db.exams.toArray()) || [];
+
+  // Lightweight live query for bank question counts (prevents loading raw question content)
+  const bankCounts = useLiveQuery(async () => {
+    const counts: Record<number, number> = {};
+    const banks = await db.questionBanks.toArray();
+    for (const b of banks) {
+      if (b.id) {
+        counts[b.id] = await db.questionBank.where('bankId').equals(b.id).count();
+      }
+    }
+    return counts;
+  }, [questionBanks]) || {};
+
+  // Isolate loaded bank questions to selected bank only
+  const activeQuestions = useLiveQuery(
+    () => selectedBank && selectedBank.id
+      ? db.questionBank.where('bankId').equals(selectedBank.id).toArray()
+      : [],
+    [selectedBank]
+  ) || [];
+
+  const [visibleLimit, setVisibleLimit] = useState(30);
+
+  React.useEffect(() => {
+    setVisibleLimit(30);
+  }, [selectedBank, searchQuery, difficultyFilter]);
 
   const handleSaveBankRename = async () => {
     if (!selectedBank || !selectedBank.id) return;
@@ -1183,13 +1208,8 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
 
   // Get question counts for each bank
   const getQuestionCountForBank = (bankId: number) => {
-    return allBankQuestions.filter(q => q.bankId === bankId).length;
+    return bankCounts[bankId] || 0;
   };
-
-  // Filter current active bank's questions
-  const activeQuestions = selectedBank 
-    ? allBankQuestions.filter(q => q.bankId === selectedBank.id)
-    : [];
 
   const filteredQuestions = activeQuestions.filter(q => {
     if (difficultyFilter !== 'All' && q.difficulty !== difficultyFilter) return false;
@@ -1504,83 +1524,98 @@ Return the result STRICTLY as a JSON array of objects with this structure (no ot
                     No questions stored in this bank matching your filters. Click <strong>+ Add Question</strong> or import them!
                   </div>
                 ) : (
-                  filteredQuestions.map((q, idx) => {
-                    const isSelected = selectedQIds.includes(q.id!);
-                    return (
-                      <div key={q.id} className="qbank-question-card glass-card animate-fade-in" style={{ border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedQIds(prev => [...prev, q.id!]);
-                            } else {
-                              setSelectedQIds(prev => prev.filter(id => id !== q.id!));
-                            }
-                          }}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer', marginTop: '4px' }}
-                        />
-                        <div style={{ flex: 1, textAlign: 'left' }}>
-                          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>Q{idx + 1}.</span>
-                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: q.difficulty === 'easy' ? '#e6fffa' : q.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: q.difficulty === 'easy' ? '#234e52' : q.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>
-                              {q.difficulty.toUpperCase()}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
-                            <MathRenderer text={q.questionText} />
-                          </div>
-                          {q.questionImage && (
-                            <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                              <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
+                  <>
+                    {filteredQuestions.slice(0, visibleLimit).map((q, idx) => {
+                      const isSelected = selectedQIds.includes(q.id!);
+                      return (
+                        <div key={q.id} className="qbank-question-card glass-card animate-fade-in" style={{ border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedQIds(prev => [...prev, q.id!]);
+                              } else {
+                                setSelectedQIds(prev => prev.filter(id => id !== q.id!));
+                              }
+                            }}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer', marginTop: '4px' }}
+                          />
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>Q{idx + 1}.</span>
+                              <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: q.difficulty === 'easy' ? '#e6fffa' : q.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: q.difficulty === 'easy' ? '#234e52' : q.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>
+                                {q.difficulty.toUpperCase()}
+                              </span>
                             </div>
-                          )}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                            {q.options.map((opt, oIdx) => (
-                              <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
-                                <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
-                                <MathRenderer text={opt} />
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 'bold', marginBottom: '8px' }}>
+                              <MathRenderer text={q.questionText} />
+                            </div>
+                            {q.questionImage && (
+                              <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                                <img src={q.questionImage} alt="Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
                               </div>
-                            ))}
-                          </div>
-                          {q.explanation && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px', fontStyle: 'italic' }}>
-                              Explanation: <MathRenderer text={q.explanation} />
+                            )}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                              {q.options.map((opt, oIdx) => (
+                                <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === q.correctOptionIdx ? 'var(--success)' : 'inherit', fontWeight: oIdx === q.correctOptionIdx ? 'bold' : 'normal' }}>
+                                  <span>{['A', 'B', 'C', 'D', 'E'][oIdx]})</span>
+                                  <MathRenderer text={opt} />
+                                </div>
+                              ))}
                             </div>
-                          )}
-                        </div>
+                            {q.explanation && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px', fontStyle: 'italic' }}>
+                                Explanation: <MathRenderer text={q.explanation} />
+                              </div>
+                            )}
+                          </div>
 
-                      <div className="qbank-question-actions">
+                          <div className="qbank-question-actions">
+                            <button 
+                              onClick={() => setSelectedBankQ(q)}
+                              className="btn-primary" 
+                              style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px' }}
+                            >
+                              Add to Exam
+                            </button>
+                            <button 
+                              onClick={() => setEditingQuestion(q)}
+                              className="btn-outlined" 
+                              style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px', border: '1px solid var(--primary)', color: 'var(--primary)', background: '#fff', cursor: 'pointer' }}
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={async () => {
+                                if (confirm("Delete this question from the bank?")) {
+                                  await db.questionBank.delete(q.id!);
+                                  await deleteBankQuestionFromCloud(q.id!);
+                                }
+                              }}
+                              className="btn-danger" 
+                              style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px', background: 'transparent', color: '#e53e3e', border: '1px solid #fed7d7' }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {filteredQuestions.length > visibleLimit && (
+                      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', marginBottom: '20px' }}>
                         <button 
-                          onClick={() => setSelectedBankQ(q)}
-                          className="btn-primary" 
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px' }}
+                          type="button"
+                          onClick={() => setVisibleLimit(prev => prev + 30)}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: 'var(--primary)', color: '#fff', border: 'none' }}
                         >
-                          Add to Exam
-                        </button>
-                        <button 
-                          onClick={() => setEditingQuestion(q)}
-                          className="btn-outlined" 
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px', border: '1px solid var(--primary)', color: 'var(--primary)', background: '#fff', cursor: 'pointer' }}
-                        >
-                          Edit
-                        </button>
-                        <button 
-                          onClick={async () => {
-                            if (confirm("Delete this question from the bank?")) {
-                              await db.questionBank.delete(q.id!);
-                              await deleteBankQuestionFromCloud(q.id!);
-                            }
-                          }}
-                          className="btn-danger" 
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', width: '110px', background: 'transparent', color: '#e53e3e', border: '1px solid #fed7d7' }}
-                        >
-                          Delete
+                          Load More Questions ({filteredQuestions.length - visibleLimit} remaining)
                         </button>
                       </div>
-                    </div>
-                    );
-                  })
+                    )}
+                  </>
                 )}
               </div>
             </div>

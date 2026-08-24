@@ -100,6 +100,11 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
   const [libLoading, setLibLoading] = useState<boolean>(false);
   const [banksList, setBanksList] = useState<any[]>([]);
+  const [libVisibleLimit, setLibVisibleLimit] = useState(30);
+
+  React.useEffect(() => {
+    setLibVisibleLimit(30);
+  }, [selectedLibBankId, libDifficultyFilter, libSearchQuery]);
 
   // Success link states
   const [createdExamId, setCreatedExamId] = useState<number | null>(null);
@@ -306,14 +311,19 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
     const loadQuestionBank = async () => {
       setLibLoading(true);
       try {
-        let results = await db.questionBank.toArray();
+        let results: any[] = [];
         if (selectedLibBankId !== 'All') {
-          results = results.filter((q: any) => Number(q.bankId) === Number(selectedLibBankId));
+          results = await db.questionBank.where('bankId').equals(Number(selectedLibBankId)).toArray();
+        } else if (libDifficultyFilter !== 'All') {
+          results = await db.questionBank.where('difficulty').equals(libDifficultyFilter).toArray();
+        } else {
+          results = await db.questionBank.toArray();
         }
 
-        if (libDifficultyFilter !== 'All') {
+        if (selectedLibBankId !== 'All' && libDifficultyFilter !== 'All') {
           results = results.filter((q: any) => q.difficulty === libDifficultyFilter);
         }
+
         if (libSearchQuery.trim()) {
           const lower = libSearchQuery.toLowerCase();
           results = results.filter((q: any) => 
@@ -2033,98 +2043,113 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                             No questions found matching your filters.
                           </div>
                         ) : (
-                          libraryQuestions.map((qVal, index) => {
-                            const isAddedToExam = questionsState.some(q => q.questionText.trim() === qVal.questionText.trim());
-                            const parentBank = banksList.find(b => b.id === qVal.bankId);
-                            
+                          <>
+                            {libraryQuestions.slice(0, libVisibleLimit).map((qVal, index) => {
+                              const isAddedToExam = questionsState.some(q => q.questionText.trim() === qVal.questionText.trim());
+                              const parentBank = banksList.find(b => b.id === qVal.bankId);
+                              
 
-                            return (
-                              <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
-                                  </div>
-                                  <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
-                                    <MathRenderer text={qVal.questionText} />
-                                  </div>
-                                  {qVal.questionImage && (
-                                    <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                                      <img src={qVal.questionImage} alt="Library Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
+                              return (
+                                <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
+                                      <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
+                                      <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
+                                      <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
                                     </div>
-                                  )}
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    {qVal.options.map((opt: string, oIdx: number) => (
-                                      <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
-                                        <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
-                                        <MathRenderer text={opt} />
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
+                                      <MathRenderer text={qVal.questionText} />
+                                    </div>
+                                    {qVal.questionImage && (
+                                      <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                                        <img src={qVal.questionImage} alt="Library Diagram" style={{ maxHeight: '350px', maxWidth: '100%', objectFit: 'contain' }} />
                                       </div>
-                                    ))}
-                                  </div>
-                                  {qVal.explanation && (
-                                    <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
-                                      Explanation: <MathRenderer text={qVal.explanation} />
+                                    )}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                      {qVal.options.map((opt: string, oIdx: number) => (
+                                        <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
+                                          <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
+                                          <MathRenderer text={opt} />
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
-                                </div>
-                                <div className="qbank-question-actions">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (isAddedToExam) return;
-                                      const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
-                                      const qCount = sectionConfig ? sectionConfig.qCount : 15;
+                                    {qVal.explanation && (
+                                      <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
+                                        Explanation: <MathRenderer text={qVal.explanation} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="qbank-question-actions">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isAddedToExam) return;
+                                        const sectionConfig = sectionsWithRanges.find(sec => sec.subjectName === selectedSubjectName && sec.sectionName === selectedSectionName);
+                                        const qCount = sectionConfig ? sectionConfig.qCount : 15;
 
-                                      // Find first empty slot in this section
-                                      const firstEmptySlot = questionsState.find(q => 
-                                        q.subjectName === selectedSubjectName && 
-                                        q.sectionName === selectedSectionName && 
-                                        !q.questionText.trim()
-                                      );
+                                        // Find first empty slot in this section
+                                        const firstEmptySlot = questionsState.find(q => 
+                                          q.subjectName === selectedSubjectName && 
+                                          q.sectionName === selectedSectionName && 
+                                          !q.questionText.trim()
+                                        );
 
-                                      if (!firstEmptySlot) {
-                                        alert(`Cannot add more questions. This section is limited to ${qCount} questions.`);
-                                        return;
-                                      }
+                                        if (!firstEmptySlot) {
+                                          alert(`Cannot add more questions. This section is limited to ${qCount} questions.`);
+                                          return;
+                                        }
 
-                                      setQuestionsState(prev => {
-                                        return prev.map(q => {
-                                          if (q.qNum === firstEmptySlot.qNum && q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName) {
-                                            return {
-                                              ...q,
-                                              questionText: qVal.questionText,
-                                              options: [...qVal.options],
-                                              correctOptionIdx: qVal.correctOptionIdx,
-                                              explanation: qVal.explanation || '',
-                                              questionImage: qVal.questionImage || ''
-                                            };
-                                          }
-                                          return q;
+                                        setQuestionsState(prev => {
+                                          return prev.map(q => {
+                                            if (q.qNum === firstEmptySlot.qNum && q.subjectName === selectedSubjectName && q.sectionName === selectedSectionName) {
+                                              return {
+                                                ...q,
+                                                questionText: qVal.questionText,
+                                                options: [...qVal.options],
+                                                correctOptionIdx: qVal.correctOptionIdx,
+                                                explanation: qVal.explanation || '',
+                                                questionImage: qVal.questionImage || ''
+                                              };
+                                            }
+                                            return q;
+                                          });
                                         });
-                                      });
-                                    }}
-                                    disabled={isAddedToExam}
-                                    style={{
-                                      padding: '6px 12px',
-                                      borderRadius: '6px',
-                                      border: 'none',
-                                      background: isAddedToExam ? '#48bb78' : 'var(--primary)',
-                                      color: '#fff',
-                                      fontWeight: 'bold',
-                                      fontSize: '0.75rem',
-                                      cursor: isAddedToExam ? 'default' : 'pointer',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                                      width: '110px'
-                                    }}
-                                  >
-                                    {isAddedToExam ? 'Added ✔' : 'Add Question'}
-                                  </button>
+                                      }}
+                                      disabled={isAddedToExam}
+                                      style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: isAddedToExam ? '#48bb78' : 'var(--primary)',
+                                        color: '#fff',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.75rem',
+                                        cursor: isAddedToExam ? 'default' : 'pointer',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                        width: '110px'
+                                      }}
+                                    >
+                                      {isAddedToExam ? 'Added ✔' : 'Add Question'}
+                                    </button>
+                                  </div>
                                 </div>
+                              );
+                            })}
+
+                            {libraryQuestions.length > libVisibleLimit && (
+                              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', marginBottom: '16px' }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setLibVisibleLimit(prev => prev + 30)}
+                                  className="btn-secondary"
+                                  style={{ padding: '8px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: 'var(--primary)', color: '#fff', border: 'none' }}
+                                >
+                                  Load More Questions ({libraryQuestions.length - libVisibleLimit} remaining)
+                                </button>
                               </div>
-                            );
-                          })
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

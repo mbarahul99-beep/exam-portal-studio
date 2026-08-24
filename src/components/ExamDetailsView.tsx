@@ -283,6 +283,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [libraryQuestions, setLibraryQuestions] = useState<any[]>([]);
+  const [libVisibleLimit, setLibVisibleLimit] = useState(30);
+
+  React.useEffect(() => {
+    setLibVisibleLimit(30);
+  }, [selectedBankId, difficultyFilter, searchQuery]);
 
   const isPlaceholderQuestion = (q: any): boolean => {
     if (!q) return true;
@@ -403,14 +408,17 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   React.useEffect(() => {
     if (activeView !== 'manage-questions') return;
     const loadLibrary = async () => {
-      let allLib = await db.questionBank.toArray();
-      
-      // Filter by bankId
+      let allLib: any[] = [];
       if (selectedBankId !== 'All') {
-        allLib = allLib.filter(q => q.bankId === parseInt(selectedBankId));
+        allLib = await db.questionBank.where('bankId').equals(parseInt(selectedBankId)).toArray();
+      } else if (difficultyFilter !== 'All') {
+        allLib = await db.questionBank.where('difficulty').equals(difficultyFilter.toLowerCase()).toArray();
+      } else {
+        allLib = await db.questionBank.toArray();
       }
-      // Filter by difficulty
-      if (difficultyFilter !== 'All') {
+      
+      // Filter by difficulty if both bank and difficulty were specified
+      if (selectedBankId !== 'All' && difficultyFilter !== 'All') {
         allLib = allLib.filter(q => q.difficulty === difficultyFilter.toLowerCase());
       }
       // Filter by search keywords
@@ -3118,66 +3126,81 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   No matching questions found in the selected Question Banks.
                 </div>
               ) : (
-                libraryQuestions.map((qVal, index) => {
-                  const isAddedToExam = questions.some(q => q.questionText.trim() === qVal.questionText.trim());
-                  const parentBank = banksList.find(b => b.id === qVal.bankId);
-                  
-                  return (
-                    <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
-                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
-                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
-                          <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
-                          <MathRenderer text={qVal.questionText} />
-                        </div>
-                        {qVal.questionImage && (
-                          <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
-                            <img src={qVal.questionImage} alt="Library Question Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
+                <>
+                  {libraryQuestions.slice(0, libVisibleLimit).map((qVal, index) => {
+                    const isAddedToExam = questions.some(q => q.questionText.trim() === qVal.questionText.trim());
+                    const parentBank = banksList.find(b => b.id === qVal.bankId);
+                    
+                    return (
+                      <div key={index} className="qbank-question-card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '14px', background: '#fff', textAlign: 'left', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#ebf8ff', color: '#2b6cb0', fontWeight: 'bold' }}>{parentBank?.targetExam || 'General'}</span>
+                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#f0fff4', color: '#276749', fontWeight: 'bold' }}>{parentBank?.subject || 'General'}</span>
+                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: '#fffaf0', color: '#dd6b20', fontWeight: 'bold' }}>{parentBank?.topic || 'General'}</span>
+                            <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', background: qVal.difficulty === 'easy' ? '#e6fffa' : qVal.difficulty === 'medium' ? '#feebc8' : '#fed7d7', color: qVal.difficulty === 'easy' ? '#234e52' : qVal.difficulty === 'medium' ? '#c05621' : '#9b2c2c', fontWeight: 'bold' }}>{qVal.difficulty}</span>
                           </div>
-                        )}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {qVal.options.map((opt: string, oIdx: number) => (
-                            <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
-                              <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
-                              <MathRenderer text={opt} />
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold', marginBottom: '8px' }}>
+                            <MathRenderer text={qVal.questionText} />
+                          </div>
+                          {qVal.questionImage && (
+                            <div style={{ marginTop: '8px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'inline-block', background: '#fff', padding: '6px' }}>
+                              <img src={qVal.questionImage} alt="Library Question Diagram" style={{ maxHeight: '140px', maxWidth: '100%', objectFit: 'contain' }} />
                             </div>
-                          ))}
-                        </div>
-                        {qVal.explanation && (
-                          <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
-                            Explanation: <MathRenderer text={qVal.explanation} />
+                          )}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {qVal.options.map((opt: string, oIdx: number) => (
+                              <div key={oIdx} style={{ display: 'flex', gap: '4px', color: oIdx === qVal.correctOptionIdx ? '#2f855a' : 'inherit', fontWeight: oIdx === qVal.correctOptionIdx ? 'bold' : 'normal' }}>
+                                <span>{['A', 'B', 'C', 'D'][oIdx]})</span>
+                                <MathRenderer text={opt} />
+                              </div>
+                            ))}
                           </div>
-                        )}
+                          {qVal.explanation && (
+                            <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px dashed #edf2f7', paddingTop: '6px', fontStyle: 'italic' }}>
+                              Explanation: <MathRenderer text={qVal.explanation} />
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="qbank-question-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleAddFromLibrary(qVal)}
+                            disabled={isAddedToExam}
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: isAddedToExam ? '#48bb78' : 'var(--primary)',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              fontSize: '0.75rem',
+                              cursor: isAddedToExam ? 'default' : 'pointer',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                              width: '110px'
+                            }}
+                          >
+                            {isAddedToExam ? 'Added ✔' : 'Add'}
+                          </button>
+                        </div>
                       </div>
-                      
-                      <div className="qbank-question-actions">
-                        <button
-                          type="button"
-                          onClick={() => handleAddFromLibrary(qVal)}
-                          disabled={isAddedToExam}
-                          style={{
-                            padding: '8px 16px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            background: isAddedToExam ? '#48bb78' : 'var(--primary)',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            fontSize: '0.75rem',
-                            cursor: isAddedToExam ? 'default' : 'pointer',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                            width: '110px'
-                          }}
-                        >
-                          {isAddedToExam ? 'Added ✔' : 'Add'}
-                        </button>
-                      </div>
+                    );
+                  })}
+
+                  {libraryQuestions.length > libVisibleLimit && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', marginBottom: '16px' }}>
+                      <button 
+                        type="button"
+                        onClick={() => setLibVisibleLimit(prev => prev + 30)}
+                        className="btn-secondary"
+                        style={{ padding: '8px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: 'var(--primary)', color: '#fff', border: 'none' }}
+                      >
+                        Load More Questions ({libraryQuestions.length - libVisibleLimit} remaining)
+                      </button>
                     </div>
-                  );
-                })
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Student, type Exam } from './db';
 import { useOpenCv } from './hooks/useOpenCv';
@@ -119,6 +119,7 @@ export default function App() {
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
+  const [examsFilterTab, setExamsFilterTab] = useState<'active' | 'archived'>('active');
   const [onlineExamId, setOnlineExamId] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
@@ -377,6 +378,16 @@ export default function App() {
   }) || [];
   const submissions = useLiveQuery(() => db.submissions.toArray()) || [];
   const classes = useLiveQuery(() => db.classes.toArray()) || [];
+
+  const filteredExams = useMemo(() => {
+    return exams.filter(exam => {
+      const isArchived = !!exam.isArchived;
+      if (examsFilterTab === 'archived') {
+        return isArchived;
+      }
+      return !isArchived;
+    });
+  }, [exams, examsFilterTab]);
 
   // Classes & Student Navigation/Modal States
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
@@ -1598,6 +1609,39 @@ export default function App() {
       setTimeout(() => toast.remove(), 3000);
     } catch (err: any) {
       alert(`Failed to duplicate exam: ${err.message}`);
+    }
+  };
+
+  const handleToggleArchiveExam = async (exam: Exam) => {
+    if (!exam.id) return;
+    try {
+      const nextArchived = !exam.isArchived;
+      await db.exams.update(exam.id, { isArchived: nextArchived });
+      
+      const updatedExam = await db.exams.get(exam.id);
+      if (updatedExam) {
+        await syncExamToCloud(updatedExam);
+      }
+      
+      // Close details
+      setSelectedExamId(null);
+      
+      const toast = document.createElement('div');
+      toast.innerText = `Exam "${exam.title}" successfully ${nextArchived ? 'archived' : 'unarchived'}!`;
+      toast.style.position = 'fixed';
+      toast.style.bottom = '24px';
+      toast.style.right = '24px';
+      toast.style.background = '#2b6cb0';
+      toast.style.color = '#fff';
+      toast.style.padding = '12px 24px';
+      toast.style.borderRadius = '8px';
+      toast.style.zIndex = '9999';
+      toast.style.fontFamily = 'sans-serif';
+      toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch (err: any) {
+      alert(`Failed to update archive state: ${err.message}`);
     }
   };
 
@@ -3186,6 +3230,7 @@ export default function App() {
                       onDownloadJPG={(exam) => handleDownloadJPG(exam)}
                       onViewAnalysis={(sub) => setViewingStudentAnalysisSub({ studentId: sub.studentId, preSelectedExamId: examObj.id })}
                       onCopy={handleCopyExam}
+                      onToggleArchive={handleToggleArchiveExam}
                     />
                   );
                 })()
@@ -3201,6 +3246,28 @@ export default function App() {
                     </div>
                     
                     <div style={{ display: 'flex', gap: '10px' }}>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => setExamsFilterTab(prev => prev === 'active' ? 'archived' : 'active')}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          background: examsFilterTab === 'archived' ? 'var(--primary)' : '#fff',
+                          color: examsFilterTab === 'archived' ? '#fff' : '#4a5568',
+                          borderColor: examsFilterTab === 'archived' ? 'var(--primary)' : '#e2e8f0',
+                          padding: '8px 16px',
+                          fontSize: '0.875rem',
+                          borderRadius: '8px',
+                          border: '1.5px solid #e2e8f0',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        title={examsFilterTab === 'archived' ? "Show Active Exams" : "Show Archived Exams"}
+                      >
+                        <Archive size={16} />
+                        <span>{examsFilterTab === 'archived' ? 'Show Active' : 'Show Archived'}</span>
+                      </button>
                       <button className="btn-secondary" style={{ padding: '8px 12px' }} title="Filter List">
                         <TrendingUp size={16} />
                       </button>
@@ -3225,9 +3292,17 @@ export default function App() {
                     </div>
 
                     <div className="mobile-header-subbar">
-                      <button className="archived-btn" onClick={() => alert("Archived exams view coming soon!")}>
+                      <button 
+                        className="archived-btn" 
+                        onClick={() => setExamsFilterTab(prev => prev === 'active' ? 'archived' : 'active')}
+                        style={{
+                          background: examsFilterTab === 'archived' ? 'var(--primary)' : '#fff',
+                          color: examsFilterTab === 'archived' ? '#fff' : '#334155',
+                          borderColor: examsFilterTab === 'archived' ? 'var(--primary)' : '#e2e8f0'
+                        }}
+                      >
                         <Archive size={16} />
-                        <span>Archived</span>
+                        <span>{examsFilterTab === 'archived' ? 'Show Active' : 'Show Archived'}</span>
                       </button>
                       <button className="mobile-icon-btn" title="Filter list">
                         <Filter size={18} />
@@ -3237,9 +3312,13 @@ export default function App() {
 
                   {/* DESKTOP EXAMS TABLE (Hidden on mobile) */}
                   <div className="glass-card desktop-exam-table">
-                    {exams.length === 0 ? (
+                    {filteredExams.length === 0 ? (
                       <div className="empty-state">
-                        <p>No exams created yet. Click "+ Create exam" in the top right to start.</p>
+                        <p>
+                          {examsFilterTab === 'archived' 
+                            ? 'No archived exams found.' 
+                            : 'No exams created yet. Click "+ Create exam" in the top right to start.'}
+                        </p>
                       </div>
                     ) : (
                       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -3256,7 +3335,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {exams.map(exam => {
+                            {filteredExams.map(exam => {
                               const appeared = submissions.filter(s => s.examId === exam.id).length;
                               return (
                                 <tr 
@@ -3299,12 +3378,16 @@ export default function App() {
 
                   {/* MOBILE EXAM CARDS LIST (Matching Screenshot 2 - Visible on mobile) */}
                   <div className="mobile-exam-card-list">
-                    {exams.length === 0 ? (
+                    {filteredExams.length === 0 ? (
                       <div className="empty-state-mobile">
-                        <p>No exams created yet. Click "+ Add New" to start.</p>
+                        <p>
+                          {examsFilterTab === 'archived' 
+                            ? 'No archived exams found.' 
+                            : 'No exams created yet. Click "+ Add New" to start.'}
+                        </p>
                       </div>
                     ) : (
-                      exams.map(exam => {
+                      filteredExams.map(exam => {
                         const appeared = submissions.filter(s => s.examId === exam.id).length;
                         const dateObj = new Date(exam.date);
                         const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });

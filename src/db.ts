@@ -90,6 +90,7 @@ export interface Exam {
   loginOption?: 'roll_phone' | 'roll_email' | 'roll_only' | 'passcode';
   passcode?: string;
   syncState?: 'synced' | 'pending';
+  isArchived?: boolean;
 }
 
 export interface Question {

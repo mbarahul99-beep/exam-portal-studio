@@ -29,7 +29,8 @@ import {
   ArrowDown,
   HelpCircle,
   ChevronRight,
-  Edit
+  Edit,
+  Archive
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView, EditScannedSheetModal } from './ScanImagesView';
@@ -51,6 +52,7 @@ interface ExamDetailsViewProps {
   onDownloadJPG?: (exam: Exam) => void;
   onViewAnalysis: (submission: any) => void;
   onCopy?: (exam: Exam) => void;
+  onToggleArchive?: (exam: Exam) => void;
 }
 
 export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ 
@@ -61,7 +63,8 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   onEdit,
   onPrintRedirect,
   onViewAnalysis,
-  onCopy
+  onCopy,
+  onToggleArchive
 }) => {
   // Local auto-healing for numQuestions and answerKey (creating a copy to avoid mutating readonly prop)
   const exam = useMemo(() => {
@@ -1305,6 +1308,21 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   style={{ color: '#4a5568' }}
                 >
                   <Copy size={20} />
+                </button>
+              )}
+              {onToggleArchive && (
+                <button 
+                  className="hub-action-icon" 
+                  onClick={async () => {
+                    const verb = exam.isArchived ? 'unarchive' : 'archive';
+                    if (confirm(`Are you sure you want to ${verb} "${exam.title}"?`)) {
+                      await onToggleArchive(rawExam);
+                    }
+                  }} 
+                  title={exam.isArchived ? "Unarchive Exam" : "Archive Exam"}
+                  style={{ color: exam.isArchived ? 'var(--primary)' : '#4a5568' }}
+                >
+                  <Archive size={20} />
                 </button>
               )}
               <button className="hub-action-icon text-error" onClick={handleDeleteExam} title="Delete Exam">

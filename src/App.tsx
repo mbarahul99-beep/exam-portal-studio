@@ -2470,7 +2470,7 @@ export default function App() {
             <div className="tab-pane animate-fade-in" style={{ padding: '0', background: '#ffffff', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
               {selectedClassName === null ? (
                 /* CLASS LISTING VIEW (Screenshot 2: media__1784980659124.png) */
-                <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="mobile-list-padding" style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
                   
                   {/* Top Header Bar */}
                   <div style={{
@@ -2705,7 +2705,7 @@ export default function App() {
                 </div>
               ) : (
                 /* STUDENTS LIST VIEW (Screenshot 1: media__1784980659121.png) */
-                <div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="mobile-list-padding" style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
                   
                   {/* Top Mobile & Desktop Header Bar */}
                   <div style={{

@@ -1730,11 +1730,15 @@ export default function App() {
   };
 
   // Synchronize Classes table with Students classes on startup if empty
-  const studentsClassNames = students.map(s => s.className).join(',');
   useEffect(() => {
     const syncClasses = async () => {
-      if (studentsClassNames.length > 0 && classes.length === 0) {
-        const uniqueClasses = Array.from(new Set(studentsClassNames.split(',')));
+      // Query database directly to bypass React's initial loading state
+      const dbClasses = await db.classes.toArray();
+      const dbStudents = await db.students.toArray();
+      const studentsClassNamesList = dbStudents.map(s => s.className).filter(Boolean);
+
+      if (studentsClassNamesList.length > 0 && dbClasses.length === 0) {
+        const uniqueClasses = Array.from(new Set(studentsClassNamesList));
         for (const clsName of uniqueClasses) {
           try {
             await db.classes.add({
@@ -1743,10 +1747,10 @@ export default function App() {
               createdAt: new Date()
             });
           } catch {
-            // Already exists or concurrency
+            // Already exists
           }
         }
-      } else if (studentsClassNames.length === 0 && classes.length === 0) {
+      } else if (studentsClassNamesList.length === 0 && dbClasses.length === 0 && localStorage.getItem('classes_seeded') !== 'true') {
         const defaultClasses = ['NEET 1', 'NEET'];
         for (const clsName of defaultClasses) {
           try {
@@ -1759,10 +1763,11 @@ export default function App() {
             // Already exists
           }
         }
+        localStorage.setItem('classes_seeded', 'true');
       }
     };
     syncClasses();
-  }, [studentsClassNames, classes.length]);
+  }, []); // Only run once on mount
 
   // Webcam Operations
   useEffect(() => {

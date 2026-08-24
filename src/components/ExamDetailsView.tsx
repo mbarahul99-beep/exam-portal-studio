@@ -1292,7 +1292,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               <button className="hub-back-btn" onClick={onClose} title="Back to Exams List">
                 <ArrowLeft size={20} />
               </button>
-              <h2 className="hub-page-title">Exam Details</h2>
+              <h2 className="hub-page-title">Details</h2>
             </div>
 
             <div className="hub-top-actions">
@@ -1502,7 +1502,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           {/* Top Bar (Screenshot 2) */}
           <div className="reports-top-bar">
             <div className="bar-left">
-              <button className="back-btn-circle" onClick={() => setActiveView('hub')} title="Back to Exam Details">
+              <button className="back-btn-circle" onClick={() => setActiveView('hub')} title="Back to Details">
                 <ArrowLeft size={20} />
               </button>
               <h2 className="reports-exam-title">{exam.title}</h2>
@@ -1755,7 +1755,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   justifyContent: 'center',
                   color: '#1e293b'
                 }}
-                title="Back to Exam Details"
+                title="Back to Details"
               >
                 <ArrowLeft size={22} />
               </button>

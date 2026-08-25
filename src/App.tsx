@@ -1744,7 +1744,8 @@ export default function App() {
             await db.classes.add({
               name: clsName,
               state: 'Synced',
-              createdAt: new Date()
+              createdAt: new Date(),
+              syncState: 'synced'
             });
           } catch {
             // Already exists
@@ -1757,7 +1758,8 @@ export default function App() {
             await db.classes.add({
               name: clsName,
               state: 'Synced',
-              createdAt: new Date()
+              createdAt: new Date(),
+              syncState: 'synced'
             });
           } catch {
             // Already exists

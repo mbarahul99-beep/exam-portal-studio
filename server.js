@@ -1206,12 +1206,23 @@ app.post('/api/exams', async (req, res) => {
       await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0, isArchived ? 1 : 0, id]);
       res.json({ success: true, id });
     } else {
-      const query = `
-        INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished, showResultsToStudent, isArchived)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-      `;
-      const [result] = await pool.query(query, [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0, isArchived ? 1 : 0]);
-      res.json({ success: true, id: result.insertId });
+      let query;
+      let params;
+      if (id) {
+        query = `
+          INSERT INTO exams (id, title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished, showResultsToStudent, isArchived)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        `;
+        params = [id, title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0, isArchived ? 1 : 0];
+      } else {
+        query = `
+          INSERT INTO exams (title, className, date, status, numQuestions, answerKey, correctMarks, incorrectMarks, unansweredMarks, startsAt, durationMins, loginOption, passcode, subjects, sections, answerKeys, difficulties, sectionsMarking, rollNoDigits, examSetsCount, isResultsPublished, showResultsToStudent, isArchived)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        `;
+        params = [title, className, date, status || 'private', numQuestions || 180, keyJson, correctMarks ?? 4, incorrectMarks ?? -1, unansweredMarks ?? 0, startsAt, durationMins, loginOption, passcode, subjectsJson, sectionsJson, answerKeysJson, difficultiesJson, sectionsMarkingJson, rollNoDigits || 5, examSetsCount || 1, isResultsPublished ? 1 : 0, showResultsToStudent !== false ? 1 : 0, isArchived ? 1 : 0];
+      }
+      const [result] = await pool.query(query, params);
+      res.json({ success: true, id: id || result.insertId });
     }
   } catch (err) {
     console.error("Exam save error:", err);

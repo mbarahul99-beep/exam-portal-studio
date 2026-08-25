@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type TrashItem } from '../db';
-import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
+import { 
+  pullCloudUpdatesToIndexedDB,
+  syncClassToCloud,
+  syncExamToCloud,
+  syncStudentToCloud,
+  syncSubmissionToCloud
+} from '../utils/cloudSync';
 import {
   Trash2,
   RotateCcw,
@@ -109,6 +115,60 @@ export const TrashBinView: React.FC = () => {
           }
         }
 
+        // PUSH RESTORED DATA TO CLOUD IMMEDIATELY!
+        try {
+          // 1. Push class
+          await syncClassToCloud(data.classObj);
+          
+          // 2. Push exams
+          if (data.exams && Array.isArray(data.exams)) {
+            for (const ex of data.exams) {
+              await syncExamToCloud(ex);
+            }
+          }
+
+          // 3. Push questions
+          if (data.questions && Array.isArray(data.questions)) {
+            const questionsByExam: Record<number, any[]> = {};
+            for (const q of data.questions) {
+              if (!questionsByExam[q.examId]) questionsByExam[q.examId] = [];
+              const { syncState, ...qFields } = q;
+              questionsByExam[q.examId].push(qFields);
+            }
+
+            for (const examIdStr of Object.keys(questionsByExam)) {
+              const examId = Number(examIdStr);
+              const qRes = await fetch('/api/questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ examId, questions: questionsByExam[examId] })
+              });
+              if (qRes.ok) {
+                const qIds = data.questions.filter((q: any) => q.examId === examId && q.id).map((q: any) => q.id);
+                if (qIds.length > 0) {
+                  await db.questions.where('id').anyOf(qIds).modify({ syncState: 'synced' });
+                }
+              }
+            }
+          }
+
+          // 4. Push students
+          if (data.students && Array.isArray(data.students)) {
+            for (const s of data.students) {
+              await syncStudentToCloud(s);
+            }
+          }
+
+          // 5. Push submissions
+          if (data.submissions && Array.isArray(data.submissions)) {
+            for (const sub of data.submissions) {
+              await syncSubmissionToCloud(sub);
+            }
+          }
+        } catch (pushErr) {
+          console.warn("Failed to push restored class data to cloud:", pushErr);
+        }
+
       } else if (item.type === 'exam') {
         // 1. Remove from sync_deleted_exams
         const deletedExams: number[] = JSON.parse(localStorage.getItem('sync_deleted_exams') || '[]');
@@ -152,6 +212,37 @@ export const TrashBinView: React.FC = () => {
           }
         }
 
+        // PUSH RESTORED DATA TO CLOUD IMMEDIATELY!
+        try {
+          // 1. Push exam
+          await syncExamToCloud(data.examObj);
+
+          // 2. Push questions
+          if (data.questions && Array.isArray(data.questions)) {
+            const cleanQs = data.questions.map(({ syncState, ...qFields }: any) => qFields);
+            const qRes = await fetch('/api/questions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ examId: data.examObj.id, questions: cleanQs })
+            });
+            if (qRes.ok) {
+              const qIds = data.questions.map((q: any) => q.id).filter(Boolean);
+              if (qIds.length > 0) {
+                await db.questions.where('id').anyOf(qIds).modify({ syncState: 'synced' });
+              }
+            }
+          }
+
+          // 3. Push submissions
+          if (data.submissions && Array.isArray(data.submissions)) {
+            for (const sub of data.submissions) {
+              await syncSubmissionToCloud(sub);
+            }
+          }
+        } catch (pushErr) {
+          console.warn("Failed to push restored exam data to cloud:", pushErr);
+        }
+
       } else if (item.type === 'student') {
         // 1. Remove from sync_deleted_students
         const deletedStudents: number[] = JSON.parse(localStorage.getItem('sync_deleted_students') || '[]');
@@ -181,6 +272,21 @@ export const TrashBinView: React.FC = () => {
               });
             } catch {}
           }
+        }
+
+        // PUSH RESTORED DATA TO CLOUD IMMEDIATELY!
+        try {
+          // 1. Push student
+          await syncStudentToCloud(data.studentObj);
+
+          // 2. Push submissions
+          if (data.submissions && Array.isArray(data.submissions)) {
+            for (const sub of data.submissions) {
+              await syncSubmissionToCloud(sub);
+            }
+          }
+        } catch (pushErr) {
+          console.warn("Failed to push restored student data to cloud:", pushErr);
         }
       }
 

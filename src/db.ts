@@ -167,6 +167,15 @@ export interface Teacher {
   syncState?: 'synced' | 'pending';
 }
 
+export interface TrashItem {
+  id?: number;
+  type: 'class' | 'exam' | 'student';
+  originalId: string | number;
+  name: string;
+  data: string;
+  deletedAt: Date;
+}
+
 class AppDatabase extends Dexie {
   students!: Table<Student>;
   exams!: Table<Exam>;
@@ -179,6 +188,7 @@ class AppDatabase extends Dexie {
   settings!: Table<SystemSetting>;
   pendingRegistrations!: Table<PendingRegistration>;
   teachers!: Table<Teacher>;
+  trash!: Table<TrashItem>;
 
   constructor() {
     super('OMRExamsDatabase');
@@ -219,6 +229,10 @@ class AppDatabase extends Dexie {
     // Version 13 updates students table to support class-wise unique studentNum
     this.version(13).stores({
       students: '++id, studentNum, className, &[studentNum+className]'
+    });
+    // Version 14 adds trash table for soft deletes (recycle bin)
+    this.version(14).stores({
+      trash: '++id, type, name, deletedAt'
     });
   }
 }

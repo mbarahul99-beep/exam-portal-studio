@@ -698,6 +698,26 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     if (confirm(`Are you sure you want to delete "${exam.title}"? This will permanently delete the exam layout, correct answer keys, and all student graded submissions.`)) {
       try {
         if (exam.id) {
+          // Capture for Soft Delete Trash Bin
+          try {
+            const questions = await db.questions.where('examId').equals(exam.id).toArray();
+            const submissions = await db.submissions.where('examId').equals(exam.id).toArray();
+            const trashData = {
+              examObj: exam,
+              questions,
+              submissions
+            };
+            await db.trash.add({
+              type: 'exam',
+              originalId: exam.id,
+              name: exam.title,
+              data: JSON.stringify(trashData),
+              deletedAt: new Date()
+            });
+          } catch (err) {
+            console.warn("Failed to capture exam for trash bin:", err);
+          }
+
           const deletedExams: number[] = JSON.parse(localStorage.getItem('sync_deleted_exams') || '[]');
           if (!deletedExams.includes(exam.id)) {
             deletedExams.push(exam.id);

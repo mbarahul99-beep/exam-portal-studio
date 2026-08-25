@@ -22,6 +22,7 @@ import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { InstallPWAPrompt } from './components/InstallPWAPrompt';
 import { OmrSettingsView, DEFAULT_OMR_SETTINGS } from './components/OmrSettingsView';
 import { BrandingSettingsView } from './components/BrandingSettingsView';
+import { TrashBinView } from './components/TrashBinView';
 import { pullCloudUpdatesToIndexedDB, syncStudentToCloud, syncClassToCloud, deleteStudentFromCloud, deleteClassFromCloud, renameClassOnCloud, syncExamToCloud } from './utils/cloudSync';
 import { 
   Sliders,
@@ -109,7 +110,7 @@ const chunkArray = <T,>(arr: T[], size: number): T[][] => {
 export default function App() {
   const { loaded: cvLoaded, error: cvError } = useOpenCv();
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'general-settings' | 'system-controls'>(
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'students' | 'teachers' | 'exams' | 'scanner' | 'analysis' | 'attendance' | 'whatsapp-settings' | 'questions-bank' | 'omr-settings' | 'general-settings' | 'system-controls' | 'trash-bin'>(
     () => {
       const stored = localStorage.getItem('appex_active_tab');
       return (stored && stored !== 'student-portal-setup') ? (stored as any) : 'dashboard';
@@ -1751,21 +1752,6 @@ export default function App() {
             // Already exists
           }
         }
-      } else if (studentsClassNamesList.length === 0 && dbClasses.length === 0 && localStorage.getItem('classes_seeded') !== 'true') {
-        const defaultClasses = ['NEET 1', 'NEET'];
-        for (const clsName of defaultClasses) {
-          try {
-            await db.classes.add({
-              name: clsName,
-              state: 'Synced',
-              createdAt: new Date(),
-              syncState: 'synced'
-            });
-          } catch {
-            // Already exists
-          }
-        }
-        localStorage.setItem('classes_seeded', 'true');
       }
     };
     syncClasses();
@@ -2299,6 +2285,15 @@ export default function App() {
             >
               <Settings size={18} /> General Settings
             </button>
+            <button 
+              className={`nav-item ${activeTab === 'trash-bin' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('trash-bin');
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Trash2 size={18} /> Trash Bin
+            </button>
 
             {sessionIsOwner && (
               <button 
@@ -2616,6 +2611,36 @@ export default function App() {
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (confirm(`Are you sure you want to delete class "${cls.name}"?`)) {
+                                    // Capture for Soft Delete Trash Bin
+                                    try {
+                                      const exams = await db.exams.where('className').equals(cls.name).toArray();
+                                      const examIds = exams.map(ex => ex.id).filter(Boolean) as number[];
+                                      const questions = examIds.length > 0 ? await db.questions.where('examId').anyOf(examIds).toArray() : [];
+                                      const studentsList = await db.students.where('className').equals(cls.name).toArray();
+                                      const studentIds = studentsList.map(s => s.id).filter(Boolean) as number[];
+                                      const subsByExam = examIds.length > 0 ? await db.submissions.where('examId').anyOf(examIds).toArray() : [];
+                                      const subsByStudent = studentIds.length > 0 ? await db.submissions.where('studentId').anyOf(studentIds).toArray() : [];
+                                      const submissions = Array.from(new Map([...subsByExam, ...subsByStudent].map(s => [s.id, s])).values());
+
+                                      const trashData = {
+                                        classObj: cls,
+                                        exams,
+                                        questions,
+                                        students: studentsList,
+                                        submissions
+                                      };
+
+                                      await db.trash.add({
+                                        type: 'class',
+                                        originalId: cls.name,
+                                        name: cls.name,
+                                        data: JSON.stringify(trashData),
+                                        deletedAt: new Date()
+                                      });
+                                    } catch (err) {
+                                      console.warn("Failed to capture class for trash bin:", err);
+                                    }
+
                                     const deletedClasses: string[] = JSON.parse(localStorage.getItem('sync_deleted_classes') || '[]');
                                     if (!deletedClasses.some(name => name.toLowerCase() === cls.name.toLowerCase())) {
                                       deletedClasses.push(cls.name);
@@ -3146,6 +3171,24 @@ export default function App() {
                                             onClick={async () => {
                                               setStudentMenuOpenId(null);
                                               if (confirm(`Are you sure you want to delete student "${s.name}"?`)) {
+                                                // Capture for Soft Delete Trash Bin
+                                                try {
+                                                  const submissions = await db.submissions.where('studentId').equals(s.id!).toArray();
+                                                  const trashData = {
+                                                    studentObj: s,
+                                                    submissions
+                                                  };
+                                                  await db.trash.add({
+                                                    type: 'student',
+                                                    originalId: s.id!,
+                                                    name: `${s.name} (Roll: ${s.studentNum})`,
+                                                    data: JSON.stringify(trashData),
+                                                    deletedAt: new Date()
+                                                  });
+                                                } catch (err) {
+                                                  console.warn("Failed to capture student for trash bin:", err);
+                                                }
+
                                                 if (s.id) {
                                                   const deletedStudents: number[] = JSON.parse(localStorage.getItem('sync_deleted_students') || '[]');
                                                   if (!deletedStudents.includes(s.id)) {
@@ -4239,6 +4282,10 @@ export default function App() {
 
           {activeTab === 'general-settings' && (
             <BrandingSettingsView />
+          )}
+
+          {activeTab === 'trash-bin' && (
+            <TrashBinView />
           )}
 
           {activeTab === 'system-controls' && sessionIsOwner && (

@@ -9,6 +9,8 @@ export interface ScanResult {
   bestDy?: number;
   questionOffsets?: Record<number, { dx: number; dy: number }>;
   bubbleSnippets?: Record<number, Record<string, string>>; // Cropped real bubble photos for option inspection/editing
+  detectedRollBubbles?: Array<{ colIdx: number; digit: number; x: number; y: number }>;
+  bubbleCenters?: Record<number, Record<string, { x: number; y: number }>>;
 }
 
 let currentYScale = 1.0;
@@ -389,37 +391,34 @@ export function getDynamicOMRQuestionLayout(
 
 /**
  * High-Precision Bubble Centroid Snapper (Centroid Alignment Engine)
- * Searches within a searchRadius (up to 12px) to detect the exact center of printed circle/fill
- * by maximizing local center-to-background contrast.
+ * Searches within a small conservative radius (up to 3px) to fine-tune the center of genuine marks
+ * without ever jumping or drifting to printed labels, neighboring bubbles, or borders.
  */
 export function findExactBubbleCentroid(
   grayMatrix: any,
   approxX: number,
   approxY: number,
-  searchRadius: number = 10,
+  searchRadius: number = 3,
   expectedBubbleR: number = 6.8
 ): { x: number; y: number } {
   let bestX = approxX;
   let bestY = approxY;
-  let maxContrast = -9999;
-  const sampleCenterR = Math.max(2.0, expectedBubbleR * 0.40);
+  let minCenterVal = 255;
+  const sampleCenterR = Math.max(2.0, expectedBubbleR * 0.45);
 
-  const startDy = -searchRadius;
-  const endDy = searchRadius;
-  const startDx = -searchRadius;
-  const endDx = searchRadius;
+  const startDy = -Math.min(4, Math.max(1, searchRadius));
+  const endDy = Math.min(4, Math.max(1, searchRadius));
+  const startDx = -Math.min(4, Math.max(1, searchRadius));
+  const endDx = Math.min(4, Math.max(1, searchRadius));
 
   for (let dy = startDy; dy <= endDy; dy += 1) {
     for (let dx = startDx; dx <= endDx; dx += 1) {
       const cx = Math.round(approxX + dx);
       const cy = Math.round(approxY + dy);
-      if (cx >= 12 && cx < grayMatrix.cols - 12 && cy >= 12 && cy < grayMatrix.rows - 12) {
+      if (cx >= 8 && cx < grayMatrix.cols - 8 && cy >= 8 && cy < grayMatrix.rows - 8) {
         const centerVal = calculateBubbleAverageGray(grayMatrix, cx, cy, sampleCenterR);
-        const bgVal = calculateRingAverageGray(grayMatrix, cx, cy, expectedBubbleR + 2, expectedBubbleR + 5);
-        const contrast = bgVal - centerVal;
-
-        if (contrast > maxContrast) {
-          maxContrast = contrast;
+        if (centerVal < minCenterVal) {
+          minCenterVal = centerVal;
           bestX = cx;
           bestY = cy;
         }
@@ -427,12 +426,61 @@ export function findExactBubbleCentroid(
     }
   }
 
-  // Only accept refined centroid if there is a genuine dark fill (contrast >= 30)
-  if (maxContrast < 30) {
+  // Only shift if there is an actual dark fill (core <= 165). If light/blank, stay firmly at grid location!
+  if (minCenterVal > 165) {
     return { x: approxX, y: approxY };
   }
 
   return { x: bestX, y: bestY };
+}
+
+/**
+ * Calculates rigorous multi-factor fill metrics inside the bubble core:
+ * - meanVal: average gray level of inner core
+ * - darkRatio: fraction of pixels distinctly darker than local paper background
+ * - minVal: darkest point inside the bubble
+ */
+export function calculateBubbleFillMetrics(
+  grayMatrix: any,
+  cx: number,
+  cy: number,
+  sampleRadius: number,
+  paperBaseline: number
+): { meanVal: number; darkRatio: number; minVal: number } {
+  let sum = 0;
+  let count = 0;
+  let darkCount = 0;
+  let minVal = 255;
+  const rSq = sampleRadius * sampleRadius;
+  const darkThreshold = Math.max(35, paperBaseline - 28);
+
+  const startX = Math.max(0, Math.floor(cx - sampleRadius));
+  const endX = Math.min(grayMatrix.cols - 1, Math.ceil(cx + sampleRadius));
+  const startY = Math.max(0, Math.floor(cy - sampleRadius));
+  const endY = Math.min(grayMatrix.rows - 1, Math.ceil(cy + sampleRadius));
+
+  for (let y = startY; y <= endY; y++) {
+    const dy = y - cy;
+    const dySq = dy * dy;
+    for (let x = startX; x <= endX; x++) {
+      const dx = x - cx;
+      if (dx * dx + dySq <= rSq) {
+        const pixelVal = grayMatrix.ucharAt(y, x);
+        sum += pixelVal;
+        count++;
+        if (pixelVal < darkThreshold) {
+          darkCount++;
+        }
+        if (pixelVal < minVal) {
+          minVal = pixelVal;
+        }
+      }
+    }
+  }
+
+  const meanVal = count > 0 ? sum / count : 255;
+  const darkRatio = count > 0 ? darkCount / count : 0;
+  return { meanVal, darkRatio, minVal };
 }
 
 function calculateRingAverageGray(grayMatrix: any, cx: number, cy: number, rInner: number, rOuter: number): number {
@@ -616,7 +664,7 @@ export function findOuterGridCorners(
 export async function scanOMRSheet(
   sourceImage: HTMLCanvasElement | HTMLImageElement,
   numQuestions: number,
-  rollNoDigits: number = 10,
+  rollNoDigits: number = 3,
   _examSetsCount: number = 1,
   sections: any[] = [],
   knownCorners?: Array<{ x: number; y: number }> | null
@@ -652,7 +700,8 @@ export async function scanOMRSheet(
       9
     );
 
-    const layout = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
+    const effectiveRollDigits = Math.min(3, Math.max(1, rollNoDigits || 3));
+    const layout = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections, effectiveRollDigits);
 
     const srcWidth = src.cols;
     const srcHeight = src.rows;
@@ -812,7 +861,7 @@ export async function scanOMRSheet(
     }
 
     const tmOffsets: TimingMarkOffset[] = [];
-    const searchR = (knownCorners && knownCorners.length === 4) ? 6 : 16;
+    const searchR = 16;
 
     for (const tm of qConf.timingMarkers) {
       const isCorner = tm.type === 'corner';
@@ -954,6 +1003,7 @@ export async function scanOMRSheet(
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
     const questionOffsets: Record<number, { dx: number; dy: number }> = {};
+    const bubbleCenters: Record<number, Record<string, { x: number; y: number }>> = {};
 
     for (let q = 1; q <= numQuestions; q++) {
       let colConf: OMRColumnConfig | null = null;
@@ -993,85 +1043,195 @@ export async function scanOMRSheet(
       questionOffsets[q] = finalRowOffset;
 
       const y = rawY + finalRowOffset.dy;
-      const intensities: number[] = [];
-      const filledOptions: number[] = [];
+      bubbleCenters[q] = {};
+
+      // First pass: locate centers and measure preliminary intensities across all options of this row
+      const optData: Array<{
+        optIdx: number;
+        optChar: string;
+        centerPt: { x: number; y: number };
+        innerVal: number;
+        outerVal: number;
+        contrast: number;
+        metrics: { meanVal: number; darkRatio: number; minVal: number };
+      }> = [];
 
       for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+        const optChar = OPTIONS_FIVE[optIdx];
         const rawX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + finalRowOffset.dx;
-        const centerPt = findExactBubbleCentroid(warpedGray, rawX, y, 8, qConf.bubbleRadius);
-        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.5);
+        // Conservative centroid snap (searchRadius = 3) ensures we stay strictly on the bubble
+        const centerPt = findExactBubbleCentroid(warpedGray, rawX, y, 3, qConf.bubbleRadius);
+        bubbleCenters[q][optChar] = centerPt;
+
+        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.0);
         const outerVal = calculateRingAverageGray(warpedGray, centerPt.x, centerPt.y, 7.5, 11.5);
         const contrast = outerVal - innerVal;
-        const ratio = outerVal > 0 ? (innerVal / outerVal) : 1.0;
 
-        intensities.push(innerVal);
+        // Approximate paper baseline using the surrounding ring
+        const metrics = calculateBubbleFillMetrics(warpedGray, centerPt.x, centerPt.y, 4.2, outerVal);
 
-        // Evalbee Sub-pixel Centroid Ring Snap Rule: Marked if inner core is dark (<= 180) with contrast drop
-        const isMarked = innerVal <= 180 && contrast >= 20 && ratio <= 0.85;
+        optData.push({
+          optIdx,
+          optChar,
+          centerPt,
+          innerVal,
+          outerVal,
+          contrast,
+          metrics
+        });
+      }
+
+      // Establish local row paper baseline: highest brightness among bubble cores/rings in this row
+      const rowPaperBaseline = Math.max(...optData.map(d => Math.max(d.outerVal, d.innerVal)), 180);
+
+      // Evaluate candidates with multi-factor thresholding:
+      // A bubble is marked only if it is genuinely dark relative to row baseline,
+      // has significant contrast, and contains a dense dark core (darkRatio >= 0.20).
+      const candidateIndices: number[] = [];
+
+      for (const d of optData) {
+        const drop = rowPaperBaseline - d.metrics.meanVal;
+        const ratio = rowPaperBaseline > 0 ? (d.metrics.meanVal / rowPaperBaseline) : 1.0;
+
+        // Strict criteria to completely eliminate false positives on unfilled bubbles:
+        // 1. Core must be dark (meanVal <= 165)
+        // 2. Significant drop from paper baseline (drop >= 28)
+        // 3. Significant local ring contrast (contrast >= 20)
+        // 4. Significant dark pixel density in core (darkRatio >= 0.20)
+        // 5. Core ratio to paper baseline <= 0.82
+        const isMarked = d.metrics.meanVal <= 165 &&
+                         drop >= 28 &&
+                         d.contrast >= 20 &&
+                         d.metrics.darkRatio >= 0.20 &&
+                         ratio <= 0.82;
+
         if (isMarked) {
-          filledOptions.push(optIdx);
+          candidateIndices.push(d.optIdx);
         }
       }
 
-      if (filledOptions.length === 1) {
-        answers[q] = OPTIONS_FIVE[filledOptions[0]];
-      } else if (filledOptions.length > 1) {
-        const sortedFilled = [...filledOptions].sort((a, b) => intensities[a] - intensities[b]);
-        const primary = sortedFilled[0];
-        const secondary = sortedFilled[1];
-        if (intensities[secondary] - intensities[primary] >= 20) {
-          answers[q] = OPTIONS_FIVE[primary];
+      if (candidateIndices.length === 1) {
+        // Single candidate: verify it stands out clearly against the other bubbles in the row
+        const candIdx = candidateIndices[0];
+        const otherVals = optData.filter(d => d.optIdx !== candIdx).map(d => d.innerVal);
+        const secondLowest = otherVals.length > 0 ? Math.min(...otherVals) : 255;
+        const separation = secondLowest - optData[candIdx].innerVal;
+
+        // Definite fill if separation >= 15 OR the fill is intensely dark (drop >= 45)
+        if (separation >= 15 || (rowPaperBaseline - optData[candIdx].innerVal >= 45)) {
+          answers[q] = OPTIONS_FIVE[candIdx];
         } else {
-          answers[q] = filledOptions.map(idx => OPTIONS_FIVE[idx]).sort().join(',');
+          answers[q] = '';
+        }
+      } else if (candidateIndices.length > 1) {
+        // Sort candidate options by darkness (lowest innerVal first)
+        const sortedCands = [...candidateIndices].sort((a, b) => optData[a].innerVal - optData[b].innerVal);
+        const bestIdx = sortedCands[0];
+        const secondIdx = sortedCands[1];
+
+        // If one is noticeably darker than the other (e.g. pencil smudge vs pen fill), pick the primary
+        if (optData[secondIdx].innerVal - optData[bestIdx].innerVal >= 25) {
+          answers[q] = OPTIONS_FIVE[bestIdx];
+        } else {
+          answers[q] = candidateIndices.map(idx => OPTIONS_FIVE[idx]).sort().join(',');
         }
       } else {
         answers[q] = '';
       }
     }
 
-    // Roll No Scanning (Timing-Mark Aligned)
-    const rollDigits = Math.max(1, Math.min(6, rollNoDigits || 2));
+    // 8. Roll No Scanning (Timing-Mark Aligned, Exact Col Bounds, Zero Guessing)
+    const effectiveRollCols = Math.min(3, Math.max(1, rollNoDigits || 3));
     const col0Width = qConf.colWidth;
     const col0Center = qConf.gridLeft + 0.5 * col0Width;
     const rollXStep = qConf.rollXStep;
-    const rollTotalWidth = (rollDigits - 1) * rollXStep;
+    const rollTotalWidth = (effectiveRollCols - 1) * rollXStep;
     const rollFirstX = col0Center - 0.5 * rollTotalWidth;
     const rollYStep = qConf.rollYStep;
     const digitValuesList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let studentNum = '';
+    const detectedRollBubbles: Array<{ colIdx: number; digit: number; x: number; y: number }> = [];
 
     const rollLocalOff = getLocalOffset(col0Center, 188);
+    const detectedDigitsByCol: Record<number, number> = {};
 
-    for (let colIdx = 0; colIdx < rollDigits; colIdx++) {
+    for (let colIdx = 0; colIdx < effectiveRollCols; colIdx++) {
       const approxX = rollFirstX + colIdx * rollXStep + rollLocalOff.dx;
-      const intensities: number[] = [];
-
-      let minVal = 255;
-      let minRowIdx = -1;
+      const rowMetrics: Array<{
+        digit: number;
+        centerPt: { x: number; y: number };
+        innerVal: number;
+        outerVal: number;
+        contrast: number;
+        metrics: { meanVal: number; darkRatio: number; minVal: number };
+      }> = [];
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
         const rawY = 188 + rowIdx * rollYStep + rollLocalOff.dy;
-        const centerPt = findExactBubbleCentroid(warpedGray, approxX, rawY, 8, qConf.bubbleRadius);
-        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.5);
-        intensities.push(innerVal);
-        if (innerVal < minVal) {
-          minVal = innerVal;
-          minRowIdx = rowIdx;
+        // Conservative search radius prevents jumping to column headers or neighboring digits
+        const centerPt = findExactBubbleCentroid(warpedGray, approxX, rawY, 3, qConf.bubbleRadius);
+        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.0);
+        const outerVal = calculateRingAverageGray(warpedGray, centerPt.x, centerPt.y, 7.5, 11.5);
+        const contrast = outerVal - innerVal;
+        const metrics = calculateBubbleFillMetrics(warpedGray, centerPt.x, centerPt.y, 4.2, outerVal);
+
+        rowMetrics.push({
+          digit: digitValuesList[rowIdx],
+          centerPt,
+          innerVal,
+          outerVal,
+          contrast,
+          metrics
+        });
+      }
+
+      // Compute column paper baseline from top 5 brightest bubbles
+      const sortedIntensities = [...rowMetrics].map(m => m.innerVal).sort((a, b) => b - a);
+      const colPaperBaseline = sortedIntensities.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+
+      // Find the darkest bubble in this column
+      let bestRow = rowMetrics[0];
+      for (const rm of rowMetrics) {
+        if (rm.innerVal < bestRow.innerVal) {
+          bestRow = rm;
         }
       }
 
-      // Compute clean column paper baseline from top 5 brightest bubbles in column
-      const sortedCol = [...intensities].sort((a, b) => b - a);
-      const colBaseline = sortedCol.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-      const rollDrop = colBaseline - minVal;
-      const rollRatio = colBaseline > 0 ? (minVal / colBaseline) : 1.0;
+      // Second lowest for separation check
+      const otherVals = rowMetrics.filter(rm => rm.digit !== bestRow.digit).map(rm => rm.innerVal);
+      const secondLowest = Math.min(...otherVals);
+      const separation = secondLowest - bestRow.innerVal;
+      const rollDrop = colPaperBaseline - bestRow.innerVal;
+      const rollRatio = colPaperBaseline > 0 ? (bestRow.innerVal / colPaperBaseline) : 1.0;
 
-      // Marked digit is the darkest bubble in column
-      const isDigitFilled = minVal <= 185 && rollDrop >= 15 && rollRatio <= 0.90;
-      if (minRowIdx !== -1 && isDigitFilled) {
-        studentNum += digitValuesList[minRowIdx].toString();
-      } else if (minRowIdx !== -1 && minVal < 200) {
-        studentNum += digitValuesList[minRowIdx].toString();
+      // Strict fill criterion for roll number bubble:
+      // Dark fill, solid drop from column baseline, high dark pixel ratio, and distinct separation
+      const isDigitFilled = bestRow.innerVal <= 165 &&
+                            rollDrop >= 28 &&
+                            bestRow.contrast >= 18 &&
+                            bestRow.metrics.darkRatio >= 0.18 &&
+                            rollRatio <= 0.82 &&
+                            (separation >= 15 || rollDrop >= 45);
+
+      if (isDigitFilled) {
+        detectedDigitsByCol[colIdx] = bestRow.digit;
+        detectedRollBubbles.push({
+          colIdx,
+          digit: bestRow.digit,
+          x: bestRow.centerPt.x,
+          y: bestRow.centerPt.y
+        });
+      }
+      // Note: If no bubble in this column meets the strict fill criteria, DO NOT guess!
+    }
+
+    // Build studentNum string from detected digits
+    let studentNum = '';
+    const detectedColIndices = Object.keys(detectedDigitsByCol).map(Number).sort((a, b) => a - b);
+    if (detectedColIndices.length > 0) {
+      for (let c = 0; c < effectiveRollCols; c++) {
+        if (detectedDigitsByCol[c] !== undefined) {
+          studentNum += detectedDigitsByCol[c].toString();
+        }
       }
     }
 
@@ -1092,7 +1252,9 @@ export async function scanOMRSheet(
       debugWarpedCanvas,
       bestDy,
       questionOffsets,
-      bubbleSnippets
+      bubbleSnippets,
+      detectedRollBubbles,
+      bubbleCenters
     };
 
   } catch (err: any) {

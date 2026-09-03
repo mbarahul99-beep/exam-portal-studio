@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, BookOpen } from 'lucide-react';
+import { Shield, Lock, BookOpen, Zap } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1085333589967-googleplaceholder.apps.googleusercontent.com';
@@ -500,6 +500,64 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({ onLoginS
             </div>
           </>
         )}
+
+        {/* Temporary Login Bypass */}
+        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px dashed #cbd5e0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Zap size={13} /> Dev / Preview Mode
+            </span>
+            <span style={{ fontSize: '0.68rem', color: '#718096' }}>Instant Bypass</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <button
+              type="button"
+              id="bypass-admin-btn"
+              onClick={() => onLoginSuccess('admin', undefined, undefined, 'admin@apexexam.local', true, 'dev-bypass-token')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 8px',
+                background: '#0f172a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease'
+              }}
+              title="Enter portal as Master Admin"
+            >
+              <Shield size={14} /> Bypass Admin
+            </button>
+            <button
+              type="button"
+              id="bypass-teacher-btn"
+              onClick={() => onLoginSuccess('teacher', undefined, 1, 'teacher@apexexam.local', false, 'dev-bypass-token')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 8px',
+                background: '#0284c7',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease'
+              }}
+              title="Enter portal as Teacher"
+            >
+              <Lock size={14} /> Bypass Teacher
+            </button>
+          </div>
+        </div>
 
       </div>
     </div>

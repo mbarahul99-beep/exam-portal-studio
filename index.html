@@ -1,6 +1,18 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Safeguard window.fetch against read-only getter collisions in preview iframes
+      try {
+        let _currentFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          get() { return _currentFetch; },
+          set(fn) { _currentFetch = fn; },
+          configurable: true,
+          enumerable: true
+        });
+      } catch (e) {}
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />

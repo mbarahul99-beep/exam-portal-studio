@@ -34,12 +34,15 @@ function drawOverlayOnWarpedCanvas(
   sections: any[],
   questionOffsets?: Record<number, { dx: number; dy: number }>,
   detectedRollNum?: string,
-  rollNoDigits?: number
+  rollNoDigits?: number,
+  detectedRollBubbles?: Array<{ colIdx: number; digit: number; x: number; y: number }>,
+  bubbleCenters?: Record<number, Record<string, { x: number; y: number }>>
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections, rollNoDigits ?? 2);
+  const effectiveRollDigits = Math.min(3, Math.max(1, rollNoDigits ?? 3));
+  const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections, effectiveRollDigits);
   const bubbleRadius = qConf.bubbleRadius || 6.5;
 
   for (let q = 1; q <= numQuestions; q++) {
@@ -75,8 +78,10 @@ function drawOverlayOnWarpedCanvas(
       const optChar = optionChars[optIdx];
       const approxX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + offset.dx;
 
-      const finalX = approxX;
-      const finalY = rawY;
+      // Use sub-pixel snapped bubble center from scanner if available, else exact grid coordinates
+      const bubblePt = bubbleCenters?.[q]?.[optChar];
+      const finalX = bubblePt ? bubblePt.x : approxX;
+      const finalY = bubblePt ? bubblePt.y : rawY;
 
       const isStudentPick = studentPicks.includes(optChar);
       const isCorrectOption = correctAns === optChar;
@@ -120,12 +125,22 @@ function drawOverlayOnWarpedCanvas(
   }
 
   // Draw Golden Yellow overlay on detected Roll Number bubbles
-  if (detectedRollNum && detectedRollNum.trim() !== '') {
-    const numDigits = Math.min(detectedRollNum.length, rollNoDigits ?? 3);
+  if (detectedRollBubbles && detectedRollBubbles.length > 0) {
+    for (const rb of detectedRollBubbles) {
+      ctx.beginPath();
+      ctx.arc(rb.x, rb.y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.55)'; // Golden yellow fill
+      ctx.fill();
+      ctx.strokeStyle = '#ca8a04'; // Gold border
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  } else if (detectedRollNum && detectedRollNum.trim() !== '') {
+    const totalRollCols = effectiveRollDigits;
     const col0Width = qConf.colWidth;
     const col0Center = (qConf.gridLeft || 70) + 0.5 * col0Width;
     const rollXStep = qConf.rollXStep || (qConf.numCols <= 2 ? 40 : (qConf.numCols === 3 ? 34 : 30));
-    const rollTotalWidth = (numDigits - 1) * rollXStep;
+    const rollTotalWidth = (totalRollCols - 1) * rollXStep;
     const rollFirstX = col0Center - 0.5 * rollTotalWidth;
     const rollYStep = qConf.rollYStep || qConf.yStep;
 
@@ -134,18 +149,18 @@ function drawOverlayOnWarpedCanvas(
     const rollDx = rollLocalOff.dx;
     const rollDy = rollLocalOff.dy;
 
-    for (let colIdx = 0; colIdx < numDigits; colIdx++) {
-      const char = detectedRollNum[colIdx];
-      const digitVal = parseInt(char, 10);
-      if (isNaN(digitVal)) continue;
+    const digits = detectedRollNum.trim().split('').map(c => parseInt(c, 10)).filter(n => !isNaN(n));
+    const colOffset = Math.max(0, totalRollCols - digits.length);
+
+    for (let i = 0; i < digits.length; i++) {
+      const colIdx = colOffset + i;
+      if (colIdx >= totalRollCols) break;
+      const digitVal = digits[i];
       const rowIdx = digitValuesList.indexOf(digitVal);
       if (rowIdx === -1) continue;
 
-      const approxX = rollFirstX + colIdx * rollXStep + rollDx;
-      const approxY = 188 + rowIdx * rollYStep + rollDy;
-
-      const finalX = approxX;
-      const finalY = approxY;
+      const finalX = rollFirstX + colIdx * rollXStep + rollDx;
+      const finalY = 188 + rowIdx * rollYStep + rollDy;
 
       ctx.beginPath();
       ctx.arc(finalX, finalY, bubbleRadius + 1.5, 0, 2 * Math.PI);
@@ -1174,7 +1189,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           exam.sections ?? [],
           cvResult.questionOffsets,
           cvResult.studentNum || '',
-          exam.rollNoDigits ?? 3
+          exam.rollNoDigits ?? 3,
+          cvResult.detectedRollBubbles,
+          cvResult.bubbleCenters
         );
       }
 
@@ -1462,7 +1479,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           exam.sections ?? [],
           cvResult.questionOffsets,
           cvResult.studentNum || '',
-          exam.rollNoDigits ?? 3
+          exam.rollNoDigits ?? 3,
+          cvResult.detectedRollBubbles,
+          cvResult.bubbleCenters
         );
       }
 

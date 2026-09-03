@@ -1,0 +1,6 @@
+{
+  "name": "OMR Scanning & Online Exam Portal",
+  "description": "Comprehensive OMR sheet scanner, automatic grading, and online exam management portal.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

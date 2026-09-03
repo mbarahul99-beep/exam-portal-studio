@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { OMR_CONFIG, getDynamicOMRQuestionLayout, getColumnSlots } from '../utils/omrScanner';
+import { getDynamicOMRQuestionLayout, getColumnSlots } from '../utils/omrScanner';
 import { DEFAULT_OMR_SETTINGS, type OmrCustomSettings } from './OmrSettingsView';
 import { Printer, Sliders, Columns, Maximize2 } from 'lucide-react';
 import { db } from '../db';
+import { APEX_ICON_PURE_BASE64 } from '../assets/iconPureBase64';
 
 interface OmrPrintSheetProps {
   examTitle: string;
@@ -41,18 +42,15 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
     loadSettings();
   }, []);
 
-  // Calculate dynamic question layout to fit cleanly between y = 460 and y = 1220
-  const layout = getDynamicOMRQuestionLayout(totalQuestions, customCols, density, exam?.sections);
+  const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
+  const layout = getDynamicOMRQuestionLayout(totalQuestions, density, customCols, exam?.sections, rollNoDigits);
+  const bottomAnchorY = layout.bottomAnchorY || 1344;
 
   // Conversion: OMR coordinates (1000 x 1414) mapped to A4 millimeters (210 x 297)
   const toX = (x: number) => `${x * 0.21}mm`;
   const toY = (y: number) => `${y * 0.21}mm`;
 
-  const rollNoDigits = Math.min(3, exam?.rollNoDigits || 3);
-  const rollNoWidth = rollNoDigits * OMR_CONFIG.studentId.xStep + 50;
-
   const rollCols = Array.from({ length: rollNoDigits });
-  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
 
   const getQuestionOptions = (qNum: number): string[] => {
     if (!exam || !exam.sections) return ['A', 'B', 'C', 'D'];
@@ -104,12 +102,17 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
     }
   };
 
-  // Determine bubble size string based on scale selection
+  // Determine bubble size string based on scale selection and dynamic column layout
   const getBubbleSize = () => {
-    if (bubbleScale === 'large') return '4.2mm';
+    if (bubbleScale === 'large') return '4.5mm';
     if (bubbleScale === 'compact') return '3.0mm';
-    return layout.yStep <= 20 ? '3.4mm' : '3.6mm';
+    if (layout.numCols <= 2) return '4.5mm';
+    if (layout.numCols === 3) return '3.8mm';
+    if (layout.numCols === 4) return '3.5mm';
+    return '3.3mm';
   };
+
+  const getRollBubbleSize = () => getBubbleSize();
 
   return (
     <div className="omr-print-wrapper">
@@ -127,95 +130,112 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
         flexDirection: 'column',
         gap: '12px'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sliders size={20} color="#2563eb" />
-            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-              Full Page OMR Layout Controls ({totalQuestions} Questions)
-            </h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+              Print OMR Sheet Preview
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              {totalQuestions} Questions • {layout.numCols} Columns Layout • High Precision Grid
+            </p>
           </div>
-
           <button
-            type="button"
             onClick={() => window.print()}
             style={{
-              padding: '8px 20px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              color: '#ffffff',
-              border: 'none',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 8px rgba(37,99,235,0.3)'
+              gap: '8px',
+              padding: '10px 20px',
+              backgroundColor: '#dc0045',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(220, 0, 69, 0.25)'
             }}
           >
             <Printer size={16} /> Print / Save PDF
           </button>
         </div>
 
-        {/* Controls Row */}
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.85rem' }}>
-          
-          {/* Columns Selection */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* CONTROLS ROW */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          paddingTop: '10px',
+          borderTop: '1px solid #f1f5f9',
+          fontSize: '13px'
+        }}>
+          {/* Columns Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Columns size={15} color="#64748b" />
-            <span style={{ fontWeight: 600, color: '#475569' }}>Columns:</span>
-            <select 
-              value={customCols || ''} 
-              onChange={(e) => handleColsChange(e.target.value ? Number(e.target.value) : undefined)}
-              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+            <span style={{ fontWeight: 600, color: '#334155' }}>Columns:</span>
+            <select
+              value={customCols || 'auto'}
+              onChange={(e) => handleColsChange(e.target.value === 'auto' ? undefined : Number(e.target.value))}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontWeight: 600,
+                fontSize: '12px',
+                color: '#0f172a'
+              }}
             >
-              <option value="">Auto ({layout.numCols} Cols)</option>
-              <option value="2">2 Columns</option>
-              <option value="3">3 Columns</option>
-              <option value="4">4 Columns</option>
-              <option value="5">5 Columns</option>
+              <option value="auto">Auto ({layout.numCols} Cols)</option>
+              <option value="2">2 Columns (1-35 Qs)</option>
+              <option value="3">3 Columns (36-69 Qs)</option>
+              <option value="4">4 Columns (70-134 Qs)</option>
+              <option value="5">5 Columns (135-200 Qs)</option>
             </select>
           </div>
 
-          {/* Height Fill / Density Selection */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Maximize2 size={15} color="#64748b" />
-            <span style={{ fontWeight: 600, color: '#475569' }}>Full Page Fill:</span>
-            <select 
-              value={density} 
+          {/* Density Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sliders size={15} color="#64748b" />
+            <span style={{ fontWeight: 600, color: '#334155' }}>Spacing:</span>
+            <select
+              value={density}
               onChange={(e) => handleDensityChange(e.target.value as any)}
-              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontWeight: 600,
+                fontSize: '12px',
+                color: '#0f172a'
+              }}
             >
-              <option value="auto">⚡ Auto-Fit Full Page (100% Height)</option>
-              <option value="spacious">Spacious Spacing</option>
+              <option value="auto">Auto (Balanced)</option>
+              <option value="compact">Compact (More Top Space)</option>
               <option value="normal">Normal</option>
-              <option value="compact">Compact</option>
+              <option value="spacious">Spacious (Full Page)</option>
             </select>
           </div>
 
-          {/* Bubble Size */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontWeight: 600, color: '#475569' }}>Bubble Size:</span>
-            <select 
-              value={bubbleScale} 
+          {/* Bubble Scale Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Maximize2 size={15} color="#64748b" />
+            <span style={{ fontWeight: 600, color: '#334155' }}>Bubble Size:</span>
+            <select
+              value={bubbleScale}
               onChange={(e) => setBubbleScale(e.target.value as any)}
-              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontWeight: 600,
+                fontSize: '12px',
+                color: '#0f172a'
+              }}
             >
-              <option value="normal">Normal</option>
-              <option value="large">Large</option>
-              <option value="compact">Compact</option>
+              <option value="normal">Auto Dynamic ({getBubbleSize()})</option>
+              <option value="large">Large ({bubbleScale === 'large' ? '4.8mm' : '4.8mm'})</option>
+              <option value="compact">Compact (3.2mm)</option>
             </select>
-          </div>
-
-          {/* Institute Title Header Live Customizer */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: '220px' }}>
-            <span style={{ fontWeight: 600, color: '#475569' }}>Header:</span>
-            <input 
-              type="text"
-              value={omrConfig.instituteName}
-              onChange={(e) => setOmrConfig(prev => ({ ...prev, instituteName: e.target.value }))}
-              style={{ flex: 1, padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-            />
           </div>
 
         </div>
@@ -223,180 +243,216 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
 
       {/* PRINTABLE A4 PAGE CONTAINER */}
       <div className="omr-print-page">
-        {/* 4 Corner Alignment Anchors (Matching exact target coordinates: x: 30, 970; y: 30, 1384) */}
-        <div className="omr-anchor anchor-tl" style={{ left: toX(OMR_CONFIG.anchors.tl.x), top: toY(OMR_CONFIG.anchors.tl.y) }} />
-        <div className="omr-anchor anchor-tr" style={{ left: toX(OMR_CONFIG.anchors.tr.x), top: toY(OMR_CONFIG.anchors.tr.y) }} />
-        <div className="omr-anchor anchor-bl" style={{ left: toX(OMR_CONFIG.anchors.bl.x), top: toY(OMR_CONFIG.anchors.bl.y) }} />
-        <div className="omr-anchor anchor-br" style={{ left: toX(OMR_CONFIG.anchors.br.x), top: toY(OMR_CONFIG.anchors.br.y) }} />
 
-        {/* Outer Border Frame */}
-        <div className="sheet-border-frame" 
-             style={{
-               left: toX(70),
-               top: toY(75),
-               width: toX(860),
-               height: toY(1240)
-             }} 
-        />
+        {/* ═══════════════════════════════════════════════════════════════════
+            ZONE A: TOP HEADER & CANDIDATE DETAILS (ORIGINAL BEAUTIFUL APEX HEADER)
+            ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{
+          position: 'absolute',
+          top: toY(10),
+          left: toX(layout.gridLeft),
+          width: toX(layout.gridRight - layout.gridLeft),
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          zIndex: 12
+        }}>
+          {/* Logo & Institute Name */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+            <img 
+              src={APEX_ICON_PURE_BASE64} 
+              alt="APEX Logo" 
+              style={{ 
+                height: `${omrConfig.logoHeight ? Math.min(32, omrConfig.logoHeight) : 26}px`, 
+                width: 'auto', 
+                objectFit: 'contain',
+                display: 'block'
+              }} 
+            />
+            <span style={{
+              fontSize: `${omrConfig.omrInstitutionFontSize || 18}px`,
+              fontWeight: 900,
+              color: '#dc0045',
+              fontFamily: omrConfig.headerInstitutionFontFamily || "'Titan One', sans-serif",
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {omrConfig.instituteName || 'Institute APEX'}
+            </span>
+          </div>
 
-        {/* Institute Name (Text) and Icon Logo Side-by-Side */}
-        <div style={{ position: 'absolute', top: toY(20), left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', zIndex: 12 }}>
-          <img 
-            src="/logo.png" 
-            alt="APEX Logo" 
-            style={{ 
-              height: toY((omrConfig.omrLogoHeight || 42) * 0.85),
-              width: 'auto',
-              objectFit: 'contain'
-            }} 
-          />
-          <span style={{
-            fontSize: `${omrConfig.omrInstitutionFontSize || 18}px`,
-            fontWeight: 900,
-            color: '#dc0045',
-            fontFamily: omrConfig.headerInstitutionFontFamily || "'Titan One', sans-serif",
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px'
-          }}>
-            {omrConfig.instituteName || 'INSTITUTE APEX'}
-          </span>
-        </div>
-
-        {/* Header section inside the margin frame */}
-        <div className="omr-header-section" style={{ top: toY(62), display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 11 }}>
+          {/* Subtitle */}
           <div className="omr-subtitle" style={{ 
-            fontSize: `${omrConfig.headerSubtitleFontSize || 8.5}px`, 
-            padding: '1px 12px', 
-            marginBottom: '1.5mm',
+            fontSize: `${omrConfig.headerSubtitleFontSize || 8.2}px`, 
+            fontWeight: 800,
+            color: '#dc0045',
+            letterSpacing: '0.4px',
+            marginBottom: '2px',
             fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
           }}>
             INSTITUTE OF NEET & IIT-JEE COACHING
           </div>
+
+          {/* Exam Title */}
           <div className="omr-exam-title" style={{ 
-            fontSize: `${omrConfig.headerTitleFontSize || 11}px`, 
+            fontSize: `${omrConfig.headerTitleFontSize || 10.5}px`, 
             margin: 0, 
             fontWeight: 900, 
             color: '#0f172a',
+            marginBottom: '6px',
             fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
           }}>
             CLASS: {exam?.className?.toUpperCase() || 'NEET'} &nbsp;|&nbsp; EXAM: {examTitle.toUpperCase()}
           </div>
-        </div>
 
-        {/* Decorative Border Cards (Custom Editable Box Titles) */}
-        <div className="bg-border-card" 
-             style={{
-               left: toX(70),
-               top: toY(120),
-               width: toX(rollNoWidth),
-               height: toY(265)
-             }}
-        >
-          <div className="box-title">{omrConfig.rollNoBoxTitle}</div>
-        </div>
-
-        {/* ROLL NO DIGIT HEADER BOXES */}
-        {rollCols.map((_, colIdx) => {
-          const x = OMR_CONFIG.studentId.xStart + colIdx * OMR_CONFIG.studentId.xStep;
-          return (
-            <div 
-              key={`roll-h-${colIdx}`}
-              className="digit-box-header"
-              style={{
-                left: toX(x),
-                top: toY(OMR_CONFIG.studentId.yStart - 25)
-              }}
-            />
-          );
-        })}
-
-        {/* ROLL NO BUBBLES */}
-        {rollCols.map((_, colIdx) => {
-          const x = OMR_CONFIG.studentId.xStart + colIdx * OMR_CONFIG.studentId.xStep;
-          return digits.map((digitVal, rowIdx) => {
-            const y = OMR_CONFIG.studentId.yStart + rowIdx * OMR_CONFIG.studentId.yStep;
-            return (
-              <div
-                key={`roll-b-${colIdx}-${digitVal}`}
-                className="omr-bubble id-bubble"
-                style={{
-                  left: toX(x),
-                  top: toY(y)
-                }}
-              >
-                {digitVal}
-              </div>
-            );
-          });
-        })}
-
-        {/* LEFT DIGIT LABEL COLUMN TO HELP STUDENTS IDENTIFY ROWS */}
-        {digits.map((digitVal, rowIdx) => {
-          const y = OMR_CONFIG.studentId.yStart + rowIdx * OMR_CONFIG.studentId.yStep;
-          const leftX = OMR_CONFIG.studentId.xStart - 22; // 100 - 22 = 78px
-          return (
-            <div
-              key={`roll-row-label-${digitVal}`}
-              style={{
-                position: 'absolute',
-                left: toX(leftX),
-                top: toY(y),
-                transform: 'translate(-50%, -50%)',
-                fontSize: '7.5px',
+          {/* Candidate & Father Name Handwriting Line */}
+          <div style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '24px',
+            boxSizing: 'border-box'
+          }}>
+            {/* Candidate Name */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                fontSize: `${omrConfig.headerCandidateFontSize || 8}px`,
                 fontWeight: 800,
-                color: '#dc0045'
-              }}
-            >
-              {digitVal}
+                color: '#dc0045',
+                whiteSpace: 'nowrap',
+                fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
+              }}>
+                {omrConfig.candidateNameLabel || "CANDIDATE'S NAME (IN CAPITAL LETTERS)"}:
+              </span>
+              <div style={{ flex: 1, borderBottom: '1px dashed #94a3b8', height: '14px' }} />
             </div>
-          );
-        })}
 
-        {/* CANDIDATE DETAILS CARD (STACKED VERTICALLY TO THE RIGHT OF ROLL NUMBER CARD) */}
-        <div className="bg-border-card"
-             style={{
-               left: toX(240),
-               top: toY(120),
-               width: toX(690),
-               height: toY(265),
-               display: 'flex',
-               flexDirection: 'column',
-               justifyContent: 'center',
-               gap: '12px',
-               padding: '0 20px',
-               boxSizing: 'border-box'
-             }}
-        >
-          {/* Candidate Name Row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`,
-              fontWeight: 'bold',
-              color: '#dc0045',
-              whiteSpace: 'nowrap',
-              fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
-            }}>
-              {omrConfig.candidateNameLabel || 'CANDIDATE NAME'}:
-            </span>
-            <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '14px' }} />
-          </div>
-
-          {/* Father's Name Row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              fontSize: `${omrConfig.headerCandidateFontSize || 7.5}px`,
-              fontWeight: 'bold',
-              color: '#dc0045',
-              whiteSpace: 'nowrap',
-              fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
-            }}>
-              {omrConfig.fatherNameLabel || "FATHER'S NAME"}:
-            </span>
-            <div style={{ flex: 1, borderBottom: '0.8px dashed #dc0045', height: '14px' }} />
+            {/* Father's Name */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                fontSize: `${omrConfig.headerCandidateFontSize || 8}px`,
+                fontWeight: 800,
+                color: '#dc0045',
+                whiteSpace: 'nowrap',
+                fontFamily: omrConfig.headerGeneralFontFamily || "'Outfit', sans-serif"
+              }}>
+                {omrConfig.fatherNameLabel || "FATHER'S NAME (IN CAPITAL LETTERS)"}:
+              </span>
+              <div style={{ flex: 1, borderBottom: '1px dashed #94a3b8', height: '14px' }} />
+            </div>
           </div>
         </div>
 
-        {/* DYNAMIC QUESTIONS GRID SECTION */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            ZONE B: PURE UNIFORM EVALBEE GUTTER FIDUCIAL MATRIX
+            ═══════════════════════════════════════════════════════════════════ */}
+        {layout.timingMarkers && layout.timingMarkers.map((tm, tmIdx) => (
+          <div 
+            key={`timing-marker-${tmIdx}`}
+            className={tm.type === 'corner' ? "corner-timing-marker" : "omr-timing-marker"}
+            style={{
+              left: toX(tm.x),
+              top: toY(tm.y)
+            }}
+          />
+        ))}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            ZONE C: ROLL NUMBER (CENTERED IN COLUMN 0 TRACK)
+            ═══════════════════════════════════════════════════════════════════ */}
+        {(() => {
+          const col0Width = layout.colWidth;
+          const col0Center = layout.gridLeft + 0.5 * col0Width;
+          const rollXStep = layout.rollXStep;
+          const rollTotalWidth = (rollNoDigits - 1) * rollXStep;
+          const rollFirstX = col0Center - 0.5 * rollTotalWidth;
+          const rollYStep = layout.rollYStep;
+
+          return (
+            <>
+              {/* CLEAN ROLL NUMBER HEADER */}
+              <div style={{
+                position: 'absolute',
+                left: toX(col0Center),
+                top: toY(120),
+                transform: 'translate(-50%, -50%)',
+                fontSize: '10px',
+                fontWeight: 900,
+                color: '#dc0045',
+                letterSpacing: '0.6px',
+                fontFamily: "'Outfit', sans-serif",
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+                zIndex: 10
+              }}>
+                {omrConfig.rollNoBoxTitle || 'ROLL NO'}
+              </div>
+
+              {/* ROLL NO DIGIT HEADER BOXES */}
+              {rollCols.map((_, colIdx) => {
+                const x = rollFirstX + colIdx * rollXStep;
+                return (
+                  <div 
+                    key={`roll-h-${colIdx}`}
+                    className="digit-box-header"
+                    style={{
+                      left: toX(x),
+                      top: toY(152),
+                      width: '5.5mm',
+                      height: '5.5mm'
+                    }}
+                  />
+                );
+              })}
+
+              {/* ROLL NO BUBBLES (DIGITS 0 TO 9) */}
+              {rollCols.map((_, colIdx) => {
+                const x = rollFirstX + colIdx * rollXStep;
+                return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digitVal, rowIdx) => {
+                  const y = 188 + rowIdx * rollYStep;
+                  return (
+                    <div
+                      key={`roll-b-${colIdx}-${digitVal}`}
+                      className="omr-bubble id-bubble"
+                      style={{
+                        left: toX(x),
+                        top: toY(y),
+                        width: getRollBubbleSize(),
+                        height: getRollBubbleSize()
+                      }}
+                    />
+                  );
+                });
+              })}
+
+              {/* LEFT DIGIT ROW LABELS (0..9) */}
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digitVal, rowIdx) => {
+                const y = 188 + rowIdx * rollYStep;
+                const leftX = rollFirstX - 22;
+                return (
+                  <div
+                    key={`roll-row-label-${digitVal}`}
+                    style={{
+                      position: 'absolute',
+                      left: toX(leftX),
+                      top: toY(y),
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: '8.5px',
+                      fontWeight: 800,
+                      color: '#dc0045'
+                    }}
+                  >
+                    {digitVal}
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            ZONE D: DYNAMIC QUESTIONS GRID
+            ═══════════════════════════════════════════════════════════════════ */}
         {layout.columns.map((col, colIdx) => {
           const qNumbers = Array.from(
             { length: Math.max(0, Math.min(col.qEnd, totalQuestions) - col.qStart + 1) },
@@ -428,7 +484,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       }}
                     >
                       <span style={{
-                        fontSize: '9.8px',
+                        fontSize: '9.5px',
                         fontWeight: 900,
                         color: '#dc0045',
                         textTransform: 'uppercase',
@@ -479,7 +535,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                       style={{
                         left: toX(col.xLabel),
                         top: toY(y),
-                        fontSize: layout.yStep < 18 ? '8.5px' : '10.2px'
+                        fontSize: layout.yStep < 18 ? '8.5px' : '10.0px'
                       }}
                     >
                       {getQuestionLabel(qNum)}
@@ -498,9 +554,7 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
                             width: getBubbleSize(),
                             height: getBubbleSize()
                           }}
-                        >
-                          {opt}
-                        </div>
+                        />
                       );
                     })}
                   </React.Fragment>
@@ -510,9 +564,9 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           );
         })}
 
-        {/* Bottom disclaimer */}
-        <div className="bottom-disclaimer" style={{ top: toY(1335), left: 0, right: 0, textAlign: 'center' }}>
-          {omrConfig.disclaimerText}
+        {/* Optional Clean Bottom disclaimer */}
+        <div className="bottom-disclaimer" style={{ top: toY(Math.min(1390, bottomAnchorY + 25)), left: 0, right: 0, textAlign: 'center' }}>
+          {omrConfig.disclaimerText || 'DO NOT FOLD OR TEAR THIS SHEET • KEEP ANCHORS CLEAN'}
         </div>
 
         <style>{`
@@ -533,42 +587,18 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             border-radius: 4px;
           }
 
-          .sheet-border-frame {
-            position: absolute;
-            border: 1px solid #dc0045 !important;
-            pointer-events: none;
-            box-sizing: border-box;
-          }
-
-          .omr-anchor {
-            width: 10mm;
-            height: 10mm;
+          .omr-timing-marker {
+            width: 3.0mm;
+            height: 3.0mm;
             background-color: #000 !important;
             position: absolute;
             transform: translate(-50%, -50%);
             border-radius: 0px;
-            z-index: 10;
-          }
-
-          .omr-header-section {
-            position: absolute;
-            left: 15mm;
-            right: 15mm;
-            text-align: center;
-          }
-
-          .omr-institute-title {
-            font-family: 'Titan One', cursive, sans-serif !important;
-            font-size: 26px !important;
-            font-weight: normal !important;
-            color: #dc0045 !important;
-            margin: 0 0 2px 0 !important;
-            line-height: 1.1 !important;
-            letter-spacing: 0.5px;
+            z-index: 9;
           }
 
           .omr-exam-title {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #0f172a !important;
             margin: 0 0 4px 0 !important;
@@ -577,13 +607,12 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           .omr-subtitle {
-            background-color: #dc0045 !important;
-            color: #fff !important;
+            background-color: transparent !important;
+            color: #dc0045 !important;
             display: inline-block;
-            font-size: 9.5px;
+            font-size: 8.5px;
             font-weight: 800;
-            padding: 1.5px 16px;
-            border-radius: 12px;
+            padding: 0;
             letter-spacing: 0.5px;
           }
 
@@ -597,14 +626,12 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
           }
 
           .box-title {
-            background-color: #dc0045 !important;
-            color: #fff !important;
+            background-color: transparent !important;
+            color: #dc0045 !important;
             font-size: 8px;
             font-weight: bold;
             text-align: center;
             padding: 3.5px;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
             letter-spacing: 0.4px;
             white-space: nowrap;
             overflow: hidden;
@@ -614,64 +641,34 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             position: absolute;
             width: 6.8mm;
             height: 6.8mm;
-            border: 0.3mm solid #dc0045 !important;
+            border: 0.25mm solid #cbd5e1 !important;
             transform: translate(-50%, -50%);
-            background-color: #fff !important;
+            background-color: #ffffff !important;
             z-index: 1;
           }
 
           .omr-bubble {
             position: absolute;
             transform: translate(-50%, -50%);
-            border: 0.32mm solid #dc0045 !important;
+            border: 0.45mm solid #8c0029 !important;
             border-radius: 50%;
             background-color: transparent !important;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 7px;
-            font-weight: bold;
-            color: rgba(220, 0, 69, 0.22) !important;
             user-select: none;
             z-index: 2;
           }
 
           .id-bubble {
-            width: 3.8mm;
-            height: 3.8mm;
-            font-size: 8px;
+            font-size: 7.5px;
             font-weight: 800;
+            color: #8c0029 !important;
+            border: 0.45mm solid #8c0029 !important;
           }
 
-          .code-bubble {
-            width: 5.2mm;
-            height: 5.2mm;
-            font-size: 10px;
-          }
-
-          .candidate-info-table {
-            position: absolute;
-            display: flex;
-            flex-direction: column;
-            gap: 5mm;
-          }
-
-          .info-row {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5mm;
-          }
-
-          .info-label {
-            font-size: 6.5px;
-            font-weight: bold;
-            color: #dc0045 !important;
-            letter-spacing: 0.3px;
-          }
-
-          .info-line {
-            border-bottom: 0.8px dashed #dc0045 !important;
-            height: 1px;
+          .opt-bubble {
+            border: 0.45mm solid #8c0029 !important;
           }
 
           .q-col-header {
@@ -706,35 +703,29 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
             font-family: 'Outfit', 'Inter', sans-serif;
           }
 
-          .sheet-footer-section {
+          .omr-timing-marker {
             position: absolute;
-            box-sizing: border-box;
+            width: 3.6mm;
+            height: 3.6mm;
+            background-color: #000000 !important;
+            transform: translate(-50%, -50%);
+            z-index: 5;
           }
 
-          .footer-box {
-            border: 1.2px solid #dc0045 !important;
-            border-radius: 4px;
-            position: relative;
-            background-color: #fff !important;
-          }
-
-          .footer-box-label {
+          .corner-timing-marker {
             position: absolute;
-            bottom: 1.5mm;
-            left: 0;
-            right: 0;
-            text-align: center;
-            font-size: 6.5px;
-            font-weight: bold;
-            color: #dc0045 !important;
-            letter-spacing: 0.4px;
+            width: 3.6mm;
+            height: 3.6mm;
+            background-color: #000000 !important;
+            transform: translate(-50%, -50%);
+            z-index: 6;
           }
 
           .bottom-disclaimer {
             position: absolute;
-            font-size: 6px;
+            font-size: 6.5px;
             font-weight: bold;
-            color: #dc0045 !important;
+            color: #94a3b8 !important;
             letter-spacing: 0.5px;
           }
 
@@ -775,3 +766,4 @@ export const OmrPrintSheet: React.FC<OmrPrintSheetProps> = ({ examTitle, numQues
     </div>
   );
 };
+

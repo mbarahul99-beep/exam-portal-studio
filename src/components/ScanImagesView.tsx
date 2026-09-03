@@ -30,7 +30,7 @@ function drawOverlayOnWarpedCanvas(
   numQuestions: number,
   answers: Record<number, string>,
   correctKey: Record<number, string>,
-  bestDy: number,
+  _bestDy: number,
   sections: any[],
   questionOffsets?: Record<number, { dx: number; dy: number }>,
   detectedRollNum?: string,
@@ -39,7 +39,7 @@ function drawOverlayOnWarpedCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
+  const qConf = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections, rollNoDigits ?? 2);
   const bubbleRadius = qConf.bubbleRadius || 6.5;
 
   for (let q = 1; q <= numQuestions; q++) {
@@ -127,10 +127,12 @@ function drawOverlayOnWarpedCanvas(
     const rollXStep = qConf.rollXStep || (qConf.numCols <= 2 ? 40 : (qConf.numCols === 3 ? 34 : 30));
     const rollTotalWidth = (numDigits - 1) * rollXStep;
     const rollFirstX = col0Center - 0.5 * rollTotalWidth;
-    const rollYStep = qConf.rollYStep || (qConf.numCols <= 2 ? 24 : (qConf.numCols === 3 ? 22 : 20));
+    const rollYStep = qConf.rollYStep || qConf.yStep;
 
     const digitValuesList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const rollDx = questionOffsets?.[1]?.dx || 0;
+    const rollLocalOff = questionOffsets?.[1] || { dx: 0, dy: 0 };
+    const rollDx = rollLocalOff.dx;
+    const rollDy = rollLocalOff.dy;
 
     for (let colIdx = 0; colIdx < numDigits; colIdx++) {
       const char = detectedRollNum[colIdx];
@@ -140,7 +142,7 @@ function drawOverlayOnWarpedCanvas(
       if (rowIdx === -1) continue;
 
       const approxX = rollFirstX + colIdx * rollXStep + rollDx;
-      const approxY = 188 + rowIdx * rollYStep + bestDy;
+      const approxY = 188 + rowIdx * rollYStep + rollDy;
 
       const finalX = approxX;
       const finalY = approxY;
@@ -603,9 +605,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         
         const now = Date.now();
 
-        // 3-Second Snap Cooldown Guard
+        // 1-Second Snap Cooldown Guard for Rapid Continuous Scanning
         const timeSinceLastSnap = now - lastCaptureTimeRef.current;
-        const cooldownLeft = Math.max(0, Math.ceil((3000 - timeSinceLastSnap) / 1000));
+        const cooldownLeft = Math.max(0, Math.ceil((1000 - timeSinceLastSnap) / 1000));
         setCooldownSeconds(cooldownLeft);
 
         if (cooldownLeft > 0) {
@@ -643,7 +645,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         const startX = Math.round((vW - frameW) / 2);
         const startY = Math.round((vH - frameH) / 2);
         
-        const boxSize = Math.round(frameW * 0.18);
+        const boxSize = Math.round(frameW * 0.24);
         const halfBox = Math.round(boxSize / 2);
         const cornerOffset = Math.round(frameW * 0.035);
 
@@ -679,14 +681,13 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               if (!smoothedCornersRef.current) {
                 smoothedCornersRef.current = freshCorners.map(p => ({ ...p }));
               } else {
-                // Stable low-pass filter (prevents rapid jitter/jumping)
+                // Silky-smooth frame-by-frame Lerp gliding filter
                 smoothedCornersRef.current = smoothedCornersRef.current.map((s, idx) => {
                   const target = freshCorners[idx];
-                  const dist = Math.hypot(target.x - s.x, target.y - s.y);
-                  const alpha = dist > 40 ? 0.35 : 0.60;
+                  const alpha = 0.45;
                   return {
-                    x: s.x * (1 - alpha) + target.x * alpha,
-                    y: s.y * (1 - alpha) + target.y * alpha
+                    x: s.x + (target.x - s.x) * alpha,
+                    y: s.y + (target.y - s.y) * alpha
                   };
                 });
               }
@@ -694,27 +695,48 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               cornerLostCountRef.current += 1;
               if (cornerLostCountRef.current > 3) {
                 smoothedCornersRef.current = null;
+                lockStartTimeRef.current = null;
+                prevCornersRef.current = null;
+                setDetectorStatus('searching');
               }
             }
 
-            // Draw individual green target dots for ANY detected corner (instant visual feedback)
-            if (roiRes) {
+            // Draw silky-smooth gliding target dots & connecting frame
+            if (smoothedCornersRef.current && smoothedCornersRef.current.length === 4 && roiRes) {
+              const pts = smoothedCornersRef.current;
+              const isFullMatch = roiRes.allFound;
               const cornerKeys: Array<'tl' | 'tr' | 'bl' | 'br'> = ['tl', 'tr', 'bl', 'br'];
-              cornerKeys.forEach(k => {
-                const pt = roiRes[k];
+
+              // Draw subtle connecting laser frame
+              ctx.save();
+              ctx.strokeStyle = isFullMatch ? 'rgba(34, 197, 94, 0.55)' : 'rgba(245, 158, 11, 0.45)';
+              ctx.lineWidth = 2;
+              ctx.setLineDash([6, 4]);
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              ctx.lineTo(pts[1].x, pts[1].y);
+              ctx.lineTo(pts[2].x, pts[2].y);
+              ctx.lineTo(pts[3].x, pts[3].y);
+              ctx.closePath();
+              ctx.stroke();
+              ctx.restore();
+
+              // Draw 4 smoothly sliding target dots
+              cornerKeys.forEach((_, idx) => {
+                const pt = pts[idx];
                 if (pt) {
-                  const dotBoxSize = 24;
+                  const dotBoxSize = 26;
                   ctx.save();
-                  ctx.strokeStyle = '#22c55e';
+                  ctx.strokeStyle = isFullMatch ? '#22c55e' : '#f59e0b';
                   ctx.lineWidth = 3;
-                  ctx.fillStyle = 'rgba(34, 197, 94, 0.45)';
+                  ctx.fillStyle = isFullMatch ? 'rgba(34, 197, 94, 0.45)' : 'rgba(245, 158, 11, 0.35)';
                   ctx.beginPath();
                   ctx.rect(pt.x - dotBoxSize / 2, pt.y - dotBoxSize / 2, dotBoxSize, dotBoxSize);
                   ctx.fill();
                   ctx.stroke();
 
                   ctx.beginPath();
-                  ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+                  ctx.arc(pt.x, pt.y, 4.5, 0, 2 * Math.PI);
                   ctx.fillStyle = '#ffffff';
                   ctx.fill();
                   ctx.restore();
@@ -744,44 +766,44 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             const avgDetH = (detH1 + detH2) / 2;
             
             // CHECK 1: Width must span a natural visible paper size on screen
-            const isWidthValid = avgDetW >= vW * 0.38 && avgDetW <= vW * 0.90;
+            const isWidthValid = avgDetW >= vW * 0.25 && avgDetW <= vW * 0.95;
 
             // CHECK 2: Height must span a natural visible paper size on screen
-            const isHeightValid = avgDetH >= vH * 0.38 && avgDetH <= vH * 0.92;
+            const isHeightValid = avgDetH >= vH * 0.25 && avgDetH <= vH * 0.95;
             
-            // CHECK 3: Aspect ratio must match physical sheet anchor ratio (with ±0.15 tolerance)
+            // CHECK 3: Aspect ratio must match physical sheet anchor ratio (with ±0.25 tolerance)
             const detAspect = avgDetH / avgDetW;
-            const isAspectValid = detAspect >= (sheetGridAspect - 0.15) && detAspect <= (sheetGridAspect + 0.15);
+            const isAspectValid = detAspect >= (sheetGridAspect - 0.25) && detAspect <= (sheetGridAspect + 0.25);
             
             // CHECK 4: Top edge must be straight horizontal
             const topEdgeSkew = Math.abs(tl.y - tr.y) / avgDetH;
-            const isTopStraight = topEdgeSkew < 0.10;
+            const isTopStraight = topEdgeSkew < 0.18;
             
             // CHECK 5: Bottom edge must be straight horizontal
             const bottomEdgeSkew = Math.abs(bl.y - br.y) / avgDetH;
-            const isBottomStraight = bottomEdgeSkew < 0.10;
+            const isBottomStraight = bottomEdgeSkew < 0.18;
             
             // CHECK 6: Left edge must be straight vertical
             const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgDetW;
-            const isLeftStraight = leftEdgeSkew < 0.10;
+            const isLeftStraight = leftEdgeSkew < 0.18;
             
             // CHECK 7: Right edge must be straight vertical
             const rightEdgeSkew = Math.abs(tr.x - br.x) / avgDetW;
-            const isRightStraight = rightEdgeSkew < 0.10;
+            const isRightStraight = rightEdgeSkew < 0.18;
             
             // CHECK 8: Both diagonals must be nearly equal (rectangle property)
             const diag1 = Math.hypot(br.x - tl.x, br.y - tl.y);
             const diag2 = Math.hypot(bl.x - tr.x, bl.y - tr.y);
             const diagDiff = Math.abs(diag1 - diag2) / Math.max(diag1, diag2);
-            const isDiagsEqual = diagDiff < 0.10;
+            const isDiagsEqual = diagDiff < 0.18;
             
             // CHECK 9: Top and bottom widths must be nearly equal
             const widthDiff = Math.abs(detW1 - detW2) / avgDetW;
-            const isWidthsEqual = widthDiff < 0.10;
+            const isWidthsEqual = widthDiff < 0.18;
             
             // CHECK 10: Left and right heights must be nearly equal
             const heightDiff = Math.abs(detH1 - detH2) / avgDetH;
-            const isHeightsEqual = heightDiff < 0.10;
+            const isHeightsEqual = heightDiff < 0.18;
             
             const isValidRectangle = isWidthValid && isHeightValid && isAspectValid
               && isTopStraight && isBottomStraight
@@ -805,7 +827,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   totalShift += Math.sqrt(dx * dx + dy * dy);
                 }
                 const avgShift = totalShift / 4;
-                if (avgShift > 5.0) {
+                if (avgShift > 14.0) {
                   isMoving = true;
                 }
               }
@@ -820,7 +842,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }
 
             const lockElapsed = lockStartTimeRef.current ? (now - lockStartTimeRef.current) : 0;
-            const lockDuration = 450; // Smooth 450ms circular sweep before snapping to guarantee stability
+            const lockDuration = 200; // Fast crisp 200ms lock sweep once 4 outer corners match
             const lockProgress = isMoving ? 0 : Math.min(1.0, lockElapsed / lockDuration);
 
             // Center Smooth Circular Lock Animation (Evalbee Video 00:11-00:13 Style)
@@ -999,7 +1021,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const captureCameraPhoto = async () => {
     if (!videoRef.current || !cvLoaded) return;
 
-    if (Date.now() - lastCaptureTimeRef.current < 3000) {
+    if (Date.now() - lastCaptureTimeRef.current < 1000) {
       return;
     }
     lastCaptureTimeRef.current = Date.now();
@@ -1007,6 +1029,16 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (maxClassSheets !== Infinity && fileList.length >= maxClassSheets) {
       alert(`Class limit reached (${maxClassSheets} registered students).`);
       setShowCameraModal(false);
+      return;
+    }
+
+    // Capture the exact 4 precision-tracked corners from the live viewfinder
+    const verifiedCorners = smoothedCornersRef.current
+      ? smoothedCornersRef.current.map(p => ({ ...p }))
+      : null;
+
+    // Silent Rejection Shield: Abort snap attempt silently if 4 corners are incomplete
+    if (!verifiedCorners || verifiedCorners.length !== 4) {
       return;
     }
 
@@ -1024,11 +1056,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     const sCtx = snapCanvas.getContext('2d');
     if (!sCtx) return;
     sCtx.drawImage(video, 0, 0, vW, vH);
-
-    // Capture the exact 4 precision-tracked corners from the live viewfinder
-    const verifiedCorners = smoothedCornersRef.current
-      ? smoothedCornersRef.current.map(p => ({ ...p }))
-      : null;
 
     try {
       setScanningProgress(40);

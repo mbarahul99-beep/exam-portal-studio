@@ -42,12 +42,15 @@ export const ResponseAnalysisView: React.FC<ResponseAnalysisViewProps> = ({ exam
         unattemptedCount++;
       } else {
         const cleanAns = ans.trim().toUpperCase();
-        if (optionCounts[cleanAns] !== undefined) {
-          optionCounts[cleanAns]++;
-        }
+        const parts = cleanAns.split(',').map(s => s.trim()).filter(Boolean);
+        parts.forEach(p => {
+          if (optionCounts[p] !== undefined) {
+            optionCounts[p]++;
+          }
+        });
         const subSet = sub.bookletSet || 'A';
         const correctKeyForSub = exam.answerKeys?.[subSet]?.[qNum] || exam.answerKey?.[qNum] || 'A';
-        if (cleanAns === correctKeyForSub) {
+        if (parts.length === 1 && cleanAns === correctKeyForSub) {
           correctCount++;
         } else {
           incorrectCount++;

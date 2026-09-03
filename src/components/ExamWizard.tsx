@@ -109,6 +109,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   // Success link states
   const [createdExamId, setCreatedExamId] = useState<number | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Step 2: Subject Details States
   const [rollNoDigits, setRollNoDigits] = useState(2);
@@ -582,7 +583,7 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
       }
       for (let q = 1; q <= totalQuestions; q++) {
         if (!updatedKeys[setName][q]) {
-          updatedKeys[setName][q] = 'A';
+          updatedKeys[setName][q] = '';
         }
       }
     });
@@ -593,13 +594,17 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   };
 
   const handleOptionSelect = (setName: string, qNum: number, option: string) => {
-    setAnswerKeys(prev => ({
-      ...prev,
-      [setName]: {
-        ...prev[setName],
-        [qNum]: option
-      }
-    }));
+    setAnswerKeys(prev => {
+      const currentVal = prev[setName]?.[qNum] || '';
+      const newVal = currentVal === option ? '' : option;
+      return {
+        ...prev,
+        [setName]: {
+          ...prev[setName],
+          [qNum]: newVal
+        }
+      };
+    });
   };
 
   const parseCsvRow = (row: string): string[] => {
@@ -708,31 +713,47 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      const finalSubjects: ExamSubject[] = subjectsList;
-      const finalSections: ExamSection[] = sectionsWithRanges.map(sec => ({
-        subjectName: sec.subjectName,
-        sectionName: sec.sectionName,
-        qStart: sec.qStart,
-        qCount: sec.qCount,
-        questionType: sec.questionType,
-        correctMarks: sec.correctMarks,
-        incorrectMarks: sec.incorrectMarks,
-        allowPartialMarks: sec.allowPartialMarks,
-        allowOptionalAttempts: sec.allowOptionalAttempts,
-        maxAttempts: sec.allowOptionalAttempts ? sec.maxAttempts : undefined
+      const finalSubjects: ExamSubject[] = subjectsList && subjectsList.length > 0 ? subjectsList : [{ name: 'Default', numSections: 1 }];
+      const finalSections: ExamSection[] = (sectionsWithRanges && sectionsWithRanges.length > 0 ? sectionsWithRanges : [{
+        subjectName: 'Default',
+        sectionName: 'Section 1',
+        qStart: 1,
+        qCount: 45,
+        qEnd: 45,
+        questionType: '4 option' as const,
+        correctMarks: 4,
+        incorrectMarks: -1,
+        allowPartialMarks: false,
+        allowOptionalAttempts: false,
+        maxAttempts: 45
+      }]).map(sec => ({
+        subjectName: sec.subjectName || 'Default',
+        sectionName: sec.sectionName || 'Section 1',
+        qStart: Number(sec.qStart) || 1,
+        qCount: Number(sec.qCount) || 45,
+        questionType: sec.questionType || '4 option',
+        correctMarks: Number(sec.correctMarks) ?? 4,
+        incorrectMarks: Number(sec.incorrectMarks) ?? -1,
+        allowPartialMarks: !!sec.allowPartialMarks,
+        allowOptionalAttempts: !!sec.allowOptionalAttempts,
+        maxAttempts: sec.allowOptionalAttempts ? (Number((sec as any).maxAttempts) || Number(sec.qCount) || 45) : undefined
       }));
+
+      const safeTotalQuestions = Math.max(1, Number(totalQuestions) || finalSections.reduce((acc, s) => acc + (s.qCount || 0), 0) || 45);
 
       // Generate default answerKey from multi-set or questionsState
       let defaultAnswerKey: Record<number, string> = {};
       if (examMode === 'online') {
         questionsState.forEach((q, idx) => {
-          defaultAnswerKey[idx + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || 'A';
+          defaultAnswerKey[idx + 1] = ['A', 'B', 'C', 'D', 'E'][q.correctOptionIdx] || '';
         });
       } else {
         const rawDefault = answerKeys['A'] || {};
-        for (let q = 1; q <= totalQuestions; q++) {
-          defaultAnswerKey[q] = rawDefault[q] || 'A';
+        for (let q = 1; q <= safeTotalQuestions; q++) {
+          defaultAnswerKey[q] = rawDefault[q] || '';
         }
       }
 
@@ -741,12 +762,12 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
       if (examMode === 'online') {
         finalAnswerKeys['A'] = defaultAnswerKey;
       } else {
-        const sets = Array.from({ length: examSetsCount }).map((_, i) => String.fromCharCode(65 + i));
+        const sets = Array.from({ length: Number(examSetsCount) || 1 }).map((_, i) => String.fromCharCode(65 + i));
         sets.forEach(setName => {
           const rawSet = answerKeys[setName] || {};
           const truncatedSet: Record<number, string> = {};
-          for (let q = 1; q <= totalQuestions; q++) {
-            truncatedSet[q] = rawSet[q] || 'A';
+          for (let q = 1; q <= safeTotalQuestions; q++) {
+            truncatedSet[q] = rawSet[q] || '';
           }
           finalAnswerKeys[setName] = truncatedSet;
         });
@@ -755,9 +776,13 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
       // Generate difficulties mapping (truncated/extended to totalQuestions)
       const finalDifficulties: Record<number, 'Easy' | 'Moderate' | 'Difficult'> = {};
       if (examId) {
-        const existingExam = await db.exams.get(examId);
-        if (existingExam && existingExam.difficulties) {
-          Object.assign(finalDifficulties, existingExam.difficulties);
+        try {
+          const existingExam = await db.exams.get(examId);
+          if (existingExam && existingExam.difficulties) {
+            Object.assign(finalDifficulties, existingExam.difficulties);
+          }
+        } catch (e) {
+          console.warn("Could not load existing exam difficulties:", e);
         }
       }
       
@@ -767,27 +792,27 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
         });
       } else {
         // Ensure all questions have a difficulty mapping
-        for (let q = 1; q <= totalQuestions; q++) {
+        for (let q = 1; q <= safeTotalQuestions; q++) {
           if (!finalDifficulties[q]) {
             finalDifficulties[q] = 'Easy';
           }
         }
       }
 
-      let finalExamId = examId;
+      let finalExamId: number | undefined = examId;
       if (examId) {
         await db.exams.update(examId, {
-          title: examName,
-          className,
-          date: examDate,
+          title: examName || 'Exam',
+          className: className || 'Default',
+          date: examDate || new Date().toISOString().split('T')[0],
           status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
-          numQuestions: totalQuestions,
+          numQuestions: safeTotalQuestions,
           answerKey: defaultAnswerKey,
-          correctMarks: sectionsList[0]?.correctMarks ?? 4,
-          incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
+          correctMarks: finalSections[0]?.correctMarks ?? 4,
+          incorrectMarks: finalSections[0]?.incorrectMarks ?? -1,
           unansweredMarks: 0,
-          rollNoDigits,
-          examSetsCount: examMode === 'online' ? 1 : examSetsCount,
+          rollNoDigits: Number(rollNoDigits) || 2,
+          examSetsCount: examMode === 'online' ? 1 : (Number(examSetsCount) || 1),
           subjects: finalSubjects,
           sections: finalSections,
           answerKeys: finalAnswerKeys,
@@ -799,18 +824,18 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           showResultsToStudent: examMode === 'online' ? showResultsToStudent : undefined
         });
       } else {
-        finalExamId = await db.exams.add({
-          title: examName,
-          className,
-          date: examDate,
+        const insertId = await db.exams.add({
+          title: examName || 'Exam',
+          className: className || 'Default',
+          date: examDate || new Date().toISOString().split('T')[0],
           status: examMode === 'online' && onlinePublishStatus === 'published' ? 'public' : 'private',
-          numQuestions: totalQuestions,
+          numQuestions: safeTotalQuestions,
           answerKey: defaultAnswerKey,
-          correctMarks: sectionsList[0]?.correctMarks ?? 4,
-          incorrectMarks: sectionsList[0]?.incorrectMarks ?? -1,
+          correctMarks: finalSections[0]?.correctMarks ?? 4,
+          incorrectMarks: finalSections[0]?.incorrectMarks ?? -1,
           unansweredMarks: 0,
-          rollNoDigits,
-          examSetsCount: examMode === 'online' ? 1 : examSetsCount,
+          rollNoDigits: Number(rollNoDigits) || 2,
+          examSetsCount: examMode === 'online' ? 1 : (Number(examSetsCount) || 1),
           subjects: finalSubjects,
           sections: finalSections,
           answerKeys: finalAnswerKeys,
@@ -822,60 +847,58 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
           showResultsToStudent: examMode === 'online' ? showResultsToStudent : undefined,
           createdAt: new Date()
         });
+        finalExamId = Number(insertId);
       }
 
-      // Sync exam record to Hostinger MySQL
-      if (finalExamId) {
-        const savedExam = await db.exams.get(finalExamId);
-        if (savedExam) {
-          try {
-            await syncExamToCloud(savedExam);
-          } catch (err) {
-            console.warn("MySQL exam sync warning:", err);
+      const safeFinalId = Number(finalExamId);
+
+      // Async cloud sync in background (non-blocking)
+      if (safeFinalId) {
+        db.exams.get(safeFinalId).then(savedExam => {
+          if (savedExam) {
+            syncExamToCloud(savedExam).catch(console.warn);
           }
-        }
+        }).catch(console.warn);
       }
-      pullCloudUpdatesToIndexedDB();
+      pullCloudUpdatesToIndexedDB().catch(console.warn);
 
       // Write questions if online
-      if (examMode === 'online' && finalExamId) {
-        // If edit mode, delete old questions first to ensure clean state
+      if (examMode === 'online' && safeFinalId) {
         if (examId) {
-          await db.questions.where('examId').equals(examId).delete();
+          await db.questions.where('examId').equals(examId).delete().catch(console.warn);
         }
 
         const questionRecords = questionsState.map((q) => ({
-          examId: finalExamId,
-          subjectName: q.subjectName,
-          sectionName: q.sectionName,
+          examId: safeFinalId,
+          subjectName: q.subjectName || '',
+          sectionName: q.sectionName || '',
           questionText: q.questionText || '',
           options: q.options.map((opt: string) => opt || ''),
-          correctOptionIdx: q.correctOptionIdx,
+          correctOptionIdx: Number(q.correctOptionIdx) || 0,
           explanation: q.explanation || '',
           questionImage: q.questionImage || undefined,
           difficulty: q.difficulty || 'Easy'
         }));
-        await db.questions.bulkAdd(questionRecords);
+        await db.questions.bulkAdd(questionRecords).catch(console.warn);
 
-        // Sync questions to Hostinger MySQL
-        try {
-          await fetch('/api/questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ examId: finalExamId, questions: questionRecords })
-          });
-        } catch (err) {
-          console.warn("MySQL questions sync warning:", err);
-        }
+        fetch('/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ examId: safeFinalId, questions: questionRecords })
+        }).catch(err => console.warn("MySQL questions sync warning:", err));
 
         // Advance to step 6 for online links sharing!
-        setCreatedExamId(finalExamId);
+        setCreatedExamId(safeFinalId);
         setStep(6);
-      } else if (finalExamId) {
-        onSuccess(finalExamId);
+      } else {
+        // Offline OMR Exam -> Unconditionally notify parent modal to close
+        onSuccess(safeFinalId);
       }
     } catch (err: any) {
-      alert(`Failed to create exam: ${err.message}`);
+      console.error("Exam save error:", err);
+      alert(`Failed to create exam: ${err?.message || err}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1366,8 +1389,8 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                             {Array.from({ length: sec.qCount }).map((_, qIdx) => {
                               const qNum = sec.qStart + qIdx;
                               const options = sec.questionType === '5 option' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
-                              const currentKey = answerKeys[activeSetTab]?.[qNum] || 'A';
-
+                              const currentKey = answerKeys[activeSetTab]?.[qNum] || '';
+                              
                               return (
                                 <div key={`wiz-key-${qNum}`} className="key-row-item" style={{
                                   display: 'flex',
@@ -1381,30 +1404,33 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
                                 }}>
                                   <span className="q-label-number" style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', width: '32px' }}>Q{String(qNum).padStart(2, '0')}</span>
                                   <div className="opt-bubble-row" style={{ display: 'flex', gap: '4px' }}>
-                                    {options.map(opt => (
-                                      <button
-                                        key={`wiz-opt-${qNum}-${opt}`}
-                                        className={`wiz-opt-btn ${currentKey === opt ? 'active' : ''}`}
-                                        onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
-                                        style={{
-                                          width: '32px',
-                                          height: '32px',
-                                          borderRadius: '50%',
-                                          border: 'none',
-                                          background: currentKey === opt ? '#008726' : '#f1f5f9',
-                                          color: currentKey === opt ? '#ffffff' : '#475569',
-                                          fontWeight: 800,
-                                          fontSize: '0.82rem',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          boxShadow: currentKey === opt ? '0 2px 4px rgba(0, 135, 38, 0.3)' : 'none'
-                                        }}
-                                      >
-                                        {opt}
-                                      </button>
-                                    ))}
+                                    {options.map(opt => {
+                                      const isSel = currentKey === opt;
+                                      return (
+                                        <button
+                                          key={`wiz-opt-${qNum}-${opt}`}
+                                          className={`wiz-opt-btn ${isSel ? 'active' : ''}`}
+                                          onClick={() => handleOptionSelect(activeSetTab, qNum, opt)}
+                                          style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            border: 'none',
+                                            background: isSel ? '#008726' : '#f1f5f9',
+                                            color: isSel ? '#ffffff' : '#475569',
+                                            fontWeight: 800,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            boxShadow: isSel ? '0 2px 4px rgba(0, 135, 38, 0.3)' : 'none'
+                                          }}
+                                        >
+                                          {opt}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -2329,22 +2355,35 @@ export const ExamWizard: React.FC<ExamWizardProps> = ({ classes = [], examId, on
         {/* Wizard Footer */}
         <footer className="wizard-footer">
           <button 
+            type="button"
             className="btn-outline-cancel"
             onClick={step === 1 ? onClose : handlePrevStep}
             disabled={step === getTotalSteps() && examMode === 'online'}
             style={{ 
               opacity: (step === getTotalSteps() && examMode === 'online') ? 0.4 : 1, 
-              cursor: (step === getTotalSteps() && examMode === 'online') ? 'not-allowed' : 'pointer' 
+              cursor: (step === getTotalSteps() && examMode === 'online') ? 'not-allowed' : 'pointer',
+              touchAction: 'manipulation'
             }}
           >
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
           
           <button 
+            type="button"
             className="btn-primary-wizard"
+            disabled={isSubmitting}
             onClick={step === getTotalSteps() && examMode === 'online' ? () => onSuccess(createdExamId!) : (step === 5 ? handleSubmit : handleNextStep)}
+            style={{ 
+              opacity: isSubmitting ? 0.7 : 1, 
+              cursor: isSubmitting ? 'wait' : 'pointer',
+              touchAction: 'manipulation'
+            }}
           >
-            {step === getTotalSteps() && examMode === 'online' ? 'Finish & Close' : (step === 5 ? (examId ? 'Save Changes' : 'Create Exam') : 'Next')}
+            {isSubmitting 
+              ? 'Saving...' 
+              : (step === getTotalSteps() && examMode === 'online' 
+                  ? 'Finish & Close' 
+                  : (step === 5 ? (examId ? 'Save Changes' : 'Create Exam') : 'Next'))}
           </button>
         </footer>
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { X, Check, AlertCircle, HelpCircle, BookOpen, AlertTriangle, Timer, FileText, Award, Filter } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { db, type Exam, type ExamSubmission, type Question } from '../db';
+import { isAnswerMatch } from '../utils/omrScanner';
 
 interface OnlineSubmissionViewerProps {
   exam: Exam;
@@ -85,8 +86,8 @@ export const OnlineSubmissionViewer: React.FC<OnlineSubmissionViewerProps> = ({
       const correctAns = setKey[qNum] || '';
       
       let status: 'correct' | 'incorrect' | 'skipped' = 'skipped';
-      if (studentAns) {
-        status = studentAns === correctAns ? 'correct' : 'incorrect';
+      if (studentAns && studentAns.trim() !== '') {
+        status = isAnswerMatch(studentAns, correctAns) ? 'correct' : 'incorrect';
       }
       return { qNum, q, studentAns, correctAns, status };
     });

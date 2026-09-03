@@ -349,7 +349,7 @@ export default function App() {
         const answerKeyCopy = exam.answerKey ? { ...exam.answerKey } : {};
         for (let q = 1; q <= healedNumQuestions; q++) {
           if (!answerKeyCopy[q]) {
-            answerKeyCopy[q] = 'A';
+            answerKeyCopy[q] = '';
           }
         }
         
@@ -362,7 +362,7 @@ export default function App() {
           }
           for (let q = 1; q <= healedNumQuestions; q++) {
             if (!answerKeysCopy[setName][q]) {
-              answerKeysCopy[setName][q] = 'A';
+              answerKeysCopy[setName][q] = '';
             }
           }
         });
@@ -1444,7 +1444,7 @@ export default function App() {
         ctx.fillText(getQuestionLabel(q), col.xLabel, y + 3);
 
         const qOptions = getQuestionOptions(q);
-        const correctOpt = isDemoFilled ? (exam.answerKey?.[q] || 'A') : '';
+        const correctOpt = isDemoFilled ? (exam.answerKey?.[q] || '') : '';
         let fillOption = correctOpt;
         if (isDemoFilled) {
           if (q % 17 === 0) {
@@ -1462,7 +1462,8 @@ export default function App() {
           ctx.arc(x, y, bubbleRadius, 0, 2 * Math.PI);
           ctx.stroke();
 
-          if (isDemoFilled && opt === fillOption) {
+          const isFilled = isDemoFilled && fillOption.split(',').filter(Boolean).includes(opt);
+          if (isFilled) {
             ctx.fillStyle = '#2d3748';
             ctx.beginPath();
             ctx.arc(x, y, bubbleRadius - 0.5, 0, 2 * Math.PI);
@@ -3566,6 +3567,7 @@ export default function App() {
                     setShowCreateWizard(false);
                     setEditingExamId(null);
                     setSelectedExamId(examId);
+                    setActiveTab('exams');
                   }}
                 />
               )}

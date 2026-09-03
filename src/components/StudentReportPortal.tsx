@@ -8,6 +8,7 @@ import { OnlineSubmissionViewer } from './OnlineSubmissionViewer';
 import { MathRenderer } from './MathRenderer';
 import { pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 import { FullScreenOmrViewer } from './FullScreenOmrViewer';
+import { isAnswerMatch, normalizeAnswerSet } from '../utils/omrScanner';
 
 interface StudentReportPortalProps {
   studentId: number;
@@ -236,7 +237,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       exam.answerKey = exam.answerKey ? { ...exam.answerKey } : {};
       for (let q = 1; q <= exam.numQuestions; q++) {
         if (!exam.answerKey[q]) {
-          exam.answerKey[q] = 'A';
+          exam.answerKey[q] = '';
         }
       }
     }
@@ -314,7 +315,7 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       const cAns = setKey[q];
       
       sectionTotal[secName] = (sectionTotal[secName] || 0) + 1;
-      if (sAns === cAns) {
+      if (isAnswerMatch(sAns, cAns)) {
         sectionCorrect[secName] = (sectionCorrect[secName] || 0) + 1;
       }
     }
@@ -387,8 +388,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
       const setKey = activeAnalysisSub.exam.answerKeys?.[activeAnalysisSub.bookletSet || 'A'] || activeAnalysisSub.exam.answerKey || {};
       const cAns = setKey[q];
       
-      const isCorrect = sAns === cAns;
-      const isLeft = !sAns;
+      const isCorrect = isAnswerMatch(sAns, cAns);
+      const isLeft = !sAns || sAns.trim() === '';
       
       const secRules: any = activeAnalysisSub.exam.sectionsMarking?.[secName] || {
         correctMarks: activeAnalysisSub.exam.correctMarks || 4,
@@ -1378,8 +1379,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                         const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
                         const cAns = setKey[qNum];
                         
-                        const isCorrect = sAns === cAns;
-                        const isLeft = !sAns;
+                        const isCorrect = isAnswerMatch(sAns, cAns);
+                        const isLeft = !sAns || sAns.trim() === '';
                         
                         const secName = getQuestionSection(qNum, activeAnalysisSub.exam);
                         
@@ -1486,8 +1487,10 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                                 {qObj.options.map((optText, optIdx) => {
                                   const letter = OPTIONS_LETTERS[optIdx];
-                                  const isCorrectKey = letter === cAns;
-                                  const isSelectedWrong = (letter === sAns) && (sAns !== cAns);
+                                  const cAnsPicks = normalizeAnswerSet(cAns);
+                                  const sAnsPicks = normalizeAnswerSet(sAns);
+                                  const isCorrectKey = cAnsPicks.includes(letter);
+                                  const isSelectedWrong = sAnsPicks.includes(letter) && !isCorrectKey;
 
                                   let itemBg = '#fff';
                                   let itemBorder = '1px solid #e2e8f0';
@@ -1639,8 +1642,8 @@ export const StudentReportPortal: React.FC<StudentReportPortalProps> = ({
                     const setKey = activeAnalysisSub.exam.answerKeys?.[subSet] || activeAnalysisSub.exam.answerKey || {};
                     const cAns = setKey[qNum];
                     
-                    const isCorrect = sAns === cAns;
-                    const isLeft = !sAns;
+                    const isCorrect = isAnswerMatch(sAns, cAns);
+                    const isLeft = !sAns || sAns.trim() === '';
 
                     let bg = '#f1f5f9';
                     let color = '#475569';

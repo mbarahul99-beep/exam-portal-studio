@@ -23,3 +23,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary backups & scratch files
+*_8323ec4
+*_915b9fa
+*_b64bd74
+write_scanner.*
+commit_dates.txt
+localoffset_history.txt
+*.zip
+dist/
+

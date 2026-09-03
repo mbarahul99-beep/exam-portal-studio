@@ -223,7 +223,8 @@ export function getDynamicOMRQuestionLayout(
   numQuestions?: number,
   density: 'normal' | 'compact' | 'spacious' | 'auto' = 'auto',
   customColumns: number | 'auto' = 'auto',
-  sections?: any[]
+  sections?: any[],
+  rollNoDigits: number = 2
 ): OMRLayoutDetails {
   const total = numQuestions || 100;
 
@@ -257,24 +258,18 @@ export function getDynamicOMRQuestionLayout(
     optStep = 44;
     idealYStep = 40.0;
     bubbleRadius = 7.5;
-    rollXStep = 40;
-    rollYStep = 24;
   } else if (totalCols === 3) {
     colWidth = 286;
     gridLeft = 70;
     optStep = 36;
     idealYStep = 30.0;
     bubbleRadius = 6.8;
-    rollXStep = 34;
-    rollYStep = 22;
   } else if (totalCols === 4) {
     colWidth = 215;
     gridLeft = 70;
     optStep = 28;
     idealYStep = 25.0;
     bubbleRadius = 6.4;
-    rollXStep = 30;
-    rollYStep = 20;
   } else {
     // 5 Columns (180 / 200 Questions Layout)
     colWidth = 180;
@@ -282,8 +277,6 @@ export function getDynamicOMRQuestionLayout(
     optStep = 24.0;
     idealYStep = 23.7;
     bubbleRadius = 6.2;
-    rollXStep = 28;
-    rollYStep = 23.0;
   }
 
   const gridRight = gridLeft + totalCols * colWidth;
@@ -292,10 +285,14 @@ export function getDynamicOMRQuestionLayout(
   if (density === 'spacious') yStep = idealYStep + 1.5;
   if (density === 'compact') yStep = Math.max(16.0, idealYStep - 1.5);
 
+  // 3. Roll Number Geometry dynamically matching question row spacing
+  rollYStep = yStep;
+  rollXStep = Math.max(32, optStep * 1.10);
+
   // 3. Roll Number Geometry in Column 0
-  const rollNoDigits = 2;
+  const numRollDigits = Math.max(1, Math.min(6, rollNoDigits || 2));
   const col0Center = gridLeft + 0.5 * colWidth;
-  const rollTotalWidth = (rollNoDigits - 1) * rollXStep;
+  const rollTotalWidth = (numRollDigits - 1) * rollXStep;
   const rollFirstX = col0Center - 0.5 * rollTotalWidth;
 
   // 4. Sequential Question Allocation per Column
@@ -461,6 +458,41 @@ function calculateRingAverageGray(grayMatrix: any, cx: number, cy: number, rInne
     }
   }
   return count > 0 ? sum / count : 255;
+}
+
+function verifyOMRFiducialMatrix(warpedGrayMat: any, layout: OMRLayoutDetails): boolean {
+  if (!warpedGrayMat || warpedGrayMat.cols === 0) return false;
+
+  const timingMarkers = layout.timingMarkers || [];
+  if (timingMarkers.length === 0) return true;
+
+  let matched = 0;
+  const markHalf = 4;
+
+  for (const tm of timingMarkers) {
+    const cx = Math.round(tm.x);
+    const cy = Math.round(tm.y);
+
+    if (cx - markHalf >= 0 && cx + markHalf < warpedGrayMat.cols && cy - markHalf >= 0 && cy + markHalf < warpedGrayMat.rows) {
+      let sum = 0, cnt = 0;
+      for (let py = cy - markHalf; py <= cy + markHalf; py++) {
+        for (let px = cx - markHalf; px <= cx + markHalf; px++) {
+          sum += warpedGrayMat.ucharAt(py, px);
+          cnt++;
+        }
+      }
+      const centerVal = cnt > 0 ? sum / cnt : 255;
+      const bgVal = calculateRingAverageGray(warpedGrayMat, cx, cy, markHalf + 3, markHalf + 7);
+      const contrast = bgVal - centerVal;
+
+      if (contrast >= 18) {
+        matched++;
+      }
+    }
+  }
+
+  const matchRate = timingMarkers.length > 0 ? matched / timingMarkers.length : 1.0;
+  return matchRate >= 0.45;
 }
 
 export function assessCaptureQuality(
@@ -748,6 +780,12 @@ export async function scanOMRSheet(
     warpedGray = new cv.Mat();
     cv.cvtColor(warped, warpedGray, cv.COLOR_RGBA2GRAY);
 
+    // Enforce 100% fail-safe fiducial matrix check
+    const isFiducialValid = verifyOMRFiducialMatrix(warpedGray, layout);
+    if (!isFiducialValid) {
+      throw new Error("OMR Sheet truncated or misaligned — Please ensure all 4 outer corner registration marks are fully visible inside the camera view.");
+    }
+
     warpedBin = new cv.Mat();
     cv.adaptiveThreshold(
       warpedGray,
@@ -916,7 +954,6 @@ export async function scanOMRSheet(
     const answers: Record<number, string> = {};
     const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
     const questionOffsets: Record<number, { dx: number; dy: number }> = {};
-    const sampleRadius = Math.max(2.2, Math.round(qConf.bubbleRadius * 0.40));
 
     for (let q = 1; q <= numQuestions; q++) {
       let colConf: OMRColumnConfig | null = null;
@@ -956,29 +993,21 @@ export async function scanOMRSheet(
       questionOffsets[q] = finalRowOffset;
 
       const y = rawY + finalRowOffset.dy;
-
       const intensities: number[] = [];
-      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const approxX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + finalRowOffset.dx;
-        const avgGray = calculateBubbleAverageGray(warpedGray, approxX, y, sampleRadius);
-        intensities.push(avgGray);
-      }
-
-
-
-      const sortedRow = [...intensities].sort((a, b) => b - a);
-      const rowBaseline = sortedRow.length >= 2
-        ? (sortedRow[0] + sortedRow[1]) / 2
-        : sortedRow[0];
-
       const filledOptions: number[] = [];
-      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
-        const val = intensities[optIdx];
-        const drop = rowBaseline - val;
-        const ratio = rowBaseline > 0 ? (val / rowBaseline) : 1.0;
 
-        // Bubble is marked ONLY if center is genuinely dark (val < 145) AND shows at least 35px darkness drop against row paper baseline
-        const isMarked = val < 145 && drop >= 35 && ratio <= 0.78;
+      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+        const rawX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + finalRowOffset.dx;
+        const centerPt = findExactBubbleCentroid(warpedGray, rawX, y, 8, qConf.bubbleRadius);
+        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.5);
+        const outerVal = calculateRingAverageGray(warpedGray, centerPt.x, centerPt.y, 7.5, 11.5);
+        const contrast = outerVal - innerVal;
+        const ratio = outerVal > 0 ? (innerVal / outerVal) : 1.0;
+
+        intensities.push(innerVal);
+
+        // Evalbee Sub-pixel Centroid Ring Snap Rule: Marked if inner core is dark (<= 180) with contrast drop
+        const isMarked = innerVal <= 180 && contrast >= 20 && ratio <= 0.85;
         if (isMarked) {
           filledOptions.push(optIdx);
         }
@@ -1000,7 +1029,7 @@ export async function scanOMRSheet(
       }
     }
 
-    // Roll No Scanning
+    // Roll No Scanning (Timing-Mark Aligned)
     const rollDigits = Math.max(1, Math.min(6, rollNoDigits || 2));
     const col0Width = qConf.colWidth;
     const col0Center = qConf.gridLeft + 0.5 * col0Width;
@@ -1009,40 +1038,44 @@ export async function scanOMRSheet(
     const rollFirstX = col0Center - 0.5 * rollTotalWidth;
     const rollYStep = qConf.rollYStep;
     const digitValuesList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const rollSampleRadius = Math.max(2.5, Math.round(qConf.bubbleRadius * 0.50));
     let studentNum = '';
+
+    const rollLocalOff = getLocalOffset(col0Center, 188);
+
     for (let colIdx = 0; colIdx < rollDigits; colIdx++) {
-      const approxX = rollFirstX + colIdx * rollXStep + bestDx;
+      const approxX = rollFirstX + colIdx * rollXStep + rollLocalOff.dx;
       const intensities: number[] = [];
 
       let minVal = 255;
       let minRowIdx = -1;
 
       for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const approxY = 188 + rowIdx * rollYStep + bestDy;
-        const avgGray = calculateBubbleAverageGray(warpedGray, approxX, approxY, rollSampleRadius);
-        intensities.push(avgGray);
-        if (avgGray < minVal) {
-          minVal = avgGray;
+        const rawY = 188 + rowIdx * rollYStep + rollLocalOff.dy;
+        const centerPt = findExactBubbleCentroid(warpedGray, approxX, rawY, 8, qConf.bubbleRadius);
+        const innerVal = calculateBubbleAverageGray(warpedGray, centerPt.x, centerPt.y, 4.5);
+        intensities.push(innerVal);
+        if (innerVal < minVal) {
+          minVal = innerVal;
           minRowIdx = rowIdx;
         }
       }
 
-      const sortedRoll = [...intensities].sort((a, b) => b - a);
-      const rollBaseline = sortedRoll.slice(0, 6).reduce((a, b) => a + b, 0) / 6;
+      // Compute clean column paper baseline from top 5 brightest bubbles in column
+      const sortedCol = [...intensities].sort((a, b) => b - a);
+      const colBaseline = sortedCol.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+      const rollDrop = colBaseline - minVal;
+      const rollRatio = colBaseline > 0 ? (minVal / colBaseline) : 1.0;
 
-      const rollDrop = rollBaseline - minVal;
-      const rollRatio = rollBaseline > 0 ? (minVal / rollBaseline) : 1.0;
-
-      const isDigitFilled = minVal < 145 && rollDrop >= 35 && rollRatio <= 0.78;
-      if (isDigitFilled && minRowIdx !== -1) {
+      // Marked digit is the darkest bubble in column
+      const isDigitFilled = minVal <= 185 && rollDrop >= 15 && rollRatio <= 0.90;
+      if (minRowIdx !== -1 && isDigitFilled) {
+        studentNum += digitValuesList[minRowIdx].toString();
+      } else if (minRowIdx !== -1 && minVal < 200) {
         studentNum += digitValuesList[minRowIdx].toString();
       }
     }
 
-    const bubbleSnippets = debugWarpedCanvas
-      ? extractQuestionBubbleSnippets(debugWarpedCanvas, numQuestions, sections, questionOffsets, bestDy)
-      : undefined;
+    const bubbleSnippets = undefined;
 
     src.delete();
     gray.delete();
@@ -1179,22 +1212,17 @@ export function findOMRSheetCornersInROI(
 
       try {
         cv.GaussianBlur(roiGray, roiBlurred, new cv.Size(5, 5), 0);
-        let targetX = 0;
-        let targetY = 0;
-        if (key === 'tl') { targetX = 0; targetY = 0; }
-        if (key === 'tr') { targetX = rw; targetY = 0; }
-        if (key === 'bl') { targetX = 0; targetY = rh; }
-        if (key === 'br') { targetX = rw; targetY = rh; }
-        
+        const adaptiveBlock = Math.max(31, Math.floor(rw / 2) | 1);
         const threshMethods = [
-          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 21, 5),
-          () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+          () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU),
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, adaptiveBlock, 5)
         ];
 
         let bestCand: { x: number; y: number; score: number } | null = null;
+        const minArea = Math.round(rw * rh * 0.005);
+        const maxArea = Math.round(rw * rh * 0.55);
 
         for (const applyThresh of threshMethods) {
-          if (bestCand) break;
           applyThresh();
           cv.findContours(roiThresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
@@ -1202,26 +1230,34 @@ export function findOMRSheetCornersInROI(
             const cnt = contours.get(i);
             const bRect = cv.boundingRect(cnt);
             const bArea = bRect.width * bRect.height;
-            const isSizeValid = bArea >= 480 && bArea <= 5500;
+            const isSizeValid = bArea >= minArea && bArea <= maxArea;
             const aspectRatio = bRect.width / bRect.height;
-            const isSquare = aspectRatio >= 0.70 && aspectRatio <= 1.45;
+            const isSquare = aspectRatio >= 0.60 && aspectRatio <= 1.65;
             const cArea = cv.contourArea(cnt);
             const solidity = bArea > 0 ? cArea / bArea : 0;
-            const isSolid = solidity >= 0.68;
+            const isSolid = solidity >= 0.60;
 
             if (isSizeValid && isSquare && isSolid) {
               const M = cv.moments(cnt, false);
               const cx = (M && M.m00 !== 0) ? (M.m10 / M.m00) : (bRect.x + bRect.width / 2);
               const cy = (M && M.m00 !== 0) ? (M.m01 / M.m00) : (bRect.y + bRect.height / 2);
 
-              const distToOutwardCorner = Math.hypot(cx - targetX, cy - targetY);
-              const maxCornerDist = Math.hypot(rw, rh);
-              
-              // Only consider candidates in the outer corner region of the ROI box
-              if (distToOutwardCorner <= maxCornerDist * 0.75) {
-                // Score heavily favors LARGER square area so big outer registration corners always beat small timing marks
-                const distPenalty = 1 + Math.pow(distToOutwardCorner / 8, 3.0);
-                const score = (cArea * cArea * solidity) / distPenalty;
+              // Explicit Black Square Darkness Verification: Verifies center interior is solid black
+              const sampleR = Math.max(2, Math.round(Math.min(bRect.width, bRect.height) * 0.25));
+              const centerGray = calculateBubbleAverageGray(roiGray, cx, cy, sampleR);
+              const isBlackSquare = centerGray <= 135;
+
+              if (isBlackSquare) {
+                const normX = rw > 0 ? cx / rw : 0;
+                const normY = rh > 0 ? cy / rh : 0;
+
+                let locationFactor = 1.0;
+                if (key === 'tl') locationFactor = 1.0 / (1.0 + (normX * 1.5 + normY * 3.5));
+                if (key === 'tr') locationFactor = 1.0 + (normX * 2.0 - normY * 2.0);
+                if (key === 'bl') locationFactor = 1.0 + (normY * 2.0 - normX * 2.0);
+                if (key === 'br') locationFactor = 1.0 + (normX * 2.0 + normY * 2.0);
+
+                const score = cArea * solidity * locationFactor * ((255 - centerGray) / 255);
 
                 if (!bestCand || score > bestCand.score) {
                   bestCand = {
@@ -1267,14 +1303,14 @@ export function findOMRSheetCornersInROI(
       const layout = getDynamicOMRQuestionLayout(_numQuestions);
       const expectedAspect = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
 
-      const isA4Proportion = sheetAspect >= (expectedAspect - 0.15) && sheetAspect <= (expectedAspect + 0.15);
-      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 72, 108);
+      const isA4Proportion = sheetAspect >= (expectedAspect - 0.20) && sheetAspect <= (expectedAspect + 0.20);
+      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 65, 115);
 
       const topEdgeSkew = Math.abs(tl.y - tr.y) / avgH;
       const botEdgeSkew = Math.abs(bl.y - br.y) / avgH;
       const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgW;
       const rightEdgeSkew = Math.abs(tr.x - br.x) / avgW;
-      const isStraight = topEdgeSkew <= 0.10 && botEdgeSkew <= 0.10 && leftEdgeSkew <= 0.10 && rightEdgeSkew <= 0.10;
+      const isStraight = topEdgeSkew <= 0.12 && botEdgeSkew <= 0.12 && leftEdgeSkew <= 0.12 && rightEdgeSkew <= 0.12;
       
       if (!isA4Proportion || !isAngleValid || !isStraight) {
         allFound = false;

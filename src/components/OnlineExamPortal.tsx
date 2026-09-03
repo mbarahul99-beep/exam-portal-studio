@@ -17,6 +17,7 @@ import {
 import { db, type Exam, type Student, type Question } from '../db';
 import confetti from 'canvas-confetti';
 import { MathRenderer } from './MathRenderer';
+import { isAnswerMatch } from '../utils/omrScanner';
 
 interface OnlineExamPortalProps {
   examId: number;
@@ -319,11 +320,12 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
 
     // Load section markings if configured, else default to exam base markings
     const secMarkings = exam.sectionsMarking || {};
+    const correctKey = (exam.answerKeys && exam.answerKeys['A']) || exam.answerKey || {};
 
     questionsList.forEach((q, idx) => {
       const qNum = idx + 1;
-      const studAns = selectedAnswers[qNum];
-      const correctAns = exam.answerKey[qNum];
+      const studAns = selectedAnswers[qNum] || '';
+      const correctAns = correctKey[qNum] || exam.answerKey?.[qNum] || '';
 
       const secRules = secMarkings[q.sectionName] || {
         correctMarks: exam.correctMarks,
@@ -331,10 +333,10 @@ export const OnlineExamPortal: React.FC<OnlineExamPortalProps> = ({ examId, onCl
         unansweredMarks: exam.unansweredMarks ?? 0
       };
 
-      if (!studAns) {
+      if (!studAns || studAns.trim() === '') {
         score += secRules.unansweredMarks ?? 0;
         unansweredCount++;
-      } else if (studAns === correctAns) {
+      } else if (isAnswerMatch(studAns, correctAns)) {
         score += secRules.correctMarks;
         correctCount++;
       } else {

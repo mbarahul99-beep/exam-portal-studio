@@ -1,6 +1,6 @@
-import React from 'react';
 import { db, type Exam, type Student } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { isAnswerMatch } from '../utils/omrScanner';
 
 interface StudentReportPrintProps {
   exam: Exam;
@@ -38,7 +38,7 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     exam.answerKey = exam.answerKey ? { ...exam.answerKey } : {};
     for (let q = 1; q <= exam.numQuestions; q++) {
       if (!exam.answerKey[q]) {
-        exam.answerKey[q] = 'A';
+        exam.answerKey[q] = '';
       }
     }
   }
@@ -93,9 +93,9 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
 
     totalPossible += marking.correctMarks;
 
-    if (!sAns) {
+    if (!sAns || sAns.trim() === '') {
       left++;
-    } else if (sAns === cAns) {
+    } else if (isAnswerMatch(sAns, cAns)) {
       correct++;
     } else {
       wrong++;
@@ -121,8 +121,8 @@ export const StudentReportPrint: React.FC<StudentReportPrintProps> = ({ exam: ra
     const correctKey = exam.answerKeys?.[subSet] || exam.answerKey || {};
     const cAns = correctKey[q];
     
-    const isCorrect = sAns === cAns;
-    const isLeft = !sAns;
+    const isCorrect = isAnswerMatch(sAns, cAns);
+    const isLeft = !sAns || sAns.trim() === '';
     
     const secRules: any = exam.sectionsMarking?.[secName] || {
       correctMarks: cMarks,

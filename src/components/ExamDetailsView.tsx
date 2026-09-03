@@ -30,7 +30,11 @@ import {
   HelpCircle,
   ChevronRight,
   Edit,
-  Archive
+  Archive,
+  Search,
+  Hash,
+  ArrowUpDown,
+  RotateCcw
 } from 'lucide-react';
 import { db, type Exam, type ExamSubmission, type Student } from '../db';
 import { ScanImagesView, EditScannedSheetModal } from './ScanImagesView';
@@ -123,6 +127,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
   // Navigation inside Exam Details view: 'hub' (Screenshot 1) | 'reports' (Screenshot 2) | 'absentees' | 'analysis' | 'manage-questions'
   const [activeView, setActiveView] = useState<'hub' | 'reports' | 'absentees' | 'analysis' | 'manage-questions'>('hub');
   const [isScanningMode, setIsScanningMode] = useState(false);
+  const [showReportsFilter, setShowReportsFilter] = useState(false);
+  const [reportsNameFilter, setReportsNameFilter] = useState('');
+  const [reportsRollFilter, setReportsRollFilter] = useState('');
+  const [reportsSortBy, setReportsSortBy] = useState<'rank_asc' | 'roll_asc' | 'roll_desc' | 'name_asc'>('rank_asc');
   const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [viewingScannedOmr, setViewingScannedOmr] = useState<{ studentName: string; omrUrl?: string; answers?: Record<number, string>; score?: number; correctCount?: number; wrongCount?: number; bookletSet?: string } | null>(null);
@@ -153,6 +161,18 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
       setEditableDifficulties(initialDiffs);
     }
   }, [showDifficultyModal, exam.difficulties, exam.numQuestions]);
+
+  React.useEffect(() => {
+    if (showAnswerKeyModal) {
+      const initialKeys: Record<string, Record<number, string>> = {};
+      const setsCount = exam.examSetsCount || 1;
+      const sets = Array.from({ length: setsCount }).map((_, i) => String.fromCharCode(65 + i));
+      sets.forEach(setName => {
+        initialKeys[setName] = { ...(exam.answerKeys?.[setName] || (setName === 'A' ? exam.answerKey : {}) || {}) };
+      });
+      setEditableKeys(initialKeys);
+    }
+  }, [showAnswerKeyModal, exam.answerKeys, exam.answerKey, exam.examSetsCount]);
 
   const handleSaveDifficulties = async () => {
     setIsSavingDifficulty(true);
@@ -608,6 +628,29 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
     }
     return { ...s, rank: currentRank };
   });
+
+  // Filtered & Sorted rows for View Reports
+  const filteredRankedRows = useMemo(() => {
+    return rankedRows.filter((row) => {
+      const qName = reportsNameFilter.trim().toLowerCase();
+      const qRoll = reportsRollFilter.trim().toLowerCase();
+
+      const matchesName = !qName || (row.studentName && row.studentName.toLowerCase().includes(qName));
+      const matchesRoll = !qRoll || (row.studentNum && row.studentNum.toString().toLowerCase().includes(qRoll));
+      return matchesName && matchesRoll;
+    }).sort((a, b) => {
+      if (reportsSortBy === 'roll_asc') {
+        return (parseInt(a.studentNum, 10) || 0) - (parseInt(b.studentNum, 10) || 0);
+      }
+      if (reportsSortBy === 'roll_desc') {
+        return (parseInt(b.studentNum, 10) || 0) - (parseInt(a.studentNum, 10) || 0);
+      }
+      if (reportsSortBy === 'name_asc') {
+        return a.studentName.localeCompare(b.studentName);
+      }
+      return a.rank - b.rank;
+    });
+  }, [rankedRows, reportsNameFilter, reportsRollFilter, reportsSortBy]);
 
   // Save updated Answer Keys directly to DB & recalculate student scores
   const handleSaveAnswerKeys = async () => {
@@ -1581,10 +1624,123 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
               </div>
             </div>
 
-            <button className="filter-icon-btn" title="Filter Roster">
+            <button 
+              className={`filter-icon-btn ${showReportsFilter ? 'active' : ''}`} 
+              title="Filter & Sort Roster"
+              onClick={() => setShowReportsFilter(prev => !prev)}
+              style={showReportsFilter ? { background: '#2563eb', color: '#ffffff', borderColor: '#2563eb' } : {}}
+            >
               <Filter size={20} />
             </button>
           </div>
+
+          {/* Interactive Filter & Search Bar */}
+          {showReportsFilter && (
+            <div className="reports-filter-bar mt-3 p-3 animate-fade-in" style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '10px',
+              alignItems: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+            }}>
+              {/* Search by Student Name */}
+              <div style={{ flex: 1, minWidth: '160px', position: 'relative' }}>
+                <Search size={15} color="#64748b" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Search student name..."
+                  value={reportsNameFilter}
+                  onChange={(e) => setReportsNameFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px 7px 32px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    background: '#ffffff'
+                  }}
+                />
+              </div>
+
+              {/* Search by Roll Number */}
+              <div style={{ width: '140px', position: 'relative' }}>
+                <Hash size={15} color="#64748b" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Roll No..."
+                  value={reportsRollFilter}
+                  onChange={(e) => setReportsRollFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px 7px 30px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    background: '#ffffff'
+                  }}
+                />
+              </div>
+
+              {/* Sort By Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <ArrowUpDown size={15} color="#64748b" />
+                <select
+                  value={reportsSortBy}
+                  onChange={(e) => setReportsSortBy(e.target.value as any)}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    background: '#ffffff',
+                    fontWeight: 600,
+                    color: '#334155',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="rank_asc">🏆 Rank: Top First</option>
+                  <option value="roll_asc">🔢 Roll No: Ascending (1→99)</option>
+                  <option value="roll_desc">🔢 Roll No: Descending (99→1)</option>
+                  <option value="name_asc">🔤 Name: A to Z</option>
+                </select>
+              </div>
+
+              {/* Reset Filters */}
+              {(reportsNameFilter || reportsRollFilter || reportsSortBy !== 'rank_asc') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportsNameFilter('');
+                    setReportsRollFilter('');
+                    setReportsSortBy('rank_asc');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: '#fee2e2',
+                    color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    padding: '7px 12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <RotateCcw size={13} /> Reset
+                </button>
+              )}
+
+              {/* Filter Active Count Badge */}
+              <div style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                Showing <strong>{filteredRankedRows.length}</strong> of {rankedRows.length} reports
+              </div>
+            </div>
+          )}
 
           {/* Student Roster Cards List (Screenshot 2) */}
           <div className="reports-roster-list mt-3">
@@ -1595,8 +1751,22 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                   <Camera size={16} /> Scan First Sheet
                 </button>
               </div>
+            ) : filteredRankedRows.length === 0 ? (
+              <div className="empty-roster-card">
+                <p>No reports match your search criteria.</p>
+                <button 
+                  className="btn-secondary-sm mt-2" 
+                  onClick={() => {
+                    setReportsNameFilter('');
+                    setReportsRollFilter('');
+                    setReportsSortBy('rank_asc');
+                  }}
+                >
+                  <RotateCcw size={14} /> Clear Filter
+                </button>
+              </div>
             ) : (
-              rankedRows.map((row) => {
+              filteredRankedRows.map((row) => {
                 const initial = row.studentName ? row.studentName.charAt(0).toUpperCase() : 'S';
 
                 return (
@@ -2140,7 +2310,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
           }}>
             <div style={{ maxWidth: '640px', margin: '0 auto' }}>
               {Array.from({ length: exam.numQuestions }, (_, i) => i + 1).map((q) => {
-                const currentOpt = editableKeys[activeAnswerKeySet]?.[q] || 'A';
+                const currentOpt = editableKeys[activeAnswerKeySet]?.[q] || '';
                 const sec = exam.sections?.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
                 const is5Option = sec && sec.questionType === '5 option';
                 const optionsList = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
@@ -2171,9 +2341,11 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                             onClick={() => {
                               setEditableKeys(prev => {
                                 const next = { ...prev };
+                                const currentVal = next[activeAnswerKeySet]?.[q] || '';
+                                const newVal = currentVal === opt ? '' : opt;
                                 next[activeAnswerKeySet] = {
                                   ...(next[activeAnswerKeySet] || {}),
-                                  [q]: opt
+                                  [q]: newVal
                                 };
                                 return next;
                               });
@@ -2594,8 +2766,10 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                       
                       <div style={{ display: 'flex', gap: '4px' }}>
                         {options.map((opt) => {
-                          const isStudentPick = studentAns === opt;
-                          const isCorrect = correctAns === opt;
+                          const studentPicks = studentAns.split(',').map(s => s.trim()).filter(Boolean);
+                          const isStudentPick = studentPicks.includes(opt);
+                          const isMultiple = studentPicks.length > 1;
+                          const isCorrect = !isMultiple && correctAns === opt;
                           
                           let bubbleStyle: React.CSSProperties = {
                             width: '20px',
@@ -2621,7 +2795,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({
                               bubbleStyle.borderColor = '#ef4444';
                               bubbleStyle.color = '#ffffff';
                             }
-                          } else if (isCorrect) {
+                          } else if (correctAns === opt) {
                             bubbleStyle.borderColor = '#10b981';
                             bubbleStyle.color = '#10b981';
                             bubbleStyle.boxShadow = '0 0 0 1px #10b981';

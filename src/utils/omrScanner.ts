@@ -8,6 +8,7 @@ export interface ScanResult {
   debugWarpedCanvas?: HTMLCanvasElement; // For showing the warped, aligned page in UI
   bestDy?: number;
   questionOffsets?: Record<number, { dx: number; dy: number }>;
+  bubbleSnippets?: Record<number, Record<string, string>>; // Cropped real bubble photos for option inspection/editing
 }
 
 let currentYScale = 1.0;
@@ -18,30 +19,53 @@ export function getScaledY(rawY: number, dy: number): number {
   return currentYStartOffset + (rawY - currentYStartOffset) * currentYScale + dy;
 }
 
-// Coordinate mapping parameters (matching the generated HTML NEET sheet)
+// Helper function to normalize multi-option answer strings (e.g. 'A,B', 'A, B', 'A/B', 'AB') into sorted array of option characters
+export function normalizeAnswerSet(ans: string | undefined | null): string[] {
+  if (!ans) return [];
+  const trimmed = String(ans).trim();
+  if (!trimmed) return [];
+  if (trimmed.includes(',') || trimmed.includes('/') || trimmed.includes(';') || trimmed.includes(' ')) {
+    return Array.from(new Set(trimmed.split(/[,/;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean))).sort();
+  }
+  if (/^[A-E]+$/i.test(trimmed) && trimmed.length > 1) {
+    return Array.from(new Set(trimmed.toUpperCase().split(''))).sort();
+  }
+  return [trimmed.toUpperCase()];
+}
+
+// Helper function to check if student's marked answers match the correct answer key
+export function isAnswerMatch(studentAns: string | undefined | null, correctAns: string | undefined | null): boolean {
+  const sPicks = normalizeAnswerSet(studentAns);
+  const cPicks = normalizeAnswerSet(correctAns);
+  if (sPicks.length === 0 || cPicks.length === 0) return false;
+  if (sPicks.length !== cPicks.length) return false;
+  return sPicks.every((val, idx) => val === cPicks[idx]);
+}
+
+// Coordinate mapping parameters (matching the generated Option B OMR sheet)
 export const OMR_CONFIG = {
   width: 1000,
   height: 1414,
 
   // Anchors target coordinates (centers of the black squares)
   anchors: {
-    tl: { x: 70, y: 70 },
-    tr: { x: 930, y: 70 },
-    bl: { x: 70, y: 1344 },
-    br: { x: 930, y: 1344 }
+    tl: { x: 70, y: 150 },
+    tr: { x: 930, y: 150 },
+    bl: { x: 70, y: 1270 },
+    br: { x: 930, y: 1270 }
   },
 
-  // Student ID block coordinates (Roll No: 10 digits, 1-9 then 0)
+  // Student ID block coordinates (Roll No: 1-3 digits, 1-9 then 0)
   studentId: {
-    xStart: 124, // Center of first digit column (perfectly centered dynamically)
-    xStep: 36,   // Horizontal spacing between digits (enlarged)
-    yStart: 185, // Center of '1' bubble row (adjusted to y = 185)
-    yStep: 20,   // Vertical spacing between rows (adjusted to yStep = 20 to fill box)
-    numDigits: 10,
-    bubbleRadius: 8
+    xStart: 108,
+    xStep: 42,
+    yStart: 236,
+    yStep: 24.5,
+    numDigits: 3,
+    bubbleRadius: 6.8
   },
 
-  // Test Booklet No coordinates (7 digits, 1-9 then 0)
+  // Dummy placeholder for backwards compatibility
   bookletNo: {
     xStart: 370,
     xStep: 25,
@@ -51,18 +75,12 @@ export const OMR_CONFIG = {
     bubbleRadius: 7
   },
 
-  // Questions layout coordinates (5 columns of 40 questions each = 200 total)
+  // Questions layout coordinates
   questions: {
-    bubbleRadius: 6,
-    yStart: 460,
-    yStep: 20,
-    columns: [
-      { qStart: 1, qEnd: 40, xLabel: 90, xOptions: [120, 145, 170, 195], yStart: 460 },
-      { qStart: 41, qEnd: 80, xLabel: 260, xOptions: [290, 315, 340, 365], yStart: 460 },
-      { qStart: 81, qEnd: 120, xLabel: 430, xOptions: [460, 485, 510, 535], yStart: 460 },
-      { qStart: 121, qEnd: 160, xLabel: 600, xOptions: [630, 655, 680, 705], yStart: 460 },
-      { qStart: 161, qEnd: 200, xLabel: 770, xOptions: [800, 825, 850, 875], yStart: 460 }
-    ]
+    bubbleRadius: 6.5,
+    yStart: 195,
+    yStep: 24.5,
+    columns: []
   }
 };
 
@@ -74,6 +92,13 @@ export interface OMRColumnConfig {
   yStart: number;
 }
 
+export interface OMRTimingMarker {
+  x: number;
+  y: number;
+  type: 'corner' | 'top' | 'left-timing' | 'right-timing' | 'col-timing';
+  slotIdx?: number;
+}
+
 export interface OMRQuestionLayout {
   bubbleRadius: number;
   yStart: number;
@@ -81,6 +106,9 @@ export interface OMRQuestionLayout {
   rowsPerCol: number;
   numCols: number;
   columns: OMRColumnConfig[];
+  bottomAnchorY: number;
+  colWidth: number;
+  timingMarkers: OMRTimingMarker[];
 }
 
 export interface OMRSlot {
@@ -91,264 +119,350 @@ export interface OMRSlot {
   nextQNum?: number;
 }
 
+export function calculateColumnQuestionDistribution(totalQuestions: number, totalCols: number): number[] {
+  if (totalCols <= 1) return [totalQuestions];
+
+  if (totalQuestions === 180 && totalCols === 5) {
+    return [28, 38, 38, 38, 38];
+  }
+  if (totalQuestions === 200 && totalCols === 5) {
+    return [28, 43, 43, 43, 43];
+  }
+  if (totalQuestions === 100 && totalCols === 4) {
+    return [16, 28, 28, 28];
+  }
+  if (totalQuestions === 50 && totalCols === 3) {
+    return [10, 20, 20];
+  }
+  if (totalQuestions === 30 && totalCols === 2) {
+    return [6, 24];
+  }
+
+  const sideCols = totalCols - 1;
+  const maxCol0Qs = Math.floor((totalQuestions / totalCols) * 0.55 / 5) * 5;
+  const col0Count = Math.min(totalQuestions, Math.max(5, maxCol0Qs));
+  const colCounts: number[] = [col0Count];
+
+  let remaining = totalQuestions - col0Count;
+  const sidePerCol = Math.max(5, Math.ceil(remaining / sideCols));
+
+  for (let c = 0; c < sideCols; c++) {
+    if (c === sideCols - 1) {
+      colCounts.push(remaining);
+    } else {
+      const cnt = Math.min(remaining, sidePerCol);
+      colCounts.push(cnt);
+      remaining -= cnt;
+    }
+  }
+
+  return colCounts;
+}
+
 export function getColumnSlots(
   qStart: number,
   qEnd: number,
-  _sections: any[] | undefined,
+  sections: any[] | undefined,
   totalQuestions: number
 ): OMRSlot[] {
   const slots: OMRSlot[] = [];
   let slotIdx = 0;
   let qNum = qStart;
 
+  let currentSecId: any = null;
+  if (sections && sections.length > 0) {
+    const s0 = sections.find((s: any) => qStart >= s.qStart && qStart < s.qStart + s.qCount);
+    if (s0) currentSecId = s0.id || s0.name;
+  }
+
   while (qNum <= qEnd && qNum <= totalQuestions) {
-    // We are starting a group of up to 5 questions.
-    // Before the group, we insert an option-header slot
-    slots.push({
-      type: 'option-header',
-      slotIdx: slotIdx++,
-      nextQNum: qNum
-    });
+    if (sections && sections.length > 0) {
+      const sec = sections.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
+      const newSecId = sec ? (sec.id || sec.name) : null;
+      if (newSecId !== currentSecId) {
+        slots.push({
+          slotIdx: slotIdx++,
+          type: 'subject-header',
+          subjectName: sec?.name || 'SECTION'
+        });
+        currentSecId = newSecId;
+      }
+    }
 
-    // Insert up to 5 questions in the current group
-    for (let i = 0; i < 5; i++) {
-      if (qNum > qEnd || qNum > totalQuestions) break;
-
+    const inColIdx = qNum - qStart;
+    if (inColIdx % 5 === 0) {
       slots.push({
-        type: 'question',
         slotIdx: slotIdx++,
-        qNum: qNum++
+        type: 'option-header',
+        nextQNum: qNum
       });
     }
+
+    slots.push({
+      slotIdx: slotIdx++,
+      type: 'question',
+      qNum
+    });
+
+    qNum++;
   }
 
   return slots;
 }
 
-/**
- * Calculates a dynamic question grid layout that adjusts columns, row counts, and vertical spacing (yStep)
- * to perfectly fit between y = 460 and y = 1220 so question bubbles NEVER overlap signature boxes!
- */
+export interface OMRLayoutDetails extends OMRQuestionLayout {
+  gridLeft: number;
+  gridRight: number;
+  topAnchorY: number;
+  rollFirstX: number;
+  rollXStep: number;
+  rollYStep: number;
+}
+
 export function getDynamicOMRQuestionLayout(
-  numQuestions: number,
-  preferredCols?: number,
-  density: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto',
+  numQuestions?: number,
+  density: 'normal' | 'compact' | 'spacious' | 'auto' = 'auto',
+  customColumns: number | 'auto' = 'auto',
   sections?: any[]
-): OMRQuestionLayout {
-  const total = Math.min(Math.max(1, numQuestions), 200);
+): OMRLayoutDetails {
+  const total = numQuestions || 100;
 
-  // 1. Determine optimal columns count if not specified
-  let numCols = preferredCols;
-  if (!numCols || numCols < 1) {
-    if (total >= 160) numCols = 5;
-    else if (total >= 90) numCols = 4;
-    else if (total >= 45) numCols = 3;
-    else numCols = 2;
+  // 1. Column Count Determination
+  let totalCols: number;
+  if (typeof customColumns === 'number' && customColumns >= 2 && customColumns <= 5) {
+    totalCols = customColumns;
+  } else {
+    if (total >= 135) totalCols = 5;
+    else if (total >= 70) totalCols = 4;
+    else if (total >= 36) totalCols = 3;
+    else totalCols = 2;
   }
-  numCols = Math.min(5, Math.max(2, numCols));
+  totalCols = Math.min(5, Math.max(2, totalCols));
 
-  // 2. Generate column positions horizontally across 1000px page (frame x=70 to x=930)
-  const frameLeft = 70;
-  const frameRight = 930;
-  const availWidth = frameRight - frameLeft; // 860px
-  const colWidth = availWidth / numCols;
+  // 2. Geometry & Spacing Parameters per Column Count
+  const topAnchorY = 150;
+  const bottomAnchorY = 1270;
 
-  // 3. Question distribution
-  const colCounts = Array(numCols).fill(0);
-  const base = Math.floor(total / numCols);
-  const rem = total % numCols;
-  for (let c = 0; c < numCols; c++) {
-    colCounts[c] = base + (c < rem ? 1 : 0);
+  let colWidth: number;
+  let gridLeft: number;
+  let optStep: number;
+  let idealYStep: number;
+  let bubbleRadius: number;
+  let rollXStep: number;
+  let rollYStep: number;
+
+  if (totalCols === 2) {
+    colWidth = 430;
+    gridLeft = 70;
+    optStep = 44;
+    idealYStep = 40.0;
+    bubbleRadius = 7.5;
+    rollXStep = 40;
+    rollYStep = 24;
+  } else if (totalCols === 3) {
+    colWidth = 286;
+    gridLeft = 70;
+    optStep = 36;
+    idealYStep = 30.0;
+    bubbleRadius = 6.8;
+    rollXStep = 34;
+    rollYStep = 22;
+  } else if (totalCols === 4) {
+    colWidth = 215;
+    gridLeft = 70;
+    optStep = 28;
+    idealYStep = 25.0;
+    bubbleRadius = 6.4;
+    rollXStep = 30;
+    rollYStep = 20;
+  } else {
+    // 5 Columns (180 / 200 Questions Layout)
+    colWidth = 180;
+    gridLeft = 50;
+    optStep = 24.0;
+    idealYStep = 23.7;
+    bubbleRadius = 6.2;
+    rollXStep = 28;
+    rollYStep = 23.0;
   }
 
-  // 4. Dynamic yStep calculation based on maximum column slots to perfectly fit page height (up to y = 1295)
-  let minLimit = 999;
-  let currentQStart = 1;
-  for (let c = 0; c < numCols; c++) {
-    const count = colCounts[c];
-    if (count === 0) continue;
-    const slots = getColumnSlots(currentQStart, currentQStart + count - 1, sections, total);
-    currentQStart += count;
+  const gridRight = gridLeft + totalCols * colWidth;
 
-    const colYStart = 410;
-    const availHeight = 1295 - colYStart;
-    const limit = availHeight / slots.length;
-    if (limit < minLimit) {
-      minLimit = limit;
+  let yStep = idealYStep;
+  if (density === 'spacious') yStep = idealYStep + 1.5;
+  if (density === 'compact') yStep = Math.max(16.0, idealYStep - 1.5);
+
+  // 3. Roll Number Geometry in Column 0
+  const rollNoDigits = 2;
+  const col0Center = gridLeft + 0.5 * colWidth;
+  const rollTotalWidth = (rollNoDigits - 1) * rollXStep;
+  const rollFirstX = col0Center - 0.5 * rollTotalWidth;
+
+  // 4. Sequential Question Allocation per Column
+  const colCounts = calculateColumnQuestionDistribution(total, totalCols);
+
+  // Compute maximum slot count across all side columns to align bottom equal baseline
+  let maxSideSlots = 0;
+  let curQ = colCounts[0] + 1;
+  for (let c = 1; c < totalCols; c++) {
+    const qCount = colCounts[c] || 0;
+    const qStart = curQ;
+    const qEnd = curQ + qCount - 1;
+    curQ += qCount;
+    const sideSlots = getColumnSlots(qStart, qEnd, sections, total);
+    if (sideSlots.length > maxSideSlots) {
+      maxSideSlots = sideSlots.length;
     }
   }
 
-  let yStep = 20;
-  if (density === 'auto') {
-    yStep = Math.min(25.5, Math.max(18.5, minLimit));
-  } else if (density === 'spacious') {
-    yStep = Math.min(25.5, Math.max(20.0, minLimit));
-  } else if (density === 'compact') {
-    yStep = Math.min(20.0, Math.max(16.5, minLimit - 1.5));
-  } else {
-    yStep = Math.min(23.0, Math.max(18.0, minLimit - 0.5));
-  }
+  const col0Slots = getColumnSlots(1, colCounts[0], sections, total);
+  const slotDiff = Math.max(0, maxSideSlots - col0Slots.length);
+  const col0QuestionsYStart = 180 + slotDiff * yStep;
 
+  // 5. Build Column Configurations
   const columns: OMRColumnConfig[] = [];
   let currentQ = 1;
-  for (let c = 0; c < numCols; c++) {
-    const count = colCounts[c];
-    if (count === 0) continue;
-    const qStart = currentQ;
-    const qEnd = currentQ + count - 1;
-    currentQ += count;
 
-    const colXStart = frameLeft + 12 + c * colWidth;
-    const xLabel = colXStart + (numCols <= 3 ? 20 : 12);
-    const optStart = colXStart + (numCols <= 3 ? 62 : 44);
-    const optStep = numCols <= 3 ? 28 : 24;
-    const colYStart = 410;
+  for (let c = 0; c < totalCols; c++) {
+    const qCount = colCounts[c] || 0;
+    if (qCount <= 0) continue;
+
+    const qStart = currentQ;
+    const qEnd = currentQ + qCount - 1;
+    currentQ += qCount;
+
+    const cCenter = gridLeft + (c + 0.5) * colWidth;
+    const optA = cCenter - 1.5 * optStep;
+    const optB = cCenter - 0.5 * optStep;
+    const optC = cCenter + 0.5 * optStep;
+    const optD = cCenter + 1.5 * optStep;
+    const xLabel = optA - 26;
+
+    const yStart = c === 0 ? col0QuestionsYStart : 180;
 
     columns.push({
       qStart,
       qEnd,
       xLabel,
-      yStart: colYStart,
-      xOptions: [
-        optStart,
-        optStart + optStep,
-        optStart + optStep * 2,
-        optStart + optStep * 3
-      ]
+      yStart,
+      xOptions: [optA, optB, optC, optD]
     });
   }
 
-  const yStart = 410;
-  const rowsPerCol = Math.max(...colCounts);
+  // 6. Generate Clean Gutter Timing Markers (Fiducial Grid)
+  const timingMarkers: OMRTimingMarker[] = [];
+  const gutterXs: number[] = [];
+  for (let g = 0; g <= totalCols; g++) {
+    gutterXs.push(Math.round(gridLeft + g * colWidth));
+  }
+
+  const yLevels = [150, 290, 430, 570, 710, 850, 990, 1130, 1270];
+  for (let idx = 0; idx < yLevels.length; idx++) {
+    const y = yLevels[idx];
+    const isCorner = idx === 0 || idx === yLevels.length - 1;
+    for (const gx of gutterXs) {
+      timingMarkers.push({
+        x: gx,
+        y,
+        type: isCorner ? 'corner' : 'col-timing'
+      });
+    }
+  }
+
+  const referenceSlots = getColumnSlots(1, colCounts[1] || 38, sections, total);
 
   return {
-    bubbleRadius: yStep < 18 ? 5.5 : 6.5,
-    yStart,
+    bubbleRadius,
+    yStart: topAnchorY,
     yStep,
-    rowsPerCol,
-    numCols,
-    columns
+    rowsPerCol: referenceSlots.length,
+    numCols: totalCols,
+    columns,
+    bottomAnchorY,
+    colWidth,
+    timingMarkers,
+    gridLeft,
+    gridRight,
+    topAnchorY,
+    rollFirstX,
+    rollXStep,
+    rollYStep
   };
 }
 
 /**
- * Corrects uneven lighting (shadows, glare hot-spots, vignetting, one edge of the
- * page darker than the other) across a handheld phone photo by estimating a smooth
- * background-brightness map (a heavy Gaussian blur, which washes out bubbles/text
- * but preserves slow lighting gradients) and dividing it out of the original image.
- * The result reads as evenly-lit "paper white" everywhere on the page.
- *
- * WHY THIS MATTERS: this is the single biggest lever against bubbles being missed
- * "randomly" from scan to scan. A shadow or glare gradient across a phone photo
- * means the SAME pen darkness produces a different raw grayscale value depending on
- * where on the page the bubble happens to sit. Any threshold — fixed or adaptive —
- * calibrated against one region of such a photo will misjudge bubbles elsewhere.
- * Flattening the illumination first means every bubble's raw grayscale can be
- * trusted as "ink darkness" alone, independent of where it sits on the page.
+ * High-Precision Bubble Centroid Snapper (Centroid Alignment Engine)
+ * Searches within a searchRadius (up to 12px) to detect the exact center of printed circle/fill
+ * by maximizing local center-to-background contrast.
  */
-function normalizeIllumination(cv: any, grayMat: any): any {
-  let background = new cv.Mat();
-  let grayFloat = new cv.Mat();
-  let bgFloat = new cv.Mat();
-  let divided = new cv.Mat();
-  let normalized = new cv.Mat();
+export function findExactBubbleCentroid(
+  grayMatrix: any,
+  approxX: number,
+  approxY: number,
+  searchRadius: number = 10,
+  expectedBubbleR: number = 6.8
+): { x: number; y: number } {
+  let bestX = approxX;
+  let bestY = approxY;
+  let maxContrast = -9999;
+  const sampleCenterR = Math.max(2.0, expectedBubbleR * 0.40);
 
-  try {
-    // Kernel large enough to blur away bubbles/text/lines but track slow lighting
-    // gradients across the page. Must be odd.
-    let k = Math.round(Math.min(grayMat.cols, grayMat.rows) / 10);
-    if (k % 2 === 0) k += 1;
-    k = Math.max(31, k);
+  const startDy = -searchRadius;
+  const endDy = searchRadius;
+  const startDx = -searchRadius;
+  const endDx = searchRadius;
 
-    cv.GaussianBlur(grayMat, background, new cv.Size(k, k), 0);
+  for (let dy = startDy; dy <= endDy; dy += 1) {
+    for (let dx = startDx; dx <= endDx; dx += 1) {
+      const cx = Math.round(approxX + dx);
+      const cy = Math.round(approxY + dy);
+      if (cx >= 12 && cx < grayMatrix.cols - 12 && cy >= 12 && cy < grayMatrix.rows - 12) {
+        const centerVal = calculateBubbleAverageGray(grayMatrix, cx, cy, sampleCenterR);
+        const bgVal = calculateRingAverageGray(grayMatrix, cx, cy, expectedBubbleR + 2, expectedBubbleR + 5);
+        const contrast = bgVal - centerVal;
 
-    grayMat.convertTo(grayFloat, cv.CV_32F);
-    // +1 avoids division by zero in near-black regions (printed anchors, etc.)
-    background.convertTo(bgFloat, cv.CV_32F, 1, 1);
-
-    // (gray / background) * 255 -> flattens local brightness back to a 0-255 range
-    // where "paper white" reads consistently as ~255 across the whole page.
-    cv.divide(grayFloat, bgFloat, divided, 255.0);
-    divided.convertTo(normalized, cv.CV_8U);
-
-    return normalized;
-  } finally {
-    background.delete();
-    grayFloat.delete();
-    bgFloat.delete();
-    divided.delete();
-  }
-}
-
-/**
- * Otsu's method adapted to a plain 1-D array of numeric samples (rather than an
- * image histogram). Finds the cut point that maximizes between-class variance,
- * i.e. the value that best splits a bimodal distribution into two groups.
- *
- * WHY THIS REPLACES HAND-PICKED CONSTANTS: the old code decided "filled vs blank"
- * with fixed magic numbers (subtract 50 from an estimated paper-white level, cap at
- * 118, require 15/25-point gaps, etc.), each tuned for one lighting condition and
- * one pen. Those constants are exactly why the same physical sheet gives different
- * results scan to scan — a slightly darker or lighter photo silently shifts every
- * bubble's raw value out from under a fixed cutoff. Otsu instead looks at the ACTUAL
- * distribution of "how much darker is this bubble than its own row's blank
- * baseline" across every bubble on THIS sheet, and finds the natural gap between
- * the large population of blanks (clustered near zero) and the smaller population
- * of genuine marks (clustered much higher) — self-calibrating on every single scan.
- */
-function otsuThreshold(values: number[], numBins = 256): number {
-  if (values.length === 0) return 0;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (max === min) return min;
-
-  const hist = new Array(numBins).fill(0);
-  const binWidth = (max - min) / numBins;
-  for (const v of values) {
-    let bin = Math.floor((v - min) / binWidth);
-    if (bin >= numBins) bin = numBins - 1;
-    if (bin < 0) bin = 0;
-    hist[bin]++;
-  }
-
-  const total = values.length;
-  let sumAll = 0;
-  for (let i = 0; i < numBins; i++) sumAll += i * hist[i];
-
-  let sumB = 0;
-  let wB = 0;
-  let maxVar = 0;
-  let bestBin = 0;
-
-  for (let i = 0; i < numBins; i++) {
-    wB += hist[i];
-    if (wB === 0) continue;
-    const wF = total - wB;
-    if (wF === 0) break;
-
-    sumB += i * hist[i];
-    const mB = sumB / wB;
-    const mF = (sumAll - sumB) / wF;
-    const varBetween = wB * wF * (mB - mF) * (mB - mF);
-
-    if (varBetween > maxVar) {
-      maxVar = varBetween;
-      bestBin = i;
+        if (contrast > maxContrast) {
+          maxContrast = contrast;
+          bestX = cx;
+          bestY = cy;
+        }
+      }
     }
   }
 
-  return min + bestBin * binWidth;
+  // Only accept refined centroid if there is a genuine dark fill (contrast >= 30)
+  if (maxContrast < 30) {
+    return { x: approxX, y: approxY };
+  }
+
+  return { x: bestX, y: bestY };
 }
 
-/**
- * Assesses whether a captured photo is even usable before spending time trying to
- * scan it — catching the two most common phone-camera failure modes that make
- * bubble detection unreliable: motion/focus blur (variance of the Laplacian) and
- * blown-out glare/very low contrast (a flattened brightness histogram). Call this
- * BEFORE scanOMRSheet and prompt a retake if `usable` is false — this fixes far
- * more "random" misses than any post-hoc thresholding trick, because no amount of
- * clever thresholding can recover ink detail that motion blur or glare destroyed.
- */
+function calculateRingAverageGray(grayMatrix: any, cx: number, cy: number, rInner: number, rOuter: number): number {
+  let sum = 0;
+  let count = 0;
+  const rInSq = rInner * rInner;
+  const rOutSq = rOuter * rOuter;
+  const startX = Math.max(0, Math.floor(cx - rOuter));
+  const endX = Math.min(grayMatrix.cols - 1, Math.ceil(cx + rOuter));
+  const startY = Math.max(0, Math.floor(cy - rOuter));
+  const endY = Math.min(grayMatrix.rows - 1, Math.ceil(cy + rOuter));
+
+  for (let y = startY; y <= endY; y++) {
+    const dy = y - cy;
+    const dySq = dy * dy;
+    for (let x = startX; x <= endX; x++) {
+      const dx = x - cx;
+      const dSq = dx * dx + dySq;
+      if (dSq >= rInSq && dSq <= rOutSq) {
+        sum += grayMatrix.ucharAt(y, x);
+        count++;
+      }
+    }
+  }
+  return count > 0 ? sum / count : 255;
+}
+
 export function assessCaptureQuality(
   sourceImage: HTMLCanvasElement | HTMLImageElement
 ): { usable: boolean; blurScore: number; contrastScore: number; warnings: string[] } {
@@ -366,16 +480,11 @@ export function assessCaptureQuality(
     src = cv.imread(sourceImage);
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    // Blur detection: sharp images have high-variance Laplacian response;
-    // blurry/out-of-focus images are smooth, so variance collapses toward zero.
     cv.Laplacian(gray, lap, cv.CV_64F);
     cv.meanStdDev(lap, mean, stddev);
     const lapStd = stddev.doubleAt(0, 0);
-    const blurScore = lapStd * lapStd; // variance
+    const blurScore = lapStd * lapStd;
 
-    // Contrast / glare detection: a well-lit page of mostly white paper with dark
-    // ink should have a wide spread of gray values. A photo blown out by flash
-    // glare or shot in flat, dim light collapses that spread.
     cv.meanStdDev(gray, mean, stddev);
     const contrastScore = stddev.doubleAt(0, 0);
 
@@ -401,23 +510,90 @@ export function assessCaptureQuality(
   }
 }
 
-/**
- * Main OMR Scanner function. Processes an source image (HTMLCanvasElement, HTMLImageElement, or ImageData)
- * and returns the detected Student ID (Roll No) and Answers.
- */
+export function findOuterGridCorners(
+  cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>,
+  expectedRatio: number,
+  pageArea: number
+): { tl: any; tr: any; bl: any; br: any } | null {
+  if (cands.length < 4) return null;
+
+  const areas = cands.map(c => c.area).sort((a, b) => a - b);
+  const medianArea = areas[Math.floor(areas.length / 2)];
+  const validCands = cands.filter(c => c.area >= medianArea * 0.25 && c.area <= medianArea * 3.5);
+  if (validCands.length < 4) return null;
+
+  const minX = Math.min(...validCands.map(c => c.center.x));
+  const maxX = Math.max(...validCands.map(c => c.center.x));
+  const minY = Math.min(...validCands.map(c => c.center.y));
+  const maxY = Math.max(...validCands.map(c => c.center.y));
+
+  const tlExt = [...validCands].sort((a, b) => Math.hypot(a.center.x - minX, a.center.y - minY) - Math.hypot(b.center.x - minX, b.center.y - minY))[0];
+  const trExt = [...validCands].sort((a, b) => Math.hypot(a.center.x - maxX, a.center.y - minY) - Math.hypot(b.center.x - maxX, b.center.y - minY))[0];
+  const blExt = [...validCands].sort((a, b) => Math.hypot(a.center.x - minX, a.center.y - maxY) - Math.hypot(b.center.x - minX, b.center.y - maxY))[0];
+  const brExt = [...validCands].sort((a, b) => Math.hypot(a.center.x - maxX, a.center.y - maxY) - Math.hypot(b.center.x - maxX, b.center.y - maxY))[0];
+
+  if (tlExt && trExt && blExt && brExt && new Set([tlExt, trExt, blExt, brExt]).size === 4) {
+    const isQuadrantValid =
+      tlExt.center.x < trExt.center.x &&
+      blExt.center.x < brExt.center.x &&
+      tlExt.center.y < blExt.center.y &&
+      trExt.center.y < brExt.center.y;
+
+    if (!isQuadrantValid) return null;
+
+    const wTop = Math.hypot(tlExt.center.x - trExt.center.x, tlExt.center.y - trExt.center.y);
+    const wBot = Math.hypot(blExt.center.x - brExt.center.x, blExt.center.y - brExt.center.y);
+    const hLeft = Math.hypot(tlExt.center.x - blExt.center.x, tlExt.center.y - blExt.center.y);
+    const hRight = Math.hypot(trExt.center.x - brExt.center.x, trExt.center.y - brExt.center.y);
+    const avgW = (wTop + wBot) / 2;
+    const avgH = (hLeft + hRight) / 2;
+    const quadArea = avgW * avgH;
+
+    if (avgW > 50 && avgH > 60 && quadArea > pageArea * 0.18) {
+      const ratio = avgH / avgW;
+      const minRatio = Math.max(0.95, expectedRatio - 0.18);
+      const maxRatio = Math.min(1.85, expectedRatio + 0.18);
+      const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) <= 0.12;
+      const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) <= 0.12;
+      const isAnglesValid = validateQuadAngles(tlExt.center, trExt.center, brExt.center, blExt.center, 75, 105);
+
+      const isTopStraight = Math.abs(tlExt.center.y - trExt.center.y) / avgH <= 0.10;
+      const isBotStraight = Math.abs(blExt.center.y - brExt.center.y) / avgH <= 0.10;
+      const isLeftStraight = Math.abs(tlExt.center.x - blExt.center.x) / avgW <= 0.10;
+      const isRightStraight = Math.abs(trExt.center.x - brExt.center.x) / avgW <= 0.10;
+
+      if (
+        ratio >= minRatio &&
+        ratio <= maxRatio &&
+        isWidthSimilar &&
+        isHeightSimilar &&
+        isAnglesValid &&
+        isTopStraight &&
+        isBotStraight &&
+        isLeftStraight &&
+        isRightStraight
+      ) {
+        return { tl: tlExt, tr: trExt, bl: blExt, br: brExt };
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function scanOMRSheet(
   sourceImage: HTMLCanvasElement | HTMLImageElement,
   numQuestions: number,
   rollNoDigits: number = 10,
   _examSetsCount: number = 1,
-  sections: any[] = []
+  sections: any[] = [],
+  knownCorners?: Array<{ x: number; y: number }> | null
 ): Promise<ScanResult> {
   const cv = window.cv;
   if (!cv) {
     throw new Error('OpenCV.js is not loaded yet');
   }
 
-  // 1. Read source image into Mat
   let src = cv.imread(sourceImage);
   let gray = new cv.Mat();
   let blurred = new cv.Mat();
@@ -429,26 +605,23 @@ export async function scanOMRSheet(
   let bestWarpedMat: any = null;
 
   try {
-    // 2. Preprocessing
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    // Apply Gaussian blur to smooth out noise
     let ksize = new cv.Size(5, 5);
     cv.GaussianBlur(gray, blurred, ksize, 0);
 
-    // Apply adaptive thresholding to get binary black/white image (handling shadow variations)
     cv.adaptiveThreshold(
       blurred,
       thresh,
       255,
       cv.ADAPTIVE_THRESH_GAUSSIAN_C,
       cv.THRESH_BINARY_INV,
-      15, // Block size
-      9   // Constant
+      15,
+      9
     );
 
-    // 3. Find contours using multi-attempt fallback loops
-    const candidates: Array<{ center: { x: number; y: number }; area: number; rect: any }> = [];
+    const layout = getDynamicOMRQuestionLayout(numQuestions, undefined, 'auto', sections);
+
     const srcWidth = src.cols;
     const srcHeight = src.rows;
     const pageArea = srcWidth * srcHeight;
@@ -458,71 +631,14 @@ export async function scanOMRSheet(
     let blMarker: any = null;
     let brMarker: any = null;
 
-    const findBestQuadInCandidates = (cands: Array<{ center: { x: number; y: number }; area: number; rect: any }>) => {
-      const sorted = [...cands].sort((a, b) => b.area - a.area);
-      const topCands = sorted.slice(0, 15);
+    const expectedGridRatio = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
 
-      let bestQuad: { tl: any; tr: any; bl: any; br: any } | null = null;
-      let maxQuadArea = 0;
-
-      if (topCands.length >= 4) {
-        for (let i = 0; i < topCands.length; i++) {
-          for (let j = i + 1; j < topCands.length; j++) {
-            for (let k = j + 1; k < topCands.length; k++) {
-              for (let l = k + 1; l < topCands.length; l++) {
-                const pts = [topCands[i], topCands[j], topCands[k], topCands[l]];
-
-                const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
-                const tl = sortedBySum[0];
-                const br = sortedBySum[3];
-
-                const remaining = [sortedBySum[1], sortedBySum[2]];
-                const sortedByDiff = remaining.sort((a, b) => (a.center.x - a.center.y) - (b.center.x - b.center.y));
-                const bl = sortedByDiff[0];
-                const tr = sortedByDiff[1];
-
-                const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
-                const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-                if (minArea === 0 || maxArea / minArea > 1.75) continue;
-
-                const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
-                const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
-                const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
-                const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
-
-                const avgW = (wTop + wBot) / 2;
-                const avgH = (hLeft + hRight) / 2;
-
-                if (avgW === 0) continue;
-                const ratio = avgH / avgW;
-
-                const isRatioValid = (ratio >= 0.55 && ratio <= 0.95) || (ratio >= 1.05 && ratio <= 1.85);
-                const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
-                const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
-                const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
-
-                const quadArea = avgW * avgH;
-                const isSheetSizeValid = quadArea > pageArea * 0.15;
-
-                const isAnchorSizeValid =
-                  (tl.rect.width >= avgW * 0.015 && tl.rect.width <= avgW * 0.08) &&
-                  (tr.rect.width >= avgW * 0.015 && tr.rect.width <= avgW * 0.08) &&
-                  (bl.rect.width >= avgW * 0.015 && bl.rect.width <= avgW * 0.08) &&
-                  (br.rect.width >= avgW * 0.015 && br.rect.width <= avgW * 0.08);
-
-                if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid && isSheetSizeValid && isAnchorSizeValid) {
-                  if (quadArea > maxQuadArea) {
-                    maxQuadArea = quadArea;
-                    bestQuad = { tl, tr, bl, br };
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      return bestQuad;
-    };
+    if (knownCorners && knownCorners.length === 4) {
+      tlMarker = { center: { x: knownCorners[0].x, y: knownCorners[0].y } };
+      trMarker = { center: { x: knownCorners[1].x, y: knownCorners[1].y } };
+      brMarker = { center: { x: knownCorners[2].x, y: knownCorners[2].y } };
+      blMarker = { center: { x: knownCorners[3].x, y: knownCorners[3].y } };
+    }
 
     const thresholdAttempts = [
       { adaptive: true, blockSize: 15, C: 9 },
@@ -555,31 +671,31 @@ export async function scanOMRSheet(
       hierarchy = new cv.Mat();
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      candidates.length = 0;
+      const attemptCandidates: Array<{ center: { x: number; y: number }; area: number; rect: any }> = [];
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
         const area = rect.width * rect.height;
         const aspectRatio = rect.width / rect.height;
 
-        const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-        const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.30;
+        const isCorrectSize = area > pageArea * 0.00006 && area < pageArea * 0.05;
+        const isSquare = aspectRatio >= 0.60 && aspectRatio <= 1.65;
 
         const cArea = cv.contourArea(cnt);
         const solidity = area > 0 ? cArea / area : 0;
-        const isSolid = solidity >= 0.68;
+        const isSolid = solidity >= 0.55;
 
         if (isCorrectSize && isSquare && isSolid) {
-          const center = {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2
-          };
-          candidates.push({ center, area, rect });
+          const M = cv.moments(cnt, false);
+          const center = (M && M.m00 !== 0)
+            ? { x: M.m10 / M.m00, y: M.m01 / M.m00 }
+            : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+          attemptCandidates.push({ center, area, rect });
         }
         cnt.delete();
       }
 
-      const quad = findBestQuadInCandidates(candidates);
+      const quad = findOuterGridCorners(attemptCandidates, expectedGridRatio, pageArea);
       if (quad) {
         tlMarker = quad.tl;
         trMarker = quad.tr;
@@ -592,125 +708,45 @@ export async function scanOMRSheet(
     }
 
     if (!tlMarker || !trMarker || !blMarker || !brMarker) {
-      throw new Error("Failed to locate 4 corner anchors. Align sheet inside frame.");
+      throw new Error('Failed to locate all 4 corner anchors. Please align the sheet within the camera guide boxes.');
     }
 
-    // 5. Warp Perspective to align standard grid
-    const basePts = [tlMarker, trMarker, brMarker, blMarker];
+    const targetAnchors = {
+      tl: { x: layout.gridLeft, y: layout.topAnchorY },
+      tr: { x: layout.gridRight, y: layout.topAnchorY },
+      br: { x: layout.gridRight, y: layout.bottomAnchorY },
+      bl: { x: layout.gridLeft, y: layout.bottomAnchorY }
+    };
 
-    // 4 Possible Rotations (0°, 90°, 180°, 270°)
-    const candidateRotations = [
-      [basePts[0], basePts[1], basePts[2], basePts[3]], // 0°
-      [basePts[3], basePts[0], basePts[1], basePts[2]], // 90° CW
-      [basePts[2], basePts[3], basePts[0], basePts[1]], // 180°
-      [basePts[1], basePts[2], basePts[3], basePts[0]]  // 270° CW
-    ];
+    const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      tlMarker.center.x, tlMarker.center.y,
+      trMarker.center.x, trMarker.center.y,
+      brMarker.center.x, brMarker.center.y,
+      blMarker.center.x, blMarker.center.y
+    ]);
 
-    const anchorConfigs = [
-      {
-        name: '48px anchors',
-        tl: { x: 48, y: 48 },
-        tr: { x: 952, y: 48 },
-        br: { x: 952, y: 1366 },
-        bl: { x: 48, y: 1366 },
-        yScale: 0.991,
-        yStartOffset: 48
-      },
-      {
-        name: '70px anchors',
-        tl: { x: 70, y: 70 },
-        tr: { x: 930, y: 70 },
-        br: { x: 930, y: 1344 },
-        bl: { x: 70, y: 1344 },
-        yScale: 1.0,
-        yStartOffset: 70
-      }
-    ];
+    const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      targetAnchors.tl.x, targetAnchors.tl.y,
+      targetAnchors.tr.x, targetAnchors.tr.y,
+      targetAnchors.br.x, targetAnchors.br.y,
+      targetAnchors.bl.x, targetAnchors.bl.y
+    ]);
 
-    bestWarpedMat = null;
-    let maxOrientationContrast = -1;
-    let bestConfig = anchorConfigs[1]; // default to 70px anchors
+    currentYScale = 1.0;
+    currentYStartOffset = layout.topAnchorY;
 
     const warpedSize = new cv.Size(OMR_CONFIG.width, OMR_CONFIG.height);
+    const M_warp = cv.getPerspectiveTransform(srcPts, dstPts);
+    bestWarpedMat = new cv.Mat();
+    cv.warpPerspective(src, bestWarpedMat, M_warp, warpedSize);
 
-    for (const config of anchorConfigs) {
-      let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        config.tl.x, config.tl.y,
-        config.tr.x, config.tr.y,
-        config.br.x, config.br.y,
-        config.bl.x, config.bl.y
-      ]);
-
-      // Set scaling variables temporarily for getScaledY inside loop
-      currentYScale = config.yScale;
-      currentYStartOffset = config.yStartOffset;
-
-      for (let rotIdx = 0; rotIdx < candidateRotations.length; rotIdx++) {
-        const rot = candidateRotations[rotIdx];
-        const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-          rot[0].center.x, rot[0].center.y,
-          rot[1].center.x, rot[1].center.y,
-          rot[2].center.x, rot[2].center.y,
-          rot[3].center.x, rot[3].center.y
-        ]);
-
-        const M_temp = cv.getPerspectiveTransform(srcPts, dstPts);
-        const tempWarped = new cv.Mat();
-        cv.warpPerspective(src, tempWarped, M_temp, warpedSize);
-
-        const tempGray = new cv.Mat();
-        cv.cvtColor(tempWarped, tempGray, cv.COLOR_RGBA2GRAY);
-
-        // Evaluate candidate roll number area for valid header/roll box structure
-        let contrastScore = 0;
-        const sidConf = OMR_CONFIG.studentId;
-        for (let col = 0; col < Math.min(5, rollNoDigits); col++) {
-          const x = sidConf.xStart + col * sidConf.xStep;
-          let cMin = 256, cMax = -1;
-          for (let row = 0; row < 10; row++) {
-            const y = getScaledY(sidConf.yStart + row * sidConf.yStep, 0);
-            const g = calculateBubbleAverageGray(tempGray, x, y, 4.5);
-            if (g < cMin) cMin = g;
-            if (g > cMax) cMax = g;
-          }
-          contrastScore += (cMax - cMin);
-        }
-
-        // Orientation verification: Roll number grid alignment naturally maximizes contrastScore.
-        const orientationScore = contrastScore;
-
-        if (orientationScore > maxOrientationContrast || !bestWarpedMat) {
-          maxOrientationContrast = orientationScore;
-          if (bestWarpedMat) bestWarpedMat.delete();
-          bestWarpedMat = tempWarped;
-          bestConfig = config;
-        } else {
-          tempWarped.delete();
-        }
-
-        tempGray.delete();
-        M_temp.delete();
-        srcPts.delete();
-      }
-
-      dstPts.delete();
-    }
-
-    // Lock in the winning configuration
-    currentYScale = bestConfig.yScale;
-    currentYStartOffset = bestConfig.yStartOffset;
-    console.log("[OMR Scanner] Auto-selected printed anchor config:", bestConfig.name);
+    srcPts.delete();
+    dstPts.delete();
+    M_warp.delete();
     let warped = bestWarpedMat;
 
-    // Convert warped image to grayscale for bubble average intensity scan
-    let warpedGrayRaw = new cv.Mat();
-    cv.cvtColor(warped, warpedGrayRaw, cv.COLOR_RGBA2GRAY);
-
-    // Flatten out any residual shadow/glare gradient across the warped page BEFORE
-    // any bubble is measured. See normalizeIllumination() for why this is the fix
-    // for bubbles being missed inconsistently between scans.
-    warpedGray = normalizeIllumination(cv, warpedGrayRaw);
-    warpedGrayRaw.delete();
+    warpedGray = new cv.Mat();
+    cv.cvtColor(warped, warpedGray, cv.COLOR_RGBA2GRAY);
 
     warpedBin = new cv.Mat();
     cv.adaptiveThreshold(
@@ -726,185 +762,175 @@ export async function scanOMRSheet(
     const debugWarpedCanvas = document.createElement('canvas');
     cv.imshow(debugWarpedCanvas, warped);
 
-    // 5.2. Auto-Calibrate Vertical Scan Offset
-    let bestDy = 0;
-    let minAvgIntensity = 256;
-    const sidConf = OMR_CONFIG.studentId;
-
-    for (let dy = -12; dy <= 12; dy += 1) {
-      let totalIntensity = 0;
-      let filledColumnsCount = 0;
-      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-        const x = sidConf.xStart + colIdx * sidConf.xStep;
-        let colMin = 256;
-        let colMax = -1;
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, dy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-          if (avgGray < colMin) {
-            colMin = avgGray;
-          }
-          if (avgGray > colMax) {
-            colMax = avgGray;
-          }
-        }
-        if (colMax - colMin > 50) {
-          totalIntensity += colMin;
-          filledColumnsCount++;
-        }
-      }
-      if (filledColumnsCount > 0) {
-        const avg = totalIntensity / filledColumnsCount;
-        if (avg < minAvgIntensity) {
-          minAvgIntensity = avg;
-          bestDy = dy;
-        }
-      }
-    }
-    console.log("[OMR Scanner] Calibrated vertical offset:", bestDy, "px");
-
-    // 5.3. Auto-Calibrate Horizontal Scan Offset
-    let bestDx = 0;
-    let minAvgIntensityDx = 256;
-    for (let dx = -20; dx <= 20; dx += 1) {
-      let totalIntensity = 0;
-      let filledColumnsCount = 0;
-      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-        const x = sidConf.xStart + colIdx * sidConf.xStep + dx;
-        let colMin = 256;
-        let colMax = -1;
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy);
-          const avgGray = calculateBubbleAverageGray(warpedGray, x, y, 3.0);
-          if (avgGray < colMin) {
-            colMin = avgGray;
-          }
-          if (avgGray > colMax) {
-            colMax = avgGray;
-          }
-        }
-        if (colMax - colMin > 50) {
-          totalIntensity += colMin;
-          filledColumnsCount++;
-        }
-      }
-      if (filledColumnsCount > 0) {
-        const avg = totalIntensity / filledColumnsCount;
-        if (avg < minAvgIntensityDx) {
-          minAvgIntensityDx = avg;
-          bestDx = dx;
-        }
-      }
-    }
-    console.log("[OMR Scanner] Calibrated horizontal offset:", bestDx, "px");
-
     let bookletSet = 'A';
+    const qConf = layout;
 
-    // Load custom OMR layout settings from storage to match printed sheet configuration
-    let customCols: number | undefined = undefined;
-    let layoutDensity: 'auto' | 'compact' | 'normal' | 'spacious' = 'auto';
-    try {
-      const storedJson = window.localStorage.getItem('omr_custom_settings');
-      if (storedJson) {
-        const parsed = JSON.parse(storedJson);
-        if (parsed.customCols !== undefined) customCols = parsed.customCols;
-        if (parsed.density) layoutDensity = parsed.density;
+    // ── Robust Adaptive Timing Mark Grid Detector ──
+    interface TimingMarkOffset {
+      expectedX: number;
+      expectedY: number;
+      actualDx: number;
+      actualDy: number;
+    }
+
+    const tmOffsets: TimingMarkOffset[] = [];
+    const searchR = (knownCorners && knownCorners.length === 4) ? 6 : 16;
+
+    for (const tm of qConf.timingMarkers) {
+      const isCorner = tm.type === 'corner';
+      const markSize = isCorner ? 26 : 18;
+      const markHalf = Math.floor(markSize / 2);
+
+      let bestDx = 0;
+      let bestDy = 0;
+      let bestScore = -9999;
+
+      for (let dy = -searchR; dy <= searchR; dy += 2) {
+        for (let dx = -searchR; dx <= searchR; dx += 2) {
+          const cx = tm.x + dx;
+          const cy = tm.y + dy;
+          if (cx - markHalf >= 0 && cx + markHalf < warpedGray.cols && cy - markHalf >= 0 && cy + markHalf < warpedGray.rows) {
+            let sum = 0, cnt = 0;
+            for (let py = cy - markHalf; py <= cy + markHalf; py += 2) {
+              for (let px = cx - markHalf; px <= cx + markHalf; px += 2) {
+                sum += warpedGray.ucharAt(py, px);
+                cnt++;
+              }
+            }
+            const centerVal = cnt > 0 ? sum / cnt : 255;
+            const bgVal = calculateRingAverageGray(warpedGray, cx, cy, markHalf + 3, markHalf + 7);
+            const contrast = bgVal - centerVal;
+
+            if (contrast > bestScore) {
+              bestScore = contrast;
+              bestDx = dx;
+              bestDy = dy;
+            }
+          }
+        }
       }
-    } catch (e) {
-      console.warn("Failed loading custom OMR settings inside scanner:", e);
-    }
 
-    const qConf = getDynamicOMRQuestionLayout(numQuestions, customCols, layoutDensity, sections);
+      // Fine search (1px resolution)
+      let fineDx = bestDx, fineDy = bestDy, fineScore = bestScore;
+      for (let dy = bestDy - 2; dy <= bestDy + 2; dy++) {
+        for (let dx = bestDx - 2; dx <= bestDx + 2; dx++) {
+          const cx = tm.x + dx;
+          const cy = tm.y + dy;
+          if (cx - markHalf >= 0 && cx + markHalf < warpedGray.cols && cy - markHalf >= 0 && cy + markHalf < warpedGray.rows) {
+            let sum = 0, cnt = 0;
+            for (let py = cy - markHalf; py <= cy + markHalf; py++) {
+              for (let px = cx - markHalf; px <= cx + markHalf; px++) {
+                sum += warpedGray.ucharAt(py, px);
+                cnt++;
+              }
+            }
+            const centerVal = cnt > 0 ? sum / cnt : 255;
+            const bgVal = calculateRingAverageGray(warpedGray, cx, cy, markHalf + 3, markHalf + 7);
+            const contrast = bgVal - centerVal;
 
-    // ================================================================
-    // 6 & 7. Two-pass, self-calibrated bubble classification (Roll No + Answers)
-    // ----------------------------------------------------------------
-    // PASS 1 (gather): for every bubble on the sheet, measure how much darker it
-    // is than its OWN row/column's blank-paper baseline (the average of the two
-    // lightest bubbles in that same row/column). This "fill depth" is already
-    // self-normalized against local lighting and pen pressure for that specific
-    // row, on top of the page-wide illumination flattening done earlier.
-    //
-    // PASS 2 (decide): pool every fill-depth value from the ENTIRE sheet and run
-    // Otsu's method over that pool to find the natural split between the large
-    // population of blank bubbles (clustered near zero) and the smaller
-    // population of genuinely marked ones. This replaces the old fixed
-    // constants (-50, -15, -25, cap at 118) that were tuned for one lighting
-    // condition/pen and silently misfired — inconsistently — for others. See
-    // normalizeIllumination() and otsuThreshold() above for the full rationale.
-    // ================================================================
+            if (contrast > fineScore) {
+              fineScore = contrast;
+              fineDx = dx;
+              fineDy = dy;
+            }
+          }
+        }
+      }
 
-    interface BubbleSample { avgGray: number; avgBin: number; }
-    interface RowRecord {
-      kind: 'roll' | 'question';
-      key: number; // colIdx for roll digits, question number for answers
-      samples: BubbleSample[];
-      baseline: number;
-      fillDepths: number[];
-    }
-
-    const computeBaseline = (grays: number[]): number => {
-      // Robust "blank paper" estimate for this row/column: average of the two
-      // lightest bubbles (rather than just the single lightest), so one blank
-      // bubble catching a glint of glare doesn't skew the baseline.
-      const sorted = [...grays].sort((a, b) => b - a); // brightest first
-      if (sorted.length === 1) return sorted[0];
-      return (sorted[0] + sorted[1]) / 2;
-    };
-
-    const digitValuesList = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
-    const allFillDepths: number[] = [];
-
-    // --- Roll No: Pass 1 (gather) ---
-    const rollOffset = optimizeRollNoOffset(warpedBin, sidConf, rollNoDigits, bestDx, bestDy);
-    console.log("[OMR Scanner] Calibrated Roll No local offset (dx/dy):", rollOffset.bestDx, rollOffset.bestDy);
-
-    const rollRecords: RowRecord[] = [];
-    for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-      const x = sidConf.xStart + colIdx * sidConf.xStep + bestDx + rollOffset.bestDx;
-      const samples: BubbleSample[] = [];
-      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-        const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, bestDy + rollOffset.bestDy);
-        samples.push({
-          avgGray: calculateBubbleAverageGray(warpedGray, x, y, 3.0),
-          avgBin: calculateBubbleAverageGray(warpedBin, x, y, 3.0)
+      // Accept if contrast is solid against local white paper background
+      if (fineScore >= 20) {
+        tmOffsets.push({
+          expectedX: tm.x,
+          expectedY: tm.y,
+          actualDx: fineDx,
+          actualDy: fineDy
         });
       }
-      const baseline = computeBaseline(samples.map(s => s.avgGray));
-      const fillDepths = samples.map(s => baseline - s.avgGray);
-      fillDepths.forEach(fd => allFillDepths.push(fd));
-      rollRecords.push({ kind: 'roll', key: colIdx, samples, baseline, fillDepths });
     }
 
-    // 7. Scan Answers (Dynamic Grid Layout) — Pass 1 (gather) with Continuous
-    // Dynamic 2D Warp Tracking (CD2DWT) for per-row alignment, unchanged from before.
-    const answers: Record<number, string> = {};
-    const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
-    const questionOffsets: Record<number, { dx: number; dy: number }> = {};
+    const tmXSet = new Set(tmOffsets.map(t => t.expectedX));
+    const tmYSet = new Set(tmOffsets.map(t => t.expectedY));
+    const tmXs = Array.from(tmXSet).sort((a, b) => a - b);
+    const tmYs = Array.from(tmYSet).sort((a, b) => a - b);
 
-    const colAccumulatedDx: Record<number, number> = {};
-    const colAccumulatedDy: Record<number, number> = {};
-    qConf.columns.forEach((_, idx) => {
-      colAccumulatedDx[idx] = 0;
-      colAccumulatedDy[idx] = 0;
-    });
+    let bestDx = 0;
+    let bestDy = 0;
+    if (tmOffsets.length >= 4) {
+      bestDx = Math.round(tmOffsets.reduce((s, o) => s + o.actualDx, 0) / tmOffsets.length);
+      bestDy = Math.round(tmOffsets.reduce((s, o) => s + o.actualDy, 0) / tmOffsets.length);
+    }
 
-    const questionRecords: Record<number, RowRecord> = {};
+    function getLocalOffset(x: number, y: number): { dx: number; dy: number } {
+      if (tmOffsets.length < 4 || tmXs.length < 2 || tmYs.length < 2) {
+        return { dx: bestDx, dy: bestDy };
+      }
 
-    for (let q = 1; q <= numQuestions; q++) {
-      let colConf: OMRColumnConfig | null = null;
-      let colIdx = -1;
-      for (let i = 0; i < qConf.columns.length; i++) {
-        const col = qConf.columns[i];
-        if (q >= col.qStart && q <= col.qEnd) {
-          colConf = col;
-          colIdx = i;
+      let x0 = tmXs[0], x1 = tmXs[tmXs.length - 1];
+      for (let i = 0; i < tmXs.length - 1; i++) {
+        if (x >= tmXs[i] && x <= tmXs[i + 1]) {
+          x0 = tmXs[i];
+          x1 = tmXs[i + 1];
           break;
         }
       }
 
-      if (!colConf || colIdx === -1) {
+      let y0 = tmYs[0], y1 = tmYs[tmYs.length - 1];
+      for (let i = 0; i < tmYs.length - 1; i++) {
+        if (y >= tmYs[i] && y <= tmYs[i + 1]) {
+          y0 = tmYs[i];
+          y1 = tmYs[i + 1];
+          break;
+        }
+      }
+
+      const getOff = (ex: number, ey: number) => {
+        const tm = tmOffsets.find(t => t.expectedX === ex && t.expectedY === ey);
+        if (tm) return { dx: tm.actualDx, dy: tm.actualDy };
+        const sameY = tmOffsets.filter(t => t.expectedY === ey);
+        if (sameY.length > 0) {
+          sameY.sort((a, b) => Math.abs(a.expectedX - ex) - Math.abs(b.expectedX - ex));
+          return { dx: sameY[0].actualDx, dy: sameY[0].actualDy };
+        }
+        return { dx: bestDx, dy: bestDy };
+      };
+
+      const tl = getOff(x0, y0);
+      const tr = getOff(x1, y0);
+      const bl = getOff(x0, y1);
+      const br = getOff(x1, y1);
+
+      const xSpan = x1 - x0 || 1;
+      const ySpan = y1 - y0 || 1;
+      const tx = Math.max(0, Math.min(1, (x - x0) / xSpan));
+      const ty = Math.max(0, Math.min(1, (y - y0) / ySpan));
+
+      const dx = (1 - tx) * (1 - ty) * tl.dx + tx * (1 - ty) * tr.dx +
+                 (1 - tx) * ty * bl.dx + tx * ty * br.dx;
+      const dy = (1 - tx) * (1 - ty) * tl.dy + tx * (1 - ty) * tr.dy +
+                 (1 - tx) * ty * bl.dy + tx * ty * br.dy;
+
+      return { dx: Math.round(dx), dy: Math.round(dy) };
+    }
+
+    // 7. Scan Answers (Timing-Mark-Corrected & Centroid-Snapped)
+    const answers: Record<number, string> = {};
+    const OPTIONS_FIVE = ['A', 'B', 'C', 'D', 'E'];
+    const questionOffsets: Record<number, { dx: number; dy: number }> = {};
+    const sampleRadius = Math.max(2.2, Math.round(qConf.bubbleRadius * 0.40));
+
+    for (let q = 1; q <= numQuestions; q++) {
+      let colConf: OMRColumnConfig | null = null;
+      for (let i = 0; i < qConf.columns.length; i++) {
+        const col = qConf.columns[i];
+        if (q >= col.qStart && q <= col.qEnd) {
+          colConf = col;
+          break;
+        }
+      }
+
+      if (!colConf) {
         answers[q] = '';
+        questionOffsets[q] = { dx: bestDx, dy: bestDy };
         continue;
       }
 
@@ -916,94 +942,108 @@ export async function scanOMRSheet(
       const qSlot = slots.find(s => s.type === 'question' && s.qNum === q);
       if (!qSlot) {
         answers[q] = '';
+        questionOffsets[q] = { dx: bestDx, dy: bestDy };
         continue;
       }
       const slotIndex = qSlot.slotIdx;
+      const rawY = colConf.yStart + slotIndex * qConf.yStep;
+      
+      const colCenter = colConf.xOptions[1];
+      const localOff = getLocalOffset(colCenter, rawY);
+      
+      // Use smooth timing-mark grid local offset for row alignment
+      const finalRowOffset = { dx: localOff.dx, dy: localOff.dy };
+      questionOffsets[q] = finalRowOffset;
 
-      const currentAccDx = colAccumulatedDx[colIdx] ?? 0;
-      const currentAccDy = colAccumulatedDy[colIdx] ?? 0;
+      const y = rawY + finalRowOffset.dy;
 
-      const predictedY = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + currentAccDy;
-      const xOptions = Array.from({ length: numOptions }, (_, o) =>
-        (o === 4 ? colConf!.xOptions[3] + 25 : colConf!.xOptions[o]) + currentAccDx
-      );
+      const intensities: number[] = [];
+      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+        const approxX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + finalRowOffset.dx;
+        const avgGray = calculateBubbleAverageGray(warpedGray, approxX, y, sampleRadius);
+        intensities.push(avgGray);
+      }
 
-      const rowOffset = optimizeRowOffset(warpedBin, xOptions, predictedY, numOptions, bestDx);
-      const localY = predictedY + rowOffset.bestDy;
 
-      questionOffsets[q] = {
-        dx: bestDx + currentAccDx + rowOffset.bestDx,
-        dy: currentAccDy + rowOffset.bestDy
-      };
-      colAccumulatedDx[colIdx] = currentAccDx + rowOffset.bestDx * 0.75;
-      colAccumulatedDy[colIdx] = currentAccDy + rowOffset.bestDy * 0.75;
 
-      const samples: BubbleSample[] = xOptions.map((xo) => {
-        const x = xo + bestDx + rowOffset.bestDx;
-        return {
-          avgGray: calculateBubbleAverageGray(warpedGray, x, localY, 3.5),
-          avgBin: calculateBubbleAverageGray(warpedBin, x, localY, 3.5)
-        };
-      });
+      const sortedRow = [...intensities].sort((a, b) => b - a);
+      const rowBaseline = sortedRow.length >= 2
+        ? (sortedRow[0] + sortedRow[1]) / 2
+        : sortedRow[0];
 
-      const baseline = computeBaseline(samples.map(s => s.avgGray));
-      const fillDepths = samples.map(s => baseline - s.avgGray);
-      fillDepths.forEach(fd => allFillDepths.push(fd));
-      questionRecords[q] = { kind: 'question', key: q, samples, baseline, fillDepths };
-    }
+      const filledOptions: number[] = [];
+      for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+        const val = intensities[optIdx];
+        const drop = rowBaseline - val;
+        const ratio = rowBaseline > 0 ? (val / rowBaseline) : 1.0;
 
-    // --- Pass 2 (decide): self-calibrated global cut point ---
-    const finiteDepths = allFillDepths.filter((v) => Number.isFinite(v));
-    const otsuCut = otsuThreshold(finiteDepths);
-
-    // Safety rails: never trust a cut so low that faint paper texture/print noise
-    // would register as "filled" (floor), and never demand darkness beyond what a
-    // real pencil/light-pen mark can produce (ceiling) — Otsu is self-calibrating
-    // but a badly-lit or nearly-blank sheet can still push it to an unreasonable
-    // extreme, so these rails keep it within a sane, empirically safe band.
-    const fillDepthCutoff = Math.min(90, Math.max(20, otsuCut));
-    console.log("[OMR Scanner] Self-calibrated fill-depth cutoff (Otsu):", fillDepthCutoff.toFixed(1), "raw:", otsuCut.toFixed(1));
-
-    const classifyRow = (rec: RowRecord): number[] => {
-      const filled: number[] = [];
-      const depths = rec.fillDepths;
-      const maxDepth = Math.max(...depths);
-      for (let i = 0; i < depths.length; i++) {
-        const isDarkEnough = depths[i] >= fillDepthCutoff;
-        const isBinaryDense = rec.samples[i].avgBin > 60; // ink actually present, not just faint shadow
-        // A genuine mark must also stand out from THIS row's own darkest other
-        // option — guards against a shadow/crease darkening the whole row evenly
-        // (which would otherwise still clear the global cutoff for every option).
-        const isRowOutlier = depths[i] >= maxDepth - 20;
-        if (isDarkEnough && isBinaryDense && isRowOutlier) {
-          filled.push(i);
+        // Bubble is marked ONLY if center is genuinely dark (val < 145) AND shows at least 35px darkness drop against row paper baseline
+        const isMarked = val < 145 && drop >= 35 && ratio <= 0.78;
+        if (isMarked) {
+          filledOptions.push(optIdx);
         }
       }
-      return filled;
-    };
 
-    // --- Roll No: Pass 2 (decide) ---
-    let studentNum = '';
-    for (const rec of rollRecords) {
-      const filled = classifyRow(rec);
-      studentNum += filled.length === 1 ? digitValuesList[filled[0]].toString() : '0';
-    }
-
-    // --- Answers: Pass 2 (decide) ---
-    for (let q = 1; q <= numQuestions; q++) {
-      const rec = questionRecords[q];
-      if (!rec) { answers[q] = ''; continue; }
-      const filled = classifyRow(rec);
-      if (filled.length === 1) {
-        answers[q] = OPTIONS_FIVE[filled[0]];
-      } else if (filled.length > 1) {
-        answers[q] = 'MULTIPLE';
+      if (filledOptions.length === 1) {
+        answers[q] = OPTIONS_FIVE[filledOptions[0]];
+      } else if (filledOptions.length > 1) {
+        const sortedFilled = [...filledOptions].sort((a, b) => intensities[a] - intensities[b]);
+        const primary = sortedFilled[0];
+        const secondary = sortedFilled[1];
+        if (intensities[secondary] - intensities[primary] >= 20) {
+          answers[q] = OPTIONS_FIVE[primary];
+        } else {
+          answers[q] = filledOptions.map(idx => OPTIONS_FIVE[idx]).sort().join(',');
+        }
       } else {
         answers[q] = '';
       }
     }
 
-    // Cleanup
+    // Roll No Scanning
+    const rollDigits = Math.max(1, Math.min(6, rollNoDigits || 2));
+    const col0Width = qConf.colWidth;
+    const col0Center = qConf.gridLeft + 0.5 * col0Width;
+    const rollXStep = qConf.rollXStep;
+    const rollTotalWidth = (rollDigits - 1) * rollXStep;
+    const rollFirstX = col0Center - 0.5 * rollTotalWidth;
+    const rollYStep = qConf.rollYStep;
+    const digitValuesList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const rollSampleRadius = Math.max(2.5, Math.round(qConf.bubbleRadius * 0.50));
+    let studentNum = '';
+    for (let colIdx = 0; colIdx < rollDigits; colIdx++) {
+      const approxX = rollFirstX + colIdx * rollXStep + bestDx;
+      const intensities: number[] = [];
+
+      let minVal = 255;
+      let minRowIdx = -1;
+
+      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+        const approxY = 188 + rowIdx * rollYStep + bestDy;
+        const avgGray = calculateBubbleAverageGray(warpedGray, approxX, approxY, rollSampleRadius);
+        intensities.push(avgGray);
+        if (avgGray < minVal) {
+          minVal = avgGray;
+          minRowIdx = rowIdx;
+        }
+      }
+
+      const sortedRoll = [...intensities].sort((a, b) => b - a);
+      const rollBaseline = sortedRoll.slice(0, 6).reduce((a, b) => a + b, 0) / 6;
+
+      const rollDrop = rollBaseline - minVal;
+      const rollRatio = rollBaseline > 0 ? (minVal / rollBaseline) : 1.0;
+
+      const isDigitFilled = minVal < 145 && rollDrop >= 35 && rollRatio <= 0.78;
+      if (isDigitFilled && minRowIdx !== -1) {
+        studentNum += digitValuesList[minRowIdx].toString();
+      }
+    }
+
+    const bubbleSnippets = debugWarpedCanvas
+      ? extractQuestionBubbleSnippets(debugWarpedCanvas, numQuestions, sections, questionOffsets, bestDy)
+      : undefined;
+
     src.delete();
     gray.delete();
     blurred.delete();
@@ -1018,7 +1058,8 @@ export async function scanOMRSheet(
       bookletSet,
       debugWarpedCanvas,
       bestDy,
-      questionOffsets
+      questionOffsets,
+      bubbleSnippets
     };
 
   } catch (err: any) {
@@ -1035,184 +1076,6 @@ export async function scanOMRSheet(
   }
 }
 
-interface RowOffsetResult {
-  bestDx: number;
-  bestDy: number;
-}
-
-/**
- * Calculates alignment score by maximizing outer printed outline ring pixels (radius = 8)
- * and minimizing center region pixels (radius = 2.5) for empty bubbles.
- */
-function getBubbleOutlineScore(binMatrix: any, cx: number, cy: number): number {
-  const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
-
-  const r = 8;
-  const offsets = [
-    [r, 0], [-r, 0], [0, r], [0, -r],
-    [6, 6], [-6, 6], [6, -6], [-6, -6]
-  ];
-  let ringSum = 0;
-  for (let i = 0; i < 8; i++) {
-    const dx = offsets[i][0];
-    const dy = offsets[i][1];
-    ringSum += calculateBubbleAverageGray(binMatrix, cx + dx, cy + dy, 1.0);
-  }
-  const ringVal = ringSum / 8;
-
-  // Maximize outline ring overlaps while minimizing center overlap
-  return ringVal - centerVal;
-}
-
-/**
- * Automatically optimizes alignment offsets for a question row by maximizing
- * outer printed outline ring correlation across empty options.
- */
-function optimizeRowOffset(
-  binMatrix: any,
-  xOptions: number[],
-  y: number,
-  numOptions: number,
-  globalDx: number
-): RowOffsetResult {
-  let maxScore = -999999;
-  let bestDx = 0;
-  let bestDy = 0;
-
-  // 1. Coarse search in steps of 2px (dy in [-12, 12], dx in [-10, 10])
-  for (let dy = -12; dy <= 12; dy += 2) {
-    for (let dx = -10; dx <= 10; dx += 2) {
-      let totalRowScore = 0;
-      let activeCount = 0;
-      for (let o = 0; o < numOptions; o++) {
-        const cx = xOptions[o] + globalDx + dx;
-        const cy = y + dy;
-        
-        // If center is heavily black (filled), ignore it for outline snapping.
-        // Filled bubbles don't have white centers, so their outline score (ringVal - centerVal)
-        // collapses to <= 0, causing a negative bias that drags the row alignment away.
-        const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
-        if (centerVal > 100) {
-          continue; 
-        }
-        
-        totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
-        activeCount++;
-      }
-      
-      // Snapping requires at least one empty option to calibrate row outline position.
-      if (activeCount > 0) {
-        if (totalRowScore > maxScore) {
-          maxScore = totalRowScore;
-          bestDx = dx;
-          bestDy = dy;
-        }
-      }
-    }
-  }
-
-  // 2. Fine-tune search in steps of 1px
-  let fineBestDx = bestDx;
-  let fineBestDy = bestDy;
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const targetDx = bestDx + dx;
-      const targetDy = bestDy + dy;
-      if (targetDx < -10 || targetDx > 10 || targetDy < -12 || targetDy > 12) continue;
-
-      let totalRowScore = 0;
-      let activeCount = 0;
-      for (let o = 0; o < numOptions; o++) {
-        const cx = xOptions[o] + globalDx + targetDx;
-        const cy = y + targetDy;
-        
-        const centerVal = calculateBubbleAverageGray(binMatrix, cx, cy, 2.5);
-        if (centerVal > 100) {
-          continue;
-        }
-        
-        totalRowScore += getBubbleOutlineScore(binMatrix, cx, cy);
-        activeCount++;
-      }
-      if (activeCount > 0) {
-        if (totalRowScore > maxScore) {
-          maxScore = totalRowScore;
-          fineBestDx = targetDx;
-          fineBestDy = targetDy;
-        }
-      }
-    }
-  }
-
-  return { bestDx: fineBestDx, bestDy: fineBestDy };
-}
-
-/**
- * Automatically optimizes alignment offsets for the Roll Number grid
- * by maximizing printed outline ring correlation across empty digit bubbles.
- */
-function optimizeRollNoOffset(
-  binMatrix: any,
-  sidConf: any,
-  rollNoDigits: number,
-  globalDx: number,
-  globalDy: number
-): RowOffsetResult {
-  let maxScore = -999999;
-  let bestDx = 0;
-  let bestDy = 0;
-
-  // 1. Coarse search in steps of 2px
-  for (let dy = -6; dy <= 6; dy += 2) {
-    for (let dx = -6; dx <= 6; dx += 2) {
-      let totalScore = 0;
-      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-        const x = sidConf.xStart + colIdx * sidConf.xStep + globalDx + dx;
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, globalDy + dy);
-          totalScore += getBubbleOutlineScore(binMatrix, x, y);
-        }
-      }
-      if (totalScore > maxScore) {
-        maxScore = totalScore;
-        bestDx = dx;
-        bestDy = dy;
-      }
-    }
-  }
-
-  // 2. Fine-tune search in steps of 1px
-  let fineBestDx = bestDx;
-  let fineBestDy = bestDy;
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const targetDx = bestDx + dx;
-      const targetDy = bestDy + dy;
-      if (targetDx < -6 || targetDx > 6 || targetDy < -6 || targetDy > 6) continue;
-
-      let totalScore = 0;
-      for (let colIdx = 0; colIdx < rollNoDigits; colIdx++) {
-        const x = sidConf.xStart + colIdx * sidConf.xStep + globalDx + targetDx;
-        for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
-          const y = getScaledY(sidConf.yStart + rowIdx * sidConf.yStep, globalDy + targetDy);
-          totalScore += getBubbleOutlineScore(binMatrix, x, y);
-        }
-      }
-      if (totalScore > maxScore) {
-        maxScore = totalScore;
-        fineBestDx = targetDx;
-        fineBestDy = targetDy;
-      }
-    }
-  }
-
-  return { bestDx: fineBestDx, bestDy: fineBestDy };
-}
-
-/**
- * Calculates the average grayscale intensity of pixels inside a circular bubble ROI.
- * Highly robust against bubble outlines and characters printed in dark grayscale ink.
- */
 function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: number): number {
   let sum = 0;
   let count = 0;
@@ -1240,13 +1103,34 @@ function calculateBubbleAverageGray(grayMatrix: any, cx: number, cy: number, r: 
 let smallCanvas: HTMLCanvasElement | null = null;
 let smallCtx: CanvasRenderingContext2D | null = null;
 
-/**
- * Detects the four corner points of the OMR sheet in a video frame.
- * Returns the points scaled to the original video dimensions.
- */
-export function findOMRSheetCornersLive(
-  video: HTMLVideoElement
-): Array<{ x: number; y: number }> | null {
+export interface ViewfinderROI {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ViewfinderROIs {
+  tl: ViewfinderROI;
+  tr: ViewfinderROI;
+  bl: ViewfinderROI;
+  br: ViewfinderROI;
+}
+
+export interface ROIDetectionResult {
+  tl: { x: number; y: number } | null;
+  tr: { x: number; y: number } | null;
+  bl: { x: number; y: number } | null;
+  br: { x: number; y: number } | null;
+  allFound: boolean;
+  corners: Array<{ x: number; y: number }> | null;
+}
+
+export function findOMRSheetCornersInROI(
+  video: HTMLVideoElement,
+  rois: ViewfinderROIs,
+  _numQuestions: number = 100
+): ROIDetectionResult | null {
   const cv = window.cv;
   if (!cv) return null;
 
@@ -1254,186 +1138,308 @@ export function findOMRSheetCornersLive(
   const vH = video.videoHeight;
   if (vW === 0 || vH === 0) return null;
 
-  // Downscale to a fixed width of 400px for speed
-  const scaleW = 400;
-  const scaleH = Math.round((vH / vW) * scaleW);
-
   if (!smallCanvas) {
     smallCanvas = document.createElement('canvas');
   }
-  if (smallCanvas.width !== scaleW || smallCanvas.height !== scaleH) {
-    smallCanvas.width = scaleW;
-    smallCanvas.height = scaleH;
-    smallCtx = smallCanvas.getContext('2d');
+  if (smallCanvas.width !== vW || smallCanvas.height !== vH) {
+    smallCanvas.width = vW;
+    smallCanvas.height = vH;
+    smallCtx = smallCanvas.getContext('2d', { willReadFrequently: true });
   }
 
   if (!smallCtx) return null;
-  smallCtx.drawImage(video, 0, 0, scaleW, scaleH);
+  smallCtx.drawImage(video, 0, 0, vW, vH);
 
   let src = cv.imread(smallCanvas);
   let gray = new cv.Mat();
-  let blurred = new cv.Mat();
-  let thresh = new cv.Mat();
-  let contours = new cv.MatVector();
-  let hierarchy = new cv.Mat();
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-    cv.adaptiveThreshold(
-      blurred,
-      thresh,
-      255,
-      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-      cv.THRESH_BINARY_INV,
-      11,
-      7
-    );
 
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    const keys: Array<'tl' | 'tr' | 'bl' | 'br'> = ['tl', 'tr', 'bl', 'br'];
+    const detected: Record<string, { x: number; y: number } | null> = {
+      tl: null,
+      tr: null,
+      bl: null,
+      br: null
+    };
 
-    const candidates: Array<{ center: { x: number; y: number }; area: number; rect: any }> = [];
-    const pageArea = scaleW * scaleH;
+    for (const key of keys) {
+      const roiBox = rois[key];
+      const rx = Math.max(0, Math.min(vW - 10, Math.round(roiBox.x)));
+      const ry = Math.max(0, Math.min(vH - 10, Math.round(roiBox.y)));
+      const rw = Math.max(10, Math.min(vW - rx, Math.round(roiBox.width)));
+      const rh = Math.max(10, Math.min(vH - ry, Math.round(roiBox.height)));
+      const rect = new cv.Rect(rx, ry, rw, rh);
+      let roiGray = gray.roi(rect);
+      let roiBlurred = new cv.Mat();
+      let roiThresh = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
 
-    for (let i = 0; i < contours.size(); ++i) {
-      const cnt = contours.get(i);
-      const rect = cv.boundingRect(cnt);
-      const area = rect.width * rect.height;
-      const aspectRatio = rect.width / rect.height;
+      try {
+        cv.GaussianBlur(roiGray, roiBlurred, new cv.Size(5, 5), 0);
+        let targetX = 0;
+        let targetY = 0;
+        if (key === 'tl') { targetX = 0; targetY = 0; }
+        if (key === 'tr') { targetX = rw; targetY = 0; }
+        if (key === 'bl') { targetX = 0; targetY = rh; }
+        if (key === 'br') { targetX = rw; targetY = rh; }
+        
+        const threshMethods = [
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 21, 5),
+          () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+        ];
 
-      // Anchors must be black square marks (at least 0.012% of image area)
-      const isCorrectSize = area > pageArea * 0.00012 && area < pageArea * 0.02;
-      const isSquare = aspectRatio >= 0.75 && aspectRatio <= 1.30;
+        let bestCand: { x: number; y: number; score: number } | null = null;
 
-      // Check solidity (anchors are solid black squares)
-      const cArea = cv.contourArea(cnt);
-      const solidity = area > 0 ? cArea / area : 0;
-      const isSolid = solidity >= 0.68;
+        for (const applyThresh of threshMethods) {
+          if (bestCand) break;
+          applyThresh();
+          cv.findContours(roiThresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      if (isCorrectSize && isSquare && isSolid) {
-        const center = {
-          x: rect.x + rect.width / 2,
-          y: rect.y + rect.height / 2
-        };
-        candidates.push({ center, area, rect });
-      }
-      cnt.delete();
-    }
+          for (let i = 0; i < contours.size(); ++i) {
+            const cnt = contours.get(i);
+            const bRect = cv.boundingRect(cnt);
+            const bArea = bRect.width * bRect.height;
+            const isSizeValid = bArea >= 480 && bArea <= 5500;
+            const aspectRatio = bRect.width / bRect.height;
+            const isSquare = aspectRatio >= 0.70 && aspectRatio <= 1.45;
+            const cArea = cv.contourArea(cnt);
+            const solidity = bArea > 0 ? cArea / bArea : 0;
+            const isSolid = solidity >= 0.68;
 
-    // Sort by area desc and take top 10 candidates
-    const sorted = candidates.sort((a, b) => b.area - a.area).slice(0, 10);
-    if (sorted.length < 4) return null;
+            if (isSizeValid && isSquare && isSolid) {
+              const M = cv.moments(cnt, false);
+              const cx = (M && M.m00 !== 0) ? (M.m10 / M.m00) : (bRect.x + bRect.width / 2);
+              const cy = (M && M.m00 !== 0) ? (M.m01 / M.m00) : (bRect.y + bRect.height / 2);
 
-    let bestQuad: Array<{ x: number; y: number }> | null = null;
-    let maxQuadArea = 0;
+              const distToOutwardCorner = Math.hypot(cx - targetX, cy - targetY);
+              const maxCornerDist = Math.hypot(rw, rh);
+              
+              // Only consider candidates in the outer corner region of the ROI box
+              if (distToOutwardCorner <= maxCornerDist * 0.75) {
+                // Score heavily favors LARGER square area so big outer registration corners always beat small timing marks
+                const distPenalty = 1 + Math.pow(distToOutwardCorner / 8, 3.0);
+                const score = (cArea * cArea * solidity) / distPenalty;
 
-    // Search for a quad of 4 candidates that forms a valid OMR box ratio
-    for (let i = 0; i < sorted.length; i++) {
-      for (let j = i + 1; j < sorted.length; j++) {
-        for (let k = j + 1; k < sorted.length; k++) {
-          for (let l = k + 1; l < sorted.length; l++) {
-            const pts = [sorted[i], sorted[j], sorted[k], sorted[l]];
-
-            // Sort corners geometrically
-            const sortedBySum = [...pts].sort((a, b) => (a.center.x + a.center.y) - (b.center.x + b.center.y));
-            const tl = sortedBySum[0];
-            const br = sortedBySum[3];
-
-            const remaining = [sortedBySum[1], sortedBySum[2]];
-            const sortedByDiff = remaining.sort((a, b) => (a.center.x - a.center.y) - (b.center.x - b.center.y));
-            const bl = sortedByDiff[0];
-            const tr = sortedByDiff[1];
-
-            // Validate that the areas of the 4 markers are similar
-            const minArea = Math.min(tl.area, tr.area, bl.area, br.area);
-            const maxArea = Math.max(tl.area, tr.area, bl.area, br.area);
-            if (minArea === 0 || maxArea / minArea > 1.75) continue;
-
-            const wTop = Math.sqrt((tl.center.x - tr.center.x) ** 2 + (tl.center.y - tr.center.y) ** 2);
-            const wBot = Math.sqrt((bl.center.x - br.center.x) ** 2 + (bl.center.y - br.center.y) ** 2);
-            const hLeft = Math.sqrt((tl.center.x - bl.center.x) ** 2 + (tl.center.y - bl.center.y) ** 2);
-            const hRight = Math.sqrt((tr.center.x - br.center.x) ** 2 + (tr.center.y - br.center.y) ** 2);
-
-            const avgW = (wTop + wBot) / 2;
-            const avgH = (hLeft + hRight) / 2;
-            if (avgW === 0) continue;
-
-            const ratio = avgH / avgW;
-            const isRatioValid = (ratio >= 1.15 && ratio <= 1.7); // Portrait A4 ratio is ~1.41
-            const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) < 0.25;
-            const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) < 0.25;
-            const isAnglesValid = validateQuadAngles(tl.center, tr.center, br.center, bl.center);
-
-            // Strict constraints:
-            const quadArea = avgW * avgH;
-            const isSheetSizeValid = quadArea > pageArea * 0.15;
-
-            const isAnchorSizeValid =
-              (tl.rect.width >= avgW * 0.02 && tl.rect.width <= avgW * 0.08) &&
-              (tr.rect.width >= avgW * 0.02 && tr.rect.width <= avgW * 0.08) &&
-              (bl.rect.width >= avgW * 0.02 && bl.rect.width <= avgW * 0.08) &&
-              (br.rect.width >= avgW * 0.02 && br.rect.width <= avgW * 0.08);
-
-            if (isRatioValid && isWidthSimilar && isHeightSimilar && isAnglesValid && isSheetSizeValid && isAnchorSizeValid) {
-              if (quadArea > maxQuadArea) {
-                maxQuadArea = quadArea;
-                bestQuad = [
-                  { x: tl.center.x * (vW / scaleW), y: tl.center.y * (vH / scaleH) },
-                  { x: tr.center.x * (vW / scaleW), y: tr.center.y * (vH / scaleH) },
-                  { x: br.center.x * (vW / scaleW), y: br.center.y * (vH / scaleH) },
-                  { x: bl.center.x * (vW / scaleW), y: bl.center.y * (vH / scaleH) }
-                ];
+                if (!bestCand || score > bestCand.score) {
+                  bestCand = {
+                    x: rx + cx,
+                    y: ry + cy,
+                    score
+                  };
+                }
               }
             }
+            cnt.delete();
           }
         }
+
+        if (bestCand) {
+          detected[key] = { x: bestCand.x, y: bestCand.y };
+        }
+      } finally {
+        roiGray.delete();
+        roiBlurred.delete();
+        roiThresh.delete();
+        contours.delete();
+        hierarchy.delete();
       }
     }
 
-    return bestQuad;
+    let allFound = !!(detected.tl && detected.tr && detected.bl && detected.br);
+    if (allFound) {
+      const tl = detected.tl!;
+      const tr = detected.tr!;
+      const bl = detected.bl!;
+      const br = detected.br!;
+      
+      const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+      const heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+      const heightRight = Math.hypot(br.x - tr.x, br.y - tr.y);
+      
+      const avgW = (widthTop + widthBottom) / 2;
+      const avgH = (heightLeft + heightRight) / 2;
+      const sheetAspect = avgW > 0 ? avgH / avgW : 0;
+      
+      const layout = getDynamicOMRQuestionLayout(_numQuestions);
+      const expectedAspect = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
 
+      const isA4Proportion = sheetAspect >= (expectedAspect - 0.15) && sheetAspect <= (expectedAspect + 0.15);
+      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 72, 108);
+
+      const topEdgeSkew = Math.abs(tl.y - tr.y) / avgH;
+      const botEdgeSkew = Math.abs(bl.y - br.y) / avgH;
+      const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgW;
+      const rightEdgeSkew = Math.abs(tr.x - br.x) / avgW;
+      const isStraight = topEdgeSkew <= 0.10 && botEdgeSkew <= 0.10 && leftEdgeSkew <= 0.10 && rightEdgeSkew <= 0.10;
+      
+      if (!isA4Proportion || !isAngleValid || !isStraight) {
+        allFound = false;
+      }
+    }
+    const corners = allFound
+      ? [detected.tl!, detected.tr!, detected.br!, detected.bl!]
+      : null;
+
+    return {
+      tl: detected.tl,
+      tr: detected.tr,
+      bl: detected.bl,
+      br: detected.br,
+      allFound,
+      corners
+    };
   } finally {
     src.delete();
     gray.delete();
-    blurred.delete();
-    thresh.delete();
-    contours.delete();
-    hierarchy.delete();
   }
 }
 
-/**
- * Validates that the four corner anchors form a well-shaped, solid rectangle/quadrilateral.
- * Checks that all four interior angles are close to 90 degrees (between 70 and 110 degrees),
- * preventing collinear lines or triangle-like degenerate configurations.
- */
-function validateQuadAngles(
+export function findOMRSheetCornersLive(
+  video: HTMLVideoElement,
+  _numQuestions: number = 100
+): Array<{ x: number; y: number }> | null {
+  const vW = video.videoWidth;
+  const vH = video.videoHeight;
+  if (vW === 0 || vH === 0) return null;
+
+  const layout = getDynamicOMRQuestionLayout(_numQuestions);
+  const expectedAspect = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
+
+  const frameW = Math.round(vW * 0.78);
+  const frameH = Math.min(Math.round(vH * 0.78), Math.round(frameW * expectedAspect));
+  const startX = Math.round((vW - frameW) / 2);
+  const startY = Math.round((vH - frameH) / 2);
+  const boxSize = Math.round(frameW * 0.18);
+
+  const rois: ViewfinderROIs = {
+    tl: { x: startX, y: startY, width: boxSize, height: boxSize },
+    tr: { x: startX + frameW - boxSize, y: startY, width: boxSize, height: boxSize },
+    bl: { x: startX, y: startY + frameH - boxSize, width: boxSize, height: boxSize },
+    br: { x: startX + frameW - boxSize, y: startY + frameH - boxSize, width: boxSize, height: boxSize }
+  };
+
+  const res = findOMRSheetCornersInROI(video, rois, _numQuestions);
+  return res?.corners || null;
+}
+
+export function validateQuadAngles(
   tl: { x: number; y: number },
   tr: { x: number; y: number },
   br: { x: number; y: number },
-  bl: { x: number; y: number }
+  bl: { x: number; y: number },
+  minAngleDeg: number = 65,
+  maxAngleDeg: number = 115
 ): boolean {
-  const getAngle = (A: { x: number; y: number }, B: { x: number; y: number }, C: { x: number; y: number }) => {
-    const BAx = A.x - B.x;
-    const BAy = A.y - B.y;
-    const BCx = C.x - B.x;
-    const BCy = C.y - B.y;
-    const dot = BAx * BCx + BAy * BCy;
-    const lenBA = Math.sqrt(BAx * BAx + BAy * BAy);
-    const lenBC = Math.sqrt(BCx * BCx + BCy * BCy);
-    if (lenBA === 0 || lenBC === 0) return 0;
-    return (Math.acos(Math.max(-1, Math.min(1, dot / (lenBA * lenBC)))) * 180) / Math.PI;
+  const getAngle = (p1: { x: number; y: number }, p2: { x: number; y: number }, p3: { x: number; y: number }): number => {
+    const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
+    const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.hypot(v1.x, v1.y);
+    const mag2 = Math.hypot(v2.x, v2.y);
+    if (mag1 === 0 || mag2 === 0) return 0;
+    const cosAngle = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+    return (Math.acos(cosAngle) * 180) / Math.PI;
   };
 
-  const a0 = getAngle(tr, tl, bl); // Angle at TL
-  const a1 = getAngle(tl, tr, br); // Angle at TR
-  const a2 = getAngle(tr, br, bl); // Angle at BR
-  const a3 = getAngle(br, bl, tl); // Angle at BL
+  const aTL = getAngle(bl, tl, tr);
+  const aTR = getAngle(tl, tr, br);
+  const aBR = getAngle(tr, br, bl);
+  const aBL = getAngle(br, bl, tl);
 
   return (
-    a0 >= 70 && a0 <= 110 &&
-    a1 >= 70 && a1 <= 110 &&
-    a2 >= 70 && a2 <= 110 &&
-    a3 >= 70 && a3 <= 110
+    aTL >= minAngleDeg && aTL <= maxAngleDeg &&
+    aTR >= minAngleDeg && aTR <= maxAngleDeg &&
+    aBR >= minAngleDeg && aBR <= maxAngleDeg &&
+    aBL >= minAngleDeg && aBL <= maxAngleDeg
   );
+}
+
+export function extractQuestionBubbleSnippets(
+  warpedCanvas: HTMLCanvasElement,
+  numQuestions: number,
+  sections: any[] = [],
+  questionOffsets: Record<number, { dx: number; dy: number }> = {},
+  _bestDy: number = 0
+): Record<number, Record<string, string>> {
+  const snippets: Record<number, Record<string, string>> = {};
+  const qConf = getDynamicOMRQuestionLayout(numQuestions, 'auto', 'auto', sections);
+  const optionChars = ['A', 'B', 'C', 'D', 'E'];
+  const tileSize = 36; // Generous 36x36 window so bubble is never clipped
+  const halfTile = tileSize / 2;
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = tileSize;
+  tempCanvas.height = tileSize;
+  const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+  if (!tCtx) return snippets;
+
+  const cv = window.cv;
+  let warpedGrayMat: any = null;
+  if (cv) {
+    try {
+      const srcMat = cv.imread(warpedCanvas);
+      warpedGrayMat = new cv.Mat();
+      cv.cvtColor(srcMat, warpedGrayMat, cv.COLOR_RGBA2GRAY);
+      srcMat.delete();
+    } catch (e) {
+      warpedGrayMat = null;
+    }
+  }
+
+  for (let q = 1; q <= numQuestions; q++) {
+    let colConf: any = null;
+    for (const col of qConf.columns) {
+      if (q >= col.qStart && q <= col.qEnd) {
+        colConf = col;
+        break;
+      }
+    }
+    if (!colConf) continue;
+
+    const sec = sections.find((s: any) => q >= s.qStart && q < s.qStart + s.qCount);
+    const is5Option = sec && sec.questionType === '5 option';
+    const numOptions = is5Option ? 5 : 4;
+
+    const slots = getColumnSlots(colConf.qStart, colConf.qEnd, sections, numQuestions);
+    const qSlot = slots.find((s: any) => s.type === 'question' && s.qNum === q);
+    if (!qSlot) continue;
+    const slotIndex = qSlot.slotIdx;
+
+    const offset = questionOffsets[q] || { dx: 0, dy: 0 };
+    const y = colConf.yStart + slotIndex * qConf.yStep + offset.dy;
+
+    snippets[q] = {};
+    for (let optIdx = 0; optIdx < numOptions; optIdx++) {
+      const optChar = optionChars[optIdx];
+      const approxX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + offset.dx;
+
+      // Crop snippet perfectly centered on geometric grid coordinate
+      const finalX = approxX;
+      const finalY = y;
+
+      tCtx.clearRect(0, 0, tileSize, tileSize);
+      tCtx.drawImage(
+        warpedCanvas,
+        finalX - halfTile,
+        finalY - halfTile,
+        tileSize,
+        tileSize,
+        0,
+        0,
+        tileSize,
+        tileSize
+      );
+      snippets[q][optChar] = tempCanvas.toDataURL('image/jpeg', 0.80);
+    }
+  }
+
+  if (warpedGrayMat) {
+    warpedGrayMat.delete();
+  }
+
+  return snippets;
 }

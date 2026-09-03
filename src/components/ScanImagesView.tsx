@@ -9,51 +9,22 @@ import {
   RefreshCw,
   Eye,
   Search,
-  CheckCircle,
   FileText,
-  Zap
+  Zap,
+  AlertTriangle,
+  Edit3,
+  X,
+  UserCheck,
+  CheckCircle
 } from 'lucide-react';
 import { db, type Exam, type Student, type ExamSubmission } from '../db';
-import { scanOMRSheet, findOMRSheetCornersLive, getDynamicOMRQuestionLayout, getColumnSlots, getScaledY } from '../utils/omrScanner';
+import { scanOMRSheet, findOMRSheetCornersInROI, getDynamicOMRQuestionLayout, getColumnSlots, isAnswerMatch } from '../utils/omrScanner';
 import confetti from 'canvas-confetti';
 import { syncSubmissionToCloud, pullCloudUpdatesToIndexedDB } from '../utils/cloudSync';
 import { FullScreenOmrViewer } from './FullScreenOmrViewer';
+import { EvalbeeResultModal, EvalbeeQuestionBubbleEditorModal, type EvalbeeScanData } from './EvalbeeScanModals';
 
-// Helper to compress and downscale high-res images before API upload
-async function compressImage(src: HTMLCanvasElement | string, maxLongEdge = 1000, quality = 0.65): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-      if (width > maxLongEdge || height > maxLongEdge) {
-        if (width > height) {
-          height = Math.round((height * maxLongEdge) / width);
-          width = maxLongEdge;
-        } else {
-          width = Math.round((width * maxLongEdge) / height);
-          height = maxLongEdge;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      } else {
-        resolve(typeof src === 'string' ? src : src.toDataURL('image/jpeg', quality));
-      }
-    };
-    img.onerror = () => {
-      resolve(typeof src === 'string' ? src : src.toDataURL('image/jpeg', quality));
-    };
-    img.src = typeof src === 'string' ? src : src.toDataURL('image/jpeg', 1.0);
-  });
-}
-
-// Helper function to draw green/red overlays on scanned OMR image bubbles
+// Helper function to draw green/red overlays on scanned OMR image bubbles & yellow overlay on roll number
 function drawOverlayOnWarpedCanvas(
   canvas: HTMLCanvasElement,
   numQuestions: number,
@@ -61,7 +32,9 @@ function drawOverlayOnWarpedCanvas(
   correctKey: Record<number, string>,
   bestDy: number,
   sections: any[],
-  questionOffsets?: Record<number, { dx: number; dy: number }>
+  questionOffsets?: Record<number, { dx: number; dy: number }>,
+  detectedRollNum?: string,
+  rollNoDigits?: number
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -89,34 +62,39 @@ function drawOverlayOnWarpedCanvas(
     const slotIndex = qSlot.slotIdx;
 
     const offset = questionOffsets?.[q] || { dx: 0, dy: 0 };
-    const y = getScaledY(colConf.yStart + slotIndex * qConf.yStep, bestDy) + offset.dy;
+    const rawY = colConf.yStart + slotIndex * qConf.yStep + offset.dy;
 
     const studentAns = answers[q] || '';
     const correctAns = correctKey[q] || '';
+    const studentPicks = studentAns.split(',').map(s => s.trim()).filter(Boolean);
+    const isMultiplePicks = studentPicks.length > 1;
 
     const optionChars = ['A', 'B', 'C', 'D', 'E'];
 
     for (let optIdx = 0; optIdx < numOptions; optIdx++) {
       const optChar = optionChars[optIdx];
-      const x = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + offset.dx;
+      const approxX = (optIdx === 4 ? colConf.xOptions[3] + 25 : colConf.xOptions[optIdx]) + offset.dx;
 
-      const isStudentPick = studentAns === optChar;
+      const finalX = approxX;
+      const finalY = rawY;
+
+      const isStudentPick = studentPicks.includes(optChar);
       const isCorrectOption = correctAns === optChar;
 
       if (isStudentPick) {
-        if (studentAns === correctAns) {
-          // Correct choice: Green
+        if (!isMultiplePicks && studentAns === correctAns) {
+          // Exactly 1 bubble filled and it matches the correct answer: Solid Green
           ctx.beginPath();
-          ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+          ctx.arc(finalX, finalY, bubbleRadius + 1.5, 0, 2 * Math.PI);
           ctx.fillStyle = 'rgba(34, 197, 94, 0.45)';
           ctx.fill();
           ctx.strokeStyle = '#16a34a';
           ctx.lineWidth = 2;
           ctx.stroke();
         } else {
-          // Incorrect choice: Red
+          // Incorrect single choice OR multiple bubbles filled (invalid attempt): Solid Red
           ctx.beginPath();
-          ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+          ctx.arc(finalX, finalY, bubbleRadius + 1.5, 0, 2 * Math.PI);
           ctx.fillStyle = 'rgba(239, 68, 68, 0.45)';
           ctx.fill();
           ctx.strokeStyle = '#dc2626';
@@ -124,13 +102,56 @@ function drawOverlayOnWarpedCanvas(
           ctx.stroke();
         }
       } else if (isCorrectOption && studentAns !== '') {
-        // Correct answer (when student chose wrong): thin green circle outline
+        // Correct answer outline when student made a mistake (wrong or multiple): thin green outline
         ctx.beginPath();
-        ctx.arc(x, y, bubbleRadius + 1.5, 0, 2 * Math.PI);
+        ctx.arc(finalX, finalY, bubbleRadius + 1.5, 0, 2 * Math.PI);
         ctx.strokeStyle = '#16a34a';
         ctx.lineWidth = 1.5;
         ctx.stroke();
+      } else {
+        // Light blue circle for every bubble position (unattempted / not-picked options)
+        ctx.beginPath();
+        ctx.arc(finalX, finalY, bubbleRadius + 1, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
       }
+    }
+  }
+
+  // Draw Golden Yellow overlay on detected Roll Number bubbles
+  if (detectedRollNum && detectedRollNum.trim() !== '') {
+    const numDigits = Math.min(detectedRollNum.length, rollNoDigits ?? 3);
+    const col0Width = qConf.colWidth;
+    const col0Center = (qConf.gridLeft || 70) + 0.5 * col0Width;
+    const rollXStep = qConf.rollXStep || (qConf.numCols <= 2 ? 40 : (qConf.numCols === 3 ? 34 : 30));
+    const rollTotalWidth = (numDigits - 1) * rollXStep;
+    const rollFirstX = col0Center - 0.5 * rollTotalWidth;
+    const rollYStep = qConf.rollYStep || (qConf.numCols <= 2 ? 24 : (qConf.numCols === 3 ? 22 : 20));
+
+    const digitValuesList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const rollDx = questionOffsets?.[1]?.dx || 0;
+
+    for (let colIdx = 0; colIdx < numDigits; colIdx++) {
+      const char = detectedRollNum[colIdx];
+      const digitVal = parseInt(char, 10);
+      if (isNaN(digitVal)) continue;
+      const rowIdx = digitValuesList.indexOf(digitVal);
+      if (rowIdx === -1) continue;
+
+      const approxX = rollFirstX + colIdx * rollXStep + rollDx;
+      const approxY = 188 + rowIdx * rollYStep + bestDy;
+
+      const finalX = approxX;
+      const finalY = approxY;
+
+      ctx.beginPath();
+      ctx.arc(finalX, finalY, bubbleRadius + 1.5, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.55)'; // Golden yellow fill
+      ctx.fill();
+      ctx.strokeStyle = '#ca8a04'; // Gold border
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
   }
 }
@@ -156,28 +177,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const [isScanning, setIsScanning] = useState(false);
   const [scanningStatus, setScanningStatus] = useState<string | null>(null);
   const [scanningProgress, setScanningProgress] = useState<number>(0);
-  const [isAIScanning, setIsAIScanning] = useState(false);
-  const [cameraScanMode, setCameraScanMode] = useState<'standard' | 'ai'>('standard');
-  const [hideAiScanning, setHideAiScanning] = useState(false);
   const [cvLoaded, setCvLoaded] = useState(false);
-
-  useEffect(() => {
-    const checkSetting = async () => {
-      try {
-        const res = await fetch('/api/settings');
-        if (res.ok) {
-          const settings = await res.json();
-          if (settings.hideAiScanning === 'true') {
-            setHideAiScanning(true);
-            setCameraScanMode('standard');
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to check hideAiScanning setting in ScanImagesView:", err);
-      }
-    };
-    checkSetting();
-  }, []);
 
   // Scanned Submissions & Full-Screen View Sheets Mode
   const [existingSubmissions, setExistingSubmissions] = useState<ExamSubmission[]>([]);
@@ -197,14 +197,17 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
   const activeStreamRef = useRef<MediaStream | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const analysisRequestRef = useRef<number | null>(null);
-  const [detectorStatus, setDetectorStatus] = useState<'searching' | 'aligning' | 'ready'>('searching');
+  const [detectorStatus, setDetectorStatus] = useState<'searching' | 'aligning' | 'ready' | 'invalid-length'>('searching');
+
   const isScanningRef = useRef<boolean>(false);
   const stableFramesRef = useRef<number>(0);
   const prevCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
-  const prevTinyFrameRef = useRef<Uint8ClampedArray | null>(null);
-  const stableFramesCountRef = useRef<number>(0);
-  const lastStabilityCheckRef = useRef<number>(0);
   const lockStartTimeRef = useRef<number | null>(null);
+  const lastCornerCheckTimeRef = useRef<number>(0);
+  const smoothedCornersRef = useRef<Array<{ x: number; y: number }> | null>(null);
+  const cornerLostCountRef = useRef<number>(0);
+  const lastCaptureTimeRef = useRef<number>(0);
+  const [_cooldownSeconds, setCooldownSeconds] = useState<number>(0);
 
   // Registered students in this exam's class limit validation
   const [lastScanOverlay, setLastScanOverlay] = useState<{ 
@@ -222,6 +225,46 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     rawTranscribedName?: string;
     rawTranscribedFatherName?: string;
   } | null>(null);
+
+  // Duplicate scanned sheet warning popup state
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    existingSubmission: ExamSubmission;
+    existingStudentName: string;
+    detectedRollNum: string;
+    newScanData: {
+      score: number;
+      correctCount: number;
+      wrongCount: number;
+      unansweredCount: number;
+      answers: Record<number, string>;
+      bookletSet: string;
+      omrImageUrl: string;
+      studentId: number | null;
+      rawTranscribedName?: string;
+      rawTranscribedFatherName?: string;
+    };
+  } | null>(null);
+  const [editRollInput, setEditRollInput] = useState<string>('');
+  const [isEditingRollInDuplicateModal, setIsEditingRollInDuplicateModal] = useState<boolean>(false);
+  const [cameraErrorMessage, setCameraErrorMessage] = useState<string | null>(null);
+
+  // Evalbee Workflow Review and Visual Question Bubble Editor State
+  const [evalbeeReviewData, setEvalbeeReviewData] = useState<EvalbeeScanData | null>(null);
+  const [isEditingEvalbeeBubbles, setIsEditingEvalbeeBubbles] = useState<boolean>(false);
+
+  // Auto-Save Mode & Persistent Bottom Candidate Scorecard
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('omr_auto_save_mode') === 'true';
+  });
+  const [lastScannedStudentBar, setLastScannedStudentBar] = useState<EvalbeeScanData | null>(null);
+  const [autoSaveFlash, setAutoSaveFlash] = useState<boolean>(false);
+
+  const toggleAutoSave = () => {
+    const nextVal = !autoSaveEnabled;
+    setAutoSaveEnabled(nextVal);
+    localStorage.setItem('omr_auto_save_mode', String(nextVal));
+  };
+
   const classStudents = students.filter(s => s.className === exam.className);
   const maxClassSheets = classStudents.length > 0 ? classStudents.length : Infinity;
   const scannedCount = existingSubmissions.length;
@@ -232,8 +275,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       const subs = await db.submissions.where('examId').equals(exam.id!).toArray();
       const map = new Map<number, ExamSubmission>();
       subs.forEach(s => {
+        // Strip heavy base64 omrImageUrl from in-memory list to keep React memory under 5MB on mobile
+        const lightweightSub = { ...s, omrImageUrl: '' };
         if (!map.has(s.studentId) || (s.id && s.id > (map.get(s.studentId)?.id || 0))) {
-          map.set(s.studentId, s);
+          map.set(s.studentId, lightweightSub);
         }
       });
       setExistingSubmissions(Array.from(map.values()));
@@ -268,6 +313,174 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     };
     clearUnknownSubmissions();
   }, [exam.id]);
+
+  // Helper to persist scanned submission to IndexedDB and Cloud sync
+  const saveScannedSubmission = async (
+    targetStudentId: number,
+    detectedRoll: string,
+    score: number,
+    answers: Record<number, string>,
+    bookletSet: string,
+    croppedUrl: string,
+    matchedStudentName: string,
+    correctCount: number,
+    wrongCount: number,
+    unansweredCount: number,
+    rawName?: string,
+    rawFather?: string
+  ) => {
+    if (exam.id) {
+      try {
+        await db.submissions.where('[examId+studentId]').equals([exam.id, targetStudentId]).delete();
+        const subId = await db.submissions.add({
+          examId: exam.id!,
+          studentId: targetStudentId,
+          score: score,
+          answers: answers,
+          bookletSet: bookletSet,
+          omrImageUrl: croppedUrl,
+          scannedAt: new Date(),
+          detectedRollNum: detectedRoll || ''
+        });
+
+        const savedSub = await db.submissions.get(subId);
+        if (savedSub && targetStudentId > 0) {
+          syncSubmissionToCloud(savedSub).catch(console.warn);
+        }
+        pullCloudUpdatesToIndexedDB();
+        refreshSubmissions();
+      } catch (saveErr) {
+        console.error("Auto-save error:", saveErr);
+      }
+    }
+
+    setLastScanOverlay({
+      studentName: matchedStudentName,
+      studentNum: detectedRoll || '',
+      score,
+      correctCount,
+      wrongCount,
+      unansweredCount,
+      answers: answers,
+      bookletSet: bookletSet,
+      omrImageUrl: croppedUrl,
+      studentId: targetStudentId > 0 ? targetStudentId : null,
+      tempStudentId: targetStudentId < 0 ? targetStudentId : undefined,
+      rawTranscribedName: rawName,
+      rawTranscribedFatherName: rawFather
+    });
+
+    if (targetStudentId > 0) {
+      confetti({ particleCount: 60, spread: 60 });
+    }
+  };
+
+  const handleSaveEvalbeeScan = async (dataToSave: EvalbeeScanData) => {
+    try {
+      const cleanRoll = (dataToSave.studentNum || '').trim().replace(/^0+/, '');
+      const classStudents = students.filter(s => s.className === exam.className);
+      const matchedStudent = cleanRoll
+        ? classStudents.find(s => s.studentNum.replace(/^0+/, '') === cleanRoll)
+        : null;
+
+      const targetStudentId = matchedStudent?.id ?? (dataToSave.studentId || -(Date.now() + Math.floor(Math.random() * 1000)));
+      const scanResultName = matchedStudent ? matchedStudent.name : (dataToSave.studentNum ? `Student (Roll ${dataToSave.studentNum})` : 'Unknown Candidate');
+
+      await saveScannedSubmission(
+        targetStudentId,
+        dataToSave.studentNum || '',
+        dataToSave.score,
+        dataToSave.answers,
+        dataToSave.bookletSet,
+        dataToSave.omrImageUrl,
+        scanResultName,
+        dataToSave.correctCount,
+        dataToSave.wrongCount,
+        dataToSave.unansweredCount
+      );
+
+      setLastScannedStudentBar(dataToSave);
+
+      confetti({
+        particleCount: 60,
+        spread: 60,
+        origin: { y: 0.8 }
+      });
+
+      setEvalbeeReviewData(null);
+      setIsEditingEvalbeeBubbles(false);
+      lastCaptureTimeRef.current = Date.now();
+
+      // Automatically re-open camera so it is immediately ready for next scan!
+      setShowCameraModal(true);
+    } catch (err: any) {
+      alert("Failed to save scan: " + (err.message || err));
+    }
+  };
+
+  // Duplicate Warning Modal Actions
+  const handleOverwriteDuplicate = async () => {
+    if (!duplicateWarning) return;
+    const { newScanData, detectedRollNum } = duplicateWarning;
+    const targetStudentId = newScanData.studentId || duplicateWarning.existingSubmission.studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+    const matchedSt = students.find(s => s.id === targetStudentId);
+    const displayName = matchedSt ? matchedSt.name : (duplicateWarning.existingStudentName || 'Student');
+
+    await saveScannedSubmission(
+      targetStudentId,
+      detectedRollNum,
+      newScanData.score,
+      newScanData.answers,
+      newScanData.bookletSet,
+      newScanData.omrImageUrl,
+      displayName,
+      newScanData.correctCount,
+      newScanData.wrongCount,
+      newScanData.unansweredCount,
+      newScanData.rawTranscribedName,
+      newScanData.rawTranscribedFatherName
+    );
+    setDuplicateWarning(null);
+  };
+
+  const handleSaveWithNewRoll = async () => {
+    if (!duplicateWarning) return;
+    const stripLeadingZeros = (val: string) => {
+      const cleaned = val.replace(/^0+/, '');
+      return cleaned === '' ? '0' : cleaned;
+    };
+    const newRoll = stripLeadingZeros(editRollInput.trim());
+    if (!newRoll) {
+      alert("Please enter a valid roll number.");
+      return;
+    }
+
+    const classSts = students.filter(s => s.className === exam.className);
+    const matchedStudent = classSts.find(s => stripLeadingZeros(s.studentNum) === newRoll);
+    const targetStudentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : -(Date.now() + Math.floor(Math.random() * 1000));
+    const displayName = matchedStudent ? matchedStudent.name : `Roll ${newRoll} (Unregistered)`;
+    const { newScanData } = duplicateWarning;
+
+    await saveScannedSubmission(
+      targetStudentId,
+      newRoll,
+      newScanData.score,
+      newScanData.answers,
+      newScanData.bookletSet,
+      newScanData.omrImageUrl,
+      displayName,
+      newScanData.correctCount,
+      newScanData.wrongCount,
+      newScanData.unansweredCount,
+      newScanData.rawTranscribedName,
+      newScanData.rawTranscribedFatherName
+    );
+    setDuplicateWarning(null);
+  };
+
+  const handleDiscardDuplicate = () => {
+    setDuplicateWarning(null);
+  };
 
   // Canvas View Controls
   const [rotation, setRotation] = useState<number>(0);
@@ -388,143 +601,252 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       if (ctx) {
         ctx.clearRect(0, 0, vW, vH);
         
-        // 16x16 motion stability detection for AI Scanner mode
-        if (cameraScanMode === 'ai') {
-          const now = Date.now();
-          if (now - lastStabilityCheckRef.current > 250) {
-            lastStabilityCheckRef.current = now;
-            
-            const tinyCanvas = document.createElement('canvas');
-            tinyCanvas.width = 16;
-            tinyCanvas.height = 16;
-            const tinyCtx = tinyCanvas.getContext('2d');
-            if (tinyCtx) {
-              tinyCtx.drawImage(video, 0, 0, 16, 16);
-              const imgData = tinyCtx.getImageData(0, 0, 16, 16).data;
-              
-              if (prevTinyFrameRef.current) {
-                let diff = 0;
-                for (let i = 0; i < imgData.length; i += 4) {
-                  diff += Math.abs(imgData[i] - prevTinyFrameRef.current[i]);
-                  diff += Math.abs(imgData[i+1] - prevTinyFrameRef.current[i+1]);
-                  diff += Math.abs(imgData[i+2] - prevTinyFrameRef.current[i+2]);
-                }
-                
-                const avgDiff = diff / (16 * 16 * 3);
-                
-                if (avgDiff < 9.0) { // Stable threshold
-                  stableFramesCountRef.current += 1;
-                  // If stable for 5 checks (1.25s), auto-capture!
-                  if (stableFramesCountRef.current >= 5 && !isScanningRef.current && !lastScanOverlay) {
-                    stableFramesCountRef.current = 0;
-                    isScanningRef.current = true;
-                    setIsScanning(true);
-                    setTimeout(() => {
-                      captureCameraPhoto();
-                    }, 0);
-                  }
-                } else {
-                  stableFramesCountRef.current = 0;
-                }
-              }
-              prevTinyFrameRef.current = imgData;
-            }
-          }
+        const now = Date.now();
+
+        // 3-Second Snap Cooldown Guard
+        const timeSinceLastSnap = now - lastCaptureTimeRef.current;
+        const cooldownLeft = Math.max(0, Math.ceil((3000 - timeSinceLastSnap) / 1000));
+        setCooldownSeconds(cooldownLeft);
+
+        if (cooldownLeft > 0) {
+          lockStartTimeRef.current = null;
+          setDetectorStatus('aligning');
+          
+          // Draw prominent cooldown countdown pill in center
+          const cx = vW / 2;
+          const cy = vH / 2;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+          ctx.beginPath();
+          ctx.roundRect(cx - 95, cy - 24, 190, 48, 24);
+          ctx.fill();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`⏳ Next Snap in ${cooldownLeft}s...`, cx, cy);
+
+          analysisRequestRef.current = requestAnimationFrame(runCameraAnalysisLoop);
+          return;
         }
 
-        // Run corner detection using a lightweight OpenCV helper
-        try {
-          const corners = findOMRSheetCornersLive(video);
-          if (corners) {
-            // Draw green bounding polygon
-            ctx.beginPath();
-            ctx.moveTo(corners[0].x, corners[0].y);
-            ctx.lineTo(corners[1].x, corners[1].y);
-            ctx.lineTo(corners[2].x, corners[2].y);
-            ctx.lineTo(corners[3].x, corners[3].y);
-            ctx.closePath();
-            
-            ctx.strokeStyle = '#10b981'; // Glowing green outline
-            ctx.lineWidth = 8;
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-            
-            // Draw glowing translucent fill
-            ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-            ctx.fill();
-            
-            // Draw 4 corner tracking circles
-            corners.forEach((pt) => {
-              ctx.beginPath();
-              ctx.arc(pt.x, pt.y, 16, 0, 2 * Math.PI);
-              ctx.fillStyle = '#10b981';
-              ctx.fill();
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 4;
-              ctx.stroke();
-            });
+        // ── Compute 4 Corner Viewfinder Boxes (Accurately Proportioned to Dynamic Sheet Layout) ──
+        const numQ = exam?.numQuestions || 100;
+        const dynamicLayout = getDynamicOMRQuestionLayout(numQ, undefined, 'auto', exam?.sections);
+        const sheetGridAspect = (dynamicLayout.bottomAnchorY - dynamicLayout.topAnchorY) / (dynamicLayout.gridRight - dynamicLayout.gridLeft);
 
-            // Motion detection: Check if corners are shifting to prevent captures during movement
-            let isMoving = false;
-            if (prevCornersRef.current && prevCornersRef.current.length === 4 && corners.length === 4) {
-              let totalDistance = 0;
-              for (let i = 0; i < 4; i++) {
-                const dx = corners[i].x - prevCornersRef.current[i].x;
-                const dy = corners[i].y - prevCornersRef.current[i].y;
-                totalDistance += Math.sqrt(dx * dx + dy * dy);
+        const frameW = Math.round(vW * 0.76);
+        const frameH = Math.min(Math.round(vH * 0.82), Math.round(frameW * sheetGridAspect));
+        const startX = Math.round((vW - frameW) / 2);
+        const startY = Math.round((vH - frameH) / 2);
+        
+        const boxSize = Math.round(frameW * 0.18);
+        const halfBox = Math.round(boxSize / 2);
+        const cornerOffset = Math.round(frameW * 0.035);
+
+        const rois = {
+          tl: { x: startX + cornerOffset - halfBox, y: startY + cornerOffset - halfBox, width: boxSize, height: boxSize },
+          tr: { x: startX + frameW - cornerOffset - halfBox, y: startY + cornerOffset - halfBox, width: boxSize, height: boxSize },
+          bl: { x: startX + cornerOffset - halfBox, y: startY + frameH - cornerOffset - halfBox, width: boxSize, height: boxSize },
+          br: { x: startX + frameW - cornerOffset - halfBox, y: startY + frameH - cornerOffset - halfBox, width: boxSize, height: boxSize }
+        };
+
+        // ── Always Draw 4 Blue Viewfinder Corner Boxes ──
+        [rois.tl, rois.tr, rois.bl, rois.br].forEach(b => {
+          ctx.save();
+          ctx.strokeStyle = '#2563eb';
+          ctx.lineWidth = 3;
+          ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+          ctx.beginPath();
+          ctx.rect(b.x, b.y, b.width, b.height);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+
+        // Run corner detection strictly INSIDE the 4 ROI Boxes (every 40ms)
+        try {
+          if (now - lastCornerCheckTimeRef.current > 40) {
+            lastCornerCheckTimeRef.current = now;
+            const roiRes = findOMRSheetCornersInROI(video, rois, exam.numQuestions || 100);
+            
+            if (roiRes && roiRes.allFound && roiRes.corners) {
+              cornerLostCountRef.current = 0;
+              const freshCorners = roiRes.corners;
+              if (!smoothedCornersRef.current) {
+                smoothedCornersRef.current = freshCorners.map(p => ({ ...p }));
+              } else {
+                // Stable low-pass filter (prevents rapid jitter/jumping)
+                smoothedCornersRef.current = smoothedCornersRef.current.map((s, idx) => {
+                  const target = freshCorners[idx];
+                  const dist = Math.hypot(target.x - s.x, target.y - s.y);
+                  const alpha = dist > 40 ? 0.35 : 0.60;
+                  return {
+                    x: s.x * (1 - alpha) + target.x * alpha,
+                    y: s.y * (1 - alpha) + target.y * alpha
+                  };
+                });
               }
-              const avgDistance = totalDistance / 4;
-              if (avgDistance > 6) {
-                isMoving = true;
+            } else {
+              cornerLostCountRef.current += 1;
+              if (cornerLostCountRef.current > 3) {
+                smoothedCornersRef.current = null;
               }
             }
-            prevCornersRef.current = corners;
 
-            if (isMoving) {
-              stableFramesRef.current = 0;
+            // Draw individual green target dots for ANY detected corner (instant visual feedback)
+            if (roiRes) {
+              const cornerKeys: Array<'tl' | 'tr' | 'bl' | 'br'> = ['tl', 'tr', 'bl', 'br'];
+              cornerKeys.forEach(k => {
+                const pt = roiRes[k];
+                if (pt) {
+                  const dotBoxSize = 24;
+                  ctx.save();
+                  ctx.strokeStyle = '#22c55e';
+                  ctx.lineWidth = 3;
+                  ctx.fillStyle = 'rgba(34, 197, 94, 0.45)';
+                  ctx.beginPath();
+                  ctx.rect(pt.x - dotBoxSize / 2, pt.y - dotBoxSize / 2, dotBoxSize, dotBoxSize);
+                  ctx.fill();
+                  ctx.stroke();
+
+                  ctx.beginPath();
+                  ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fill();
+                  ctx.restore();
+                }
+              });
+            }
+          }
+
+          const corners = smoothedCornersRef.current;
+          if (corners && corners.length === 4) {
+            // ══════════════════════════════════════════════════════════════
+            // STRICT RECTANGLE GEOMETRY VALIDATION
+            // The 4 real outer corner marks ALWAYS form a proper rectangle.
+            // Random internal timing marks will NOT pass these checks.
+            // ══════════════════════════════════════════════════════════════
+            const tl = corners[0];
+            const tr = corners[1];
+            const br = corners[2];
+            const bl = corners[3];
+            
+            const detW1 = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+            const detW2 = Math.hypot(br.x - bl.x, br.y - bl.y);
+            const detH1 = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+            const detH2 = Math.hypot(br.x - tr.x, br.y - tr.y);
+            
+            const avgDetW = (detW1 + detW2) / 2;
+            const avgDetH = (detH1 + detH2) / 2;
+            
+            // CHECK 1: Width must span a natural visible paper size on screen
+            const isWidthValid = avgDetW >= vW * 0.38 && avgDetW <= vW * 0.90;
+
+            // CHECK 2: Height must span a natural visible paper size on screen
+            const isHeightValid = avgDetH >= vH * 0.38 && avgDetH <= vH * 0.92;
+            
+            // CHECK 3: Aspect ratio must match physical sheet anchor ratio (with ±0.15 tolerance)
+            const detAspect = avgDetH / avgDetW;
+            const isAspectValid = detAspect >= (sheetGridAspect - 0.15) && detAspect <= (sheetGridAspect + 0.15);
+            
+            // CHECK 4: Top edge must be straight horizontal
+            const topEdgeSkew = Math.abs(tl.y - tr.y) / avgDetH;
+            const isTopStraight = topEdgeSkew < 0.10;
+            
+            // CHECK 5: Bottom edge must be straight horizontal
+            const bottomEdgeSkew = Math.abs(bl.y - br.y) / avgDetH;
+            const isBottomStraight = bottomEdgeSkew < 0.10;
+            
+            // CHECK 6: Left edge must be straight vertical
+            const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgDetW;
+            const isLeftStraight = leftEdgeSkew < 0.10;
+            
+            // CHECK 7: Right edge must be straight vertical
+            const rightEdgeSkew = Math.abs(tr.x - br.x) / avgDetW;
+            const isRightStraight = rightEdgeSkew < 0.10;
+            
+            // CHECK 8: Both diagonals must be nearly equal (rectangle property)
+            const diag1 = Math.hypot(br.x - tl.x, br.y - tl.y);
+            const diag2 = Math.hypot(bl.x - tr.x, bl.y - tr.y);
+            const diagDiff = Math.abs(diag1 - diag2) / Math.max(diag1, diag2);
+            const isDiagsEqual = diagDiff < 0.10;
+            
+            // CHECK 9: Top and bottom widths must be nearly equal
+            const widthDiff = Math.abs(detW1 - detW2) / avgDetW;
+            const isWidthsEqual = widthDiff < 0.10;
+            
+            // CHECK 10: Left and right heights must be nearly equal
+            const heightDiff = Math.abs(detH1 - detH2) / avgDetH;
+            const isHeightsEqual = heightDiff < 0.10;
+            
+            const isValidRectangle = isWidthValid && isHeightValid && isAspectValid
+              && isTopStraight && isBottomStraight
+              && isLeftStraight && isRightStraight
+              && isDiagsEqual && isWidthsEqual && isHeightsEqual;
+            
+            if (!isValidRectangle) {
               lockStartTimeRef.current = null;
-            } else if (!isScanningRef.current) {
-              if (lockStartTimeRef.current === null) {
-                lockStartTimeRef.current = Date.now();
+              stableFramesRef.current = 0;
+              smoothedCornersRef.current = null;
+              prevCornersRef.current = null;
+              setDetectorStatus('invalid-length');
+            } else {
+              // Check frame-to-frame corner motion stability
+              let isMoving = false;
+              if (prevCornersRef.current && prevCornersRef.current.length === 4) {
+                let totalShift = 0;
+                for (let i = 0; i < 4; i++) {
+                  const dx = corners[i].x - prevCornersRef.current[i].x;
+                  const dy = corners[i].y - prevCornersRef.current[i].y;
+                  totalShift += Math.sqrt(dx * dx + dy * dy);
+                }
+                const avgShift = totalShift / 4;
+                if (avgShift > 5.0) {
+                  isMoving = true;
+                }
+              }
+              prevCornersRef.current = corners.map(p => ({ ...p }));
+  
+              if (isMoving) {
+                lockStartTimeRef.current = null;
+              } else {
+                if (lockStartTimeRef.current === null) {
+                  lockStartTimeRef.current = now;
+                }
               }
 
-              const elapsed = Date.now() - lockStartTimeRef.current;
-              const progress = Math.min(1.0, elapsed / 1000); // 1-second countdown
+            const lockElapsed = lockStartTimeRef.current ? (now - lockStartTimeRef.current) : 0;
+            const lockDuration = 450; // Smooth 450ms circular sweep before snapping to guarantee stability
+            const lockProgress = isMoving ? 0 : Math.min(1.0, lockElapsed / lockDuration);
 
-              // Draw circular progress countdown loader in the center of the viewport
-              const cx = vW / 2;
-              const cy = vH / 2;
-              const r = 52;
+            // Center Smooth Circular Lock Animation (Evalbee Video 00:11-00:13 Style)
+            const cx = vW / 2;
+            const cy = vH / 2;
 
-              // 1. Draw glowing transparent background circle ring
+            if (!isMoving) {
+              const whiteR = 40;
+              const ringR = 48;
+
+              // Solid White Center Circle (Evalbee signature)
               ctx.beginPath();
-              ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-              ctx.lineWidth = 10;
-              ctx.stroke();
+              ctx.arc(cx, cy, whiteR, 0, 2 * Math.PI);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
 
-              // 2. Draw active progress emerald-green arc
+              // Blue sweeping arc (Evalbee signature)
               ctx.beginPath();
-              ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * 2 * Math.PI);
-              ctx.strokeStyle = '#10b981';
-              ctx.lineWidth = 10;
+              ctx.arc(cx, cy, ringR, -Math.PI / 2, -Math.PI / 2 + lockProgress * 2 * Math.PI);
+              ctx.strokeStyle = '#2563eb';
+              ctx.lineWidth = 7;
               ctx.lineCap = 'round';
               ctx.stroke();
 
-              // 3. Draw central fill circle
-              ctx.beginPath();
-              ctx.arc(cx, cy, r - 13, 0, 2 * Math.PI);
-              ctx.fillStyle = progress >= 1.0 ? '#10b981' : 'rgba(15, 23, 42, 0.45)';
-              ctx.fill();
-
-              // 4. Draw countdown text or SNAP label
-              ctx.fillStyle = '#ffffff';
-              ctx.font = 'bold 13px sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(progress >= 1.0 ? 'SNAP' : `${Math.ceil((1.0 - progress) * 10)}`, cx, cy);
-
-              if (progress >= 1.0) {
+              // When the animation circle completes its round (100%), auto-snap immediately!
+              if (lockProgress >= 1.0 && !isScanningRef.current) {
                 lockStartTimeRef.current = null;
                 isScanningRef.current = true;
                 setIsScanning(true);
@@ -532,56 +854,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   captureCameraPhoto();
                 }, 0);
               }
-            } else {
-              stableFramesRef.current = 0;
             }
 
-            setDetectorStatus('ready');
+            setDetectorStatus(isMoving ? 'aligning' : 'ready');
+            }
           } else {
             stableFramesRef.current = 0;
             lockStartTimeRef.current = null;
-            // No sheet found: draw a centered reference guides overlay
             setDetectorStatus('searching');
-            
-            // Draw target bracket guide box in the center
-            const boxW = vW * 0.65;
-            const boxH = boxW * 1.414; // A4 ratio
-            const startX = (vW - boxW) / 2;
-            const startY = (vH - boxH) / 2;
-            
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-            ctx.lineWidth = 5;
-            
-            // Draw 4 brackets instead of a complete dashed box to look extremely modern/industry-grade
-            const bracketLength = 40;
-            
-            // Top Left Bracket
-            ctx.beginPath();
-            ctx.moveTo(startX + bracketLength, startY);
-            ctx.lineTo(startX, startY);
-            ctx.lineTo(startX, startY + bracketLength);
-            ctx.stroke();
-
-            // Top Right Bracket
-            ctx.beginPath();
-            ctx.moveTo(startX + boxW - bracketLength, startY);
-            ctx.lineTo(startX + boxW, startY);
-            ctx.lineTo(startX + boxW, startY + bracketLength);
-            ctx.stroke();
-
-            // Bottom Left Bracket
-            ctx.beginPath();
-            ctx.moveTo(startX, startY + boxH - bracketLength);
-            ctx.lineTo(startX, startY + boxH);
-            ctx.lineTo(startX + bracketLength, startY + boxH);
-            ctx.stroke();
-
-            // Bottom Right Bracket
-            ctx.beginPath();
-            ctx.moveTo(startX + boxW - bracketLength, startY + boxH);
-            ctx.lineTo(startX + boxW, startY + boxH);
-            ctx.lineTo(startX + boxW, startY + boxH - bracketLength);
-            ctx.stroke();
           }
         } catch (e) {
           stableFramesRef.current = 0;
@@ -716,9 +996,13 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     };
   }, [showCameraModal, selectedCameraId]);
 
-  // Capture photo from live camera & process with the EXACT SAME OMR PIPELINE!
   const captureCameraPhoto = async () => {
     if (!videoRef.current || !cvLoaded) return;
+
+    if (Date.now() - lastCaptureTimeRef.current < 3000) {
+      return;
+    }
+    lastCaptureTimeRef.current = Date.now();
 
     if (maxClassSheets !== Infinity && fileList.length >= maxClassSheets) {
       alert(`Class limit reached (${maxClassSheets} registered students).`);
@@ -741,232 +1025,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!sCtx) return;
     sCtx.drawImage(video, 0, 0, vW, vH);
 
-    if (cameraScanMode === 'ai') {
-      try {
-        const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
-        let cvResult: any = null;
-        try {
-          cvResult = await scanOMRSheet(
-            snapCanvas,
-            exam.numQuestions,
-            scannerRollDigits,
-            exam.examSetsCount ?? 1,
-            exam.sections ?? []
-          );
-        } catch (err) {
-          console.warn("Local warp alignment failed inside camera AI handler:", err);
-        }
-
-        let targetCanvas: HTMLCanvasElement | null = null;
-        if (cvResult && cvResult.debugWarpedCanvas) {
-          targetCanvas = cvResult.debugWarpedCanvas;
-        }
-
-        const imageDataBase64 = await compressImage(targetCanvas || snapCanvas);
-
-        const response = await fetch('/api/scan/ai-verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageDataBase64,
-            numQuestions: exam.numQuestions
-          })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'AI Scan request failed');
-        }
-
-        const aiResult = await response.json();
-
-        // Map array of answers [{q: 1, ans: "A"}, ...] into key-value map {1: "A", ...}
-        const parsedAnswers: Record<number, string> = {};
-        if (Array.isArray(aiResult.answers)) {
-          aiResult.answers.forEach((item: any) => {
-            if (item && typeof item.q === 'number') {
-              parsedAnswers[item.q] = item.ans || '';
-            }
-          });
-        }
-
-        const stripLeadingZeros = (val: string) => {
-          const cleaned = val.replace(/^0+/, '');
-          return cleaned === '' ? '0' : cleaned;
-        };
-        const aiRollStripped = stripLeadingZeros(aiResult.studentId);
-        const classStudents = students.filter(s => s.className === exam.className);
-        const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
-        let studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
-
-        let score = 0;
-        let correctCount = 0;
-        let wrongCount = 0;
-        let unansweredCount = 0;
-
-        const detectedSet = 'A';
-        let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
-        if (!correctKey || Object.keys(correctKey).length === 0) {
-          correctKey = exam.answerKey;
-        }
-
-        if (exam.sections && exam.sections.length > 0) {
-          exam.sections.forEach((sec: any) => {
-            const secCorrectMarks = sec.correctMarks ?? 4;
-            const secIncorrectMarks = sec.incorrectMarks ?? -1;
-            const secUnansweredMarks = sec.unansweredMarks ?? 0;
-            const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
-
-            if (sec.allowOptionalAttempts && sec.maxAttempts) {
-              const attempted: Array<{ q: number; ans: string }> = [];
-              qNums.forEach(q => {
-                const ans = parsedAnswers[q] || '';
-                if (ans !== '') attempted.push({ q, ans });
-              });
-
-              const evaluated = attempted.slice(0, sec.maxAttempts);
-              evaluated.forEach(item => {
-                const correctAns = correctKey[item.q] || '';
-                if (item.ans === correctAns) {
-                  score += secCorrectMarks;
-                  correctCount++;
-                } else {
-                  score += secIncorrectMarks;
-                  wrongCount++;
-                }
-              });
-
-              const unattemptedCount = sec.qCount - evaluated.length;
-              unansweredCount += unattemptedCount;
-              score += unattemptedCount * secUnansweredMarks;
-            } else {
-              qNums.forEach(q => {
-                const studentAns = parsedAnswers[q] || '';
-                const correctAns = correctKey[q] || '';
-                if (studentAns === '') {
-                  score += secUnansweredMarks;
-                  unansweredCount++;
-                } else if (studentAns === correctAns) {
-                  score += secCorrectMarks;
-                  correctCount++;
-                } else {
-                  score += secIncorrectMarks;
-                  wrongCount++;
-                }
-              });
-            }
-          });
-        } else {
-          const cMarks = exam.correctMarks ?? 4;
-          const iMarks = exam.incorrectMarks ?? -1;
-          const uMarks = exam.unansweredMarks ?? 0;
-
-          for (let q = 1; q <= exam.numQuestions; q++) {
-            const studentAns = parsedAnswers[q] || '';
-            const correctAns = correctKey[q] || '';
-
-            if (studentAns === '') {
-              score += uMarks;
-              unansweredCount++;
-            } else if (studentAns === correctAns) {
-              score += cMarks;
-              correctCount++;
-            } else {
-              score += iMarks;
-              wrongCount++;
-            }
-          }
-        }
-
-        if (targetCanvas) {
-          drawOverlayOnWarpedCanvas(
-            targetCanvas,
-            exam.numQuestions,
-            parsedAnswers,
-            correctKey,
-            (cvResult && cvResult.bestDy) || 0,
-            exam.sections ?? [],
-            cvResult && cvResult.questionOffsets
-          );
-        }
-
-        const croppedUrl = targetCanvas 
-          ? targetCanvas.toDataURL('image/jpeg', 0.92) 
-          : snapCanvas.toDataURL('image/jpeg', 0.92);
-
-        const cleanName = (aiResult.studentName || '').trim();
-        const cleanFather = (aiResult.fatherName || '').trim();
-        const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
-
-        if (exam.id) {
-          try {
-            await db.submissions.where('[examId+studentId]').equals([exam.id, targetStudentId]).delete();
-            const subId = await db.submissions.add({
-              examId: exam.id!,
-              studentId: targetStudentId,
-              score: score,
-              answers: parsedAnswers,
-              bookletSet: detectedSet,
-              omrImageUrl: croppedUrl,
-              scannedAt: new Date(),
-              detectedRollNum: aiResult.studentId || ''
-            });
-
-            const savedSub = await db.submissions.get(subId);
-            if (savedSub && targetStudentId > 0) {
-              syncSubmissionToCloud(savedSub).catch(console.warn);
-            }
-            pullCloudUpdatesToIndexedDB();
-            refreshSubmissions();
-          } catch (saveErr) {
-            console.error("Auto-save error:", saveErr);
-          }
-        }
-
-        const scanResultName = matchedStudent 
-          ? matchedStudent.name 
-          : (cleanName 
-              ? (cleanFather ? `${cleanName} f/o ${cleanFather} (Unregistered)` : `${cleanName} (Unregistered)`)
-              : 'Unknown Candidate');
-
-        setLastScanOverlay({
-          studentName: scanResultName,
-          studentNum: aiResult.studentId || '',
-          score,
-          correctCount,
-          wrongCount,
-          unansweredCount,
-          answers: parsedAnswers,
-          bookletSet: detectedSet,
-          omrImageUrl: croppedUrl,
-          studentId: studentId,
-          tempStudentId: targetStudentId,
-          rawTranscribedName: cleanName,
-          rawTranscribedFatherName: cleanFather
-        });
-
-      } catch (err: any) {
-        console.error(err);
-        alert("OMR AI Scan Error: " + (err.message || "Failed to scan sheet."));
-        isScanningRef.current = false;
-        setIsScanning(false);
-      }
-      return;
-    }
+    // Capture the exact 4 precision-tracked corners from the live viewfinder
+    const verifiedCorners = smoothedCornersRef.current
+      ? smoothedCornersRef.current.map(p => ({ ...p }))
+      : null;
 
     try {
-      setScanningProgress(15);
-      setScanningStatus("Analyzing camera snapshot frame...");
-
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      await sleep(350);
       setScanningProgress(40);
-      setScanningStatus("Warping perspective & calibrating global offsets...");
-
-      await sleep(350);
-      setScanningProgress(75);
-      setScanningStatus("Running row-level multi-pass snapping optimization...");
+      setScanningStatus("Processing sheet...");
 
       const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
@@ -974,12 +1040,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.numQuestions,
         scannerRollDigits,
         exam.examSetsCount ?? 1,
-        exam.sections ?? []
+        exam.sections ?? [],
+        verifiedCorners
       );
 
-      await sleep(250);
-      setScanningProgress(95);
-      setScanningStatus("Validating bubbles against dynamic paper white levels...");
+      setScanningProgress(100);
 
 
 
@@ -1020,7 +1085,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             const evaluated = attempted.slice(0, sec.maxAttempts);
             evaluated.forEach(item => {
               const correctAns = correctKey[item.q] || '';
-              if (item.ans === correctAns) {
+              if (isAnswerMatch(item.ans, correctAns)) {
                 score += secCorrectMarks;
                 correctCount++;
               } else {
@@ -1039,7 +1104,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               if (studentAns === '') {
                 score += secUnansweredMarks;
                 unansweredCount++;
-              } else if (studentAns === correctAns) {
+              } else if (isAnswerMatch(studentAns, correctAns)) {
                 score += secCorrectMarks;
                 correctCount++;
               } else {
@@ -1061,7 +1126,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           if (studentAns === '') {
             score += uMarks;
             unansweredCount++;
-          } else if (studentAns === correctAns) {
+          } else if (isAnswerMatch(studentAns, correctAns)) {
             score += cMarks;
             correctCount++;
           } else {
@@ -1071,7 +1136,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      // Draw green/red overlays on the warped canvas before saving
+      // Draw green/red question overlays & yellow roll number overlay on the warped canvas before saving
       if (cvResult.debugWarpedCanvas) {
         drawOverlayOnWarpedCanvas(
           cvResult.debugWarpedCanvas,
@@ -1080,59 +1145,147 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           correctKey,
           cvResult.bestDy || 0,
           exam.sections ?? [],
-          cvResult.questionOffsets
+          cvResult.questionOffsets,
+          cvResult.studentNum || '',
+          exam.rollNoDigits ?? 3
         );
       }
 
       const croppedUrl = cvResult.debugWarpedCanvas 
-        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.92) 
-        : snapCanvas.toDataURL('image/jpeg', 0.92);
+        ? cvResult.debugWarpedCanvas.toDataURL('image/jpeg', 0.78) 
+        : snapCanvas.toDataURL('image/jpeg', 0.78);
 
-      const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+      const fallbackStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
+      const scanResultName = matchedStudent ? matchedStudent.name : 'Unknown Candidate';
 
-      if (exam.id) {
-        try {
-          await db.submissions.where('[examId+studentId]').equals([exam.id, targetStudentId]).delete();
-          const subId = await db.submissions.add({
-            examId: exam.id!,
-            studentId: targetStudentId,
-            score: score,
+      // Check for duplicate submission
+      const existingSub = existingSubmissions.find(s => 
+        (studentId !== null && s.studentId === studentId) ||
+        (s.detectedRollNum && stripLeadingZeros(s.detectedRollNum) === cvRollStripped && cvRollStripped !== '0')
+      );
+
+      if (existingSub) {
+        const existingSt = students.find(st => st.id === existingSub.studentId);
+        const existingName = existingSt ? existingSt.name : (existingSub.detectedRollNum ? `Student (Roll ${existingSub.detectedRollNum})` : 'Existing Student');
+
+        setDuplicateWarning({
+          existingSubmission: existingSub,
+          existingStudentName: existingName,
+          detectedRollNum: cvResult.studentNum || cvRollStripped,
+          newScanData: {
+            score,
+            correctCount,
+            wrongCount,
+            unansweredCount,
             answers: cvResult.answers,
             bookletSet: detectedSet,
             omrImageUrl: croppedUrl,
-            scannedAt: new Date(),
-            detectedRollNum: cvResult.studentNum || ''
-          });
-
-          const savedSub = await db.submissions.get(subId);
-          if (savedSub && targetStudentId > 0) {
-            syncSubmissionToCloud(savedSub).catch(console.warn);
+            studentId
           }
-          pullCloudUpdatesToIndexedDB();
-          refreshSubmissions();
-        } catch (saveErr) {
-          console.error("Auto-save error:", saveErr);
-        }
+        });
+        setEditRollInput(cvResult.studentNum || cvRollStripped);
+        setIsEditingRollInDuplicateModal(false);
+        isScanningRef.current = false;
+        setIsScanning(false);
+        setScanningStatus(null);
+        setScanningProgress(0);
+        return;
       }
 
-      setLastScanOverlay({
-        studentName: matchedStudent ? matchedStudent.name : 'Unknown Candidate',
-        studentNum: cvResult.studentNum || '',
+      // Compute section-wise score breakdown
+      const sectionScores: Record<string, number> = {};
+      if (exam.sections && exam.sections.length > 0) {
+        exam.sections.forEach((sec: any) => {
+          const secName = sec.name || `Section ${sec.id || ''}`;
+          let secScore = 0;
+          const secCorrectMarks = sec.correctMarks ?? 4;
+          const secIncorrectMarks = sec.incorrectMarks ?? -1;
+          const secUnansweredMarks = sec.unansweredMarks ?? 0;
+          const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
+
+          qNums.forEach(q => {
+            const studentAns = cvResult.answers[q] || '';
+            const correctAns = correctKey[q] || '';
+            if (studentAns === '') {
+              secScore += secUnansweredMarks;
+            } else if (isAnswerMatch(studentAns, correctAns)) {
+              secScore += secCorrectMarks;
+            } else {
+              secScore += secIncorrectMarks;
+            }
+          });
+          sectionScores[secName] = secScore;
+        });
+      }
+
+      const currentScanData: EvalbeeScanData = {
+        studentId: fallbackStudentId,
+        studentNum: cvResult.studentNum || cvRollStripped,
+        studentName: scanResultName,
         score,
+        sectionScores,
         correctCount,
         wrongCount,
         unansweredCount,
         answers: cvResult.answers,
         bookletSet: detectedSet,
         omrImageUrl: croppedUrl,
-        studentId: targetStudentId
-      });
+        bubbleSnippets: cvResult.bubbleSnippets,
+        bestDy: cvResult.bestDy,
+        questionOffsets: cvResult.questionOffsets
+      };
 
-      if (matchedStudent) {
-        confetti({ particleCount: 60, spread: 60 });
+      if (autoSaveEnabled) {
+        // ── ⚡ AUTO-SAVE ON FLOW ──
+        // 1. Immediately save submission in database and trigger background cloud sync
+        await saveScannedSubmission(
+          fallbackStudentId,
+          cvResult.studentNum || cvRollStripped,
+          score,
+          cvResult.answers,
+          detectedSet,
+          croppedUrl,
+          scanResultName,
+          correctCount,
+          wrongCount,
+          unansweredCount
+        );
+
+        // 2. Set persistent bottom scorecard bar data
+        setLastScannedStudentBar(currentScanData);
+
+        // 3. Visual & Audio celebratory feedback
+        setAutoSaveFlash(true);
+        setTimeout(() => setAutoSaveFlash(false), 800);
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.85 }
+        });
+
+        // 4. Reset camera scanning lock so it remains instantly ready for the next sheet!
+        lastCaptureTimeRef.current = Date.now();
+        isScanningRef.current = false;
+        setIsScanning(false);
+        setScanningStatus(null);
+        setScanningProgress(0);
+        return;
       }
+
+      // ── 🖐️ MANUAL SAVE (AUTO-SAVE OFF) FLOW ──
+      // Stop camera stream and open the Evalbee Result Overview Screen
+      stopCameraStream();
+      setShowCameraModal(false);
+      setEvalbeeReviewData(currentScanData);
+
     } catch (err: any) {
-      alert("OMR Scan Error: " + (err.message || "Failed to locate 4 corner anchors. Align sheet inside frame."));
+      const errorMsg = err.message || "Failed to align OMR sheet. Please hold camera straight above sheet and retake.";
+      if (!showCameraModal) {
+        alert("OMR Scan Error: " + errorMsg);
+      } else {
+        setCameraErrorMessage(errorMsg);
+        setTimeout(() => setCameraErrorMessage(null), 3500);
+      }
     } finally {
       isScanningRef.current = false;
       setIsScanning(false);
@@ -1153,11 +1306,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     if (!current) return;
 
     setIsScanning(true);
-    setScanningProgress(10);
-    setScanningStatus("Initializing OMR computer vision engine...");
+    setScanningProgress(30);
+    setScanningStatus("Scanning OMR sheet...");
     setActiveResult(null);
-
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       const img = new Image();
@@ -1169,17 +1320,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
       setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
 
-      await sleep(350);
-      setScanningProgress(35);
-      setScanningStatus("Detecting printed corner markers...");
-
-      await sleep(350);
-      setScanningProgress(60);
-      setScanningStatus("Warping perspective & calibrating global offsets...");
-
-      await sleep(350);
-      setScanningProgress(85);
-      setScanningStatus("Running row-level multi-pass snapping optimization...");
+      setScanningProgress(30);
+      setScanningStatus("Scanning OMR sheet...");
 
       const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
       let cvResult = await scanOMRSheet(
@@ -1190,9 +1332,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? []
       );
 
-      await sleep(250);
-      setScanningProgress(95);
-      setScanningStatus("Validating bubbles against dynamic paper white levels...");
+      setScanningProgress(100);
 
 
 
@@ -1233,7 +1373,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             const evaluated = attempted.slice(0, sec.maxAttempts);
             evaluated.forEach(item => {
               const correctAns = correctKey[item.q] || '';
-              if (item.ans === correctAns) {
+              if (isAnswerMatch(item.ans, correctAns)) {
                 score += secCorrectMarks;
                 correctCount++;
               } else {
@@ -1252,7 +1392,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               if (studentAns === '') {
                 score += secUnansweredMarks;
                 unansweredCount++;
-              } else if (studentAns === correctAns) {
+              } else if (isAnswerMatch(studentAns, correctAns)) {
                 score += secCorrectMarks;
                 correctCount++;
               } else {
@@ -1274,7 +1414,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           if (studentAns === '') {
             score += uMarks;
             unansweredCount++;
-          } else if (studentAns === correctAns) {
+          } else if (isAnswerMatch(studentAns, correctAns)) {
             score += cMarks;
             correctCount++;
           } else {
@@ -1284,7 +1424,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         }
       }
 
-      // Draw green/red overlays on the warped canvas before saving
+      // Draw green/red question overlays & yellow roll number overlay on the warped canvas before saving
       if (cvResult.debugWarpedCanvas) {
         drawOverlayOnWarpedCanvas(
           cvResult.debugWarpedCanvas,
@@ -1293,7 +1433,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
           correctKey,
           cvResult.bestDy || 0,
           exam.sections ?? [],
-          cvResult.questionOffsets
+          cvResult.questionOffsets,
+          cvResult.studentNum || '',
+          exam.rollNoDigits ?? 3
         );
       }
 
@@ -1367,230 +1509,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
     }
   };
 
-  const runAIOMRScan = async () => {
-    const current = getSelectedFile();
-    if (!current) return;
-
-    setIsAIScanning(true);
-    setActiveResult(null);
-
-    try {
-      const img = new Image();
-      img.src = current.previewUrl;
-      await new Promise((res, rej) => {
-        img.onload = res;
-        img.onerror = rej;
-      });
-
-      setFileList(prev => prev.map(f => f.id === selectedFileId ? { ...f, status: 'Scanning' } : f));
-
-      const scannerRollDigits = Math.min(3, exam.rollNoDigits ?? 3);
-      
-      let cvResult: any = null;
-      try {
-        cvResult = await scanOMRSheet(
-          img,
-          exam.numQuestions,
-          scannerRollDigits,
-          exam.examSetsCount ?? 1,
-          exam.sections ?? []
-        );
-      } catch (err) {
-        console.warn("Local warp alignment failed, falling back to original image:", err);
-      }
-
-      let targetCanvas: HTMLCanvasElement | null = null;
-      if (cvResult && cvResult.debugWarpedCanvas) {
-        targetCanvas = cvResult.debugWarpedCanvas;
-      }
-
-      const imageDataBase64 = await compressImage(targetCanvas || current.previewUrl);
-
-      const response = await fetch('/api/scan/ai-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageDataBase64,
-          numQuestions: exam.numQuestions
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'AI Scan request failed');
-      }
-
-      const aiResult = await response.json();
-      
-      // Map array of answers [{q: 1, ans: "A"}, ...] into key-value map {1: "A", ...}
-      const parsedAnswers: Record<number, string> = {};
-      if (Array.isArray(aiResult.answers)) {
-        aiResult.answers.forEach((item: any) => {
-          if (item && typeof item.q === 'number') {
-            parsedAnswers[item.q] = item.ans || '';
-          }
-        });
-      }
-
-      const stripLeadingZeros = (val: string) => {
-        const cleaned = val.replace(/^0+/, '');
-        return cleaned === '' ? '0' : cleaned;
-      };
-      
-      const aiRollStripped = stripLeadingZeros(aiResult.studentId);
-      const classStudents = students.filter(s => s.className === exam.className);
-      const matchedStudent = classStudents.find(s => stripLeadingZeros(s.studentNum) === aiRollStripped);
-      const studentId = (matchedStudent && matchedStudent.id !== undefined) ? matchedStudent.id : null;
-      const targetStudentId = studentId || -(Date.now() + Math.floor(Math.random() * 1000));
-
-      let score = 0;
-      let correctCount = 0;
-      let wrongCount = 0;
-      let unansweredCount = 0;
-
-      const detectedSet = 'A';
-      let correctKey = (exam.answerKeys && exam.answerKeys[detectedSet]) || exam.answerKey;
-      if (!correctKey || Object.keys(correctKey).length === 0) {
-        correctKey = exam.answerKey;
-      }
-
-      if (exam.sections && exam.sections.length > 0) {
-        exam.sections.forEach((sec: any) => {
-          const secCorrectMarks = sec.correctMarks ?? 4;
-          const secIncorrectMarks = sec.incorrectMarks ?? -1;
-          const secUnansweredMarks = sec.unansweredMarks ?? 0;
-          const qNums: number[] = Array.from({ length: sec.qCount }, (_, k) => sec.qStart + k);
-
-          if (sec.allowOptionalAttempts && sec.maxAttempts) {
-            const attempted: Array<{ q: number; ans: string }> = [];
-            qNums.forEach(q => {
-              const ans = parsedAnswers[q] || '';
-              if (ans !== '') attempted.push({ q, ans });
-            });
-
-            const evaluated = attempted.slice(0, sec.maxAttempts);
-            evaluated.forEach(item => {
-              const correctAns = correctKey[item.q] || '';
-              if (item.ans === correctAns) {
-                score += secCorrectMarks;
-                correctCount++;
-              } else {
-                score += secIncorrectMarks;
-                wrongCount++;
-              }
-            });
-
-            const unattemptedCount = sec.qCount - evaluated.length;
-            unansweredCount += unattemptedCount;
-            score += unattemptedCount * secUnansweredMarks;
-          } else {
-            qNums.forEach(q => {
-              const studentAns = parsedAnswers[q] || '';
-              const correctAns = correctKey[q] || '';
-              if (studentAns === '') {
-                score += secUnansweredMarks;
-                unansweredCount++;
-              } else if (studentAns === correctAns) {
-                score += secCorrectMarks;
-                correctCount++;
-              } else {
-                score += secIncorrectMarks;
-                wrongCount++;
-              }
-            });
-          }
-        });
-      } else {
-        const cMarks = exam.correctMarks ?? 4;
-        const iMarks = exam.incorrectMarks ?? -1;
-        const uMarks = exam.unansweredMarks ?? 0;
-
-        for (let q = 1; q <= exam.numQuestions; q++) {
-          const studentAns = parsedAnswers[q] || '';
-          const correctAns = correctKey[q] || '';
-
-          if (studentAns === '') {
-            score += uMarks;
-            unansweredCount++;
-          } else if (studentAns === correctAns) {
-            score += cMarks;
-            correctCount++;
-          } else {
-            score += iMarks;
-            wrongCount++;
-          }
-        }
-      }
-
-      if (targetCanvas) {
-        drawOverlayOnWarpedCanvas(
-          targetCanvas,
-          exam.numQuestions,
-          parsedAnswers,
-          correctKey,
-          (cvResult && cvResult.bestDy) || 0,
-          exam.sections ?? [],
-          cvResult && cvResult.questionOffsets
-        );
-      }
-
-      const cleanName = (aiResult.studentName || '').trim();
-      const cleanFather = (aiResult.fatherName || '').trim();
-      const transcribedName = cleanName 
-        ? (cleanFather ? `${cleanName} f/o ${cleanFather} (Unregistered)` : `${cleanName} (Unregistered)`)
-        : 'Unknown Candidate';
-
-      const scanResultData = {
-        studentId: targetStudentId,
-        studentName: matchedStudent ? matchedStudent.name : transcribedName,
-        detectedStudentNum: aiResult.studentId,
-        bookletSet: detectedSet,
-        score,
-        correctCount,
-        wrongCount,
-        unansweredCount,
-        answers: parsedAnswers,
-        warpedCanvas: targetCanvas,
-        rawTranscribedName: cleanName,
-        rawTranscribedFatherName: cleanFather
-      };
-
-      setFileList(prev => {
-        let updated = prev.map(f => {
-          if (f.id === selectedFileId) {
-            return {
-              ...f,
-              status: 'Scanned' as const,
-              studentNum: aiResult.studentId,
-              score,
-              correctCount,
-              wrongCount,
-              unansweredCount,
-              answers: parsedAnswers,
-              warpedCanvas: targetCanvas || undefined
-            };
-          }
-          return f;
-        });
-        return updated;
-      });
-
-      setDetectedStudentId(targetStudentId);
-      setActiveResult(scanResultData);
-
-    } catch (err: any) {
-      console.error(err);
-      alert(`AI OMR Scan Failed: ${err.message || err}`);
-      setFileList(prev => prev.map(f => {
-        if (f.id === selectedFileId) {
-          return { ...f, status: 'Failed' };
-        }
-        return f;
-      }));
-    } finally {
-      setIsAIScanning(false);
-    }
-  };
 
   const handleSaveResult = async () => {
     if (!activeResult || !selectedFileId) return;
@@ -1887,7 +1805,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                         animation: 'spin 1s linear infinite'
                       }} className="spin" />
                       <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
-                        ⚡ Multi-Pass OMR Analysis
+                        ⚡ High-Speed OMR Analysis
                       </div>
                       <div style={{ width: '80%', background: 'rgba(255,255,255,0.15)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
                         <div style={{ width: `${scanningProgress}%`, height: '100%', background: '#0284c7', transition: 'width 0.2s ease' }} />
@@ -2060,51 +1978,26 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <button 
-                          className="btn-primary" 
-                          onClick={runOMRScan} 
-                          disabled={isScanning || isAIScanning}
-                          style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
-                        >
-                          {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
-                        </button>
-
-                        {activeResult && (
-                          <button 
-                            className="btn-success" 
-                            onClick={handleSaveResult}
-                            disabled={!detectedStudentId}
-                            style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
-                          >
-                            💾 Save Result
-                          </button>
-                        )}
-                      </div>
-
+                    <div style={{ display: 'flex', gap: '10px' }}>
                       <button 
-                        onClick={runAIOMRScan} 
-                        disabled={isScanning || isAIScanning}
-                        style={{ 
-                          width: '100%', 
-                          padding: '10px', 
-                          borderRadius: '10px', 
-                          fontWeight: 'bold', 
-                          fontSize: '0.85rem', 
-                          background: '#8b5cf6', 
-                          color: '#fff', 
-                          border: 'none', 
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
-                        }}
+                        className="btn-primary" 
+                        onClick={runOMRScan} 
+                        disabled={isScanning}
+                        style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem' }}
                       >
-                        {isAIScanning ? <><RefreshCw className="spin" size={14} /> AI Processing...</> : '🧠 Run AI OMR Scan'}
+                        {isScanning ? <><RefreshCw className="spin" size={14} /> Scanning...</> : '⚡ Run Auto OMR Scan'}
                       </button>
+
+                      {activeResult && (
+                        <button 
+                          className="btn-success" 
+                          onClick={handleSaveResult}
+                          disabled={!detectedStudentId}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.85rem', background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer' }}
+                        >
+                          💾 Save Result
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2188,7 +2081,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     const sAns = sub.answers[q] || '';
                     const cAns = correctKey[q] || '';
                     if (sAns !== '') {
-                      if (sAns === cAns) {
+                      if (isAnswerMatch(sAns, cAns)) {
                         correctCount++;
                       } else {
                         wrongCount++;
@@ -2224,15 +2117,22 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
                         <button
                           type="button"
-                          onClick={() => setViewingOmrModalUrl({ 
-                            name: cleanName, 
-                            url: sub.omrImageUrl || undefined, 
-                            score: sub.score,
-                            answers: sub.answers,
-                            correctCount: correctCount,
-                            wrongCount: wrongCount,
-                            bookletSet: sub.bookletSet
-                          })}
+                          onClick={async () => {
+                            let imgUrl = sub.omrImageUrl;
+                            if (!imgUrl && sub.id) {
+                              const fromDb = await db.submissions.get(sub.id);
+                              imgUrl = fromDb?.omrImageUrl || '';
+                            }
+                            setViewingOmrModalUrl({ 
+                              name: cleanName, 
+                              url: imgUrl || undefined, 
+                              score: sub.score,
+                              answers: sub.answers,
+                              correctCount: correctCount,
+                              wrongCount: wrongCount,
+                              bookletSet: sub.bookletSet
+                            });
+                          }}
                           style={{ padding: '8px 16px', borderRadius: '12px', background: '#2563eb', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flex: 1 }}
                         >
                           <Eye size={15} /> View Sheet
@@ -2240,7 +2140,14 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
 
                         <button
                           type="button"
-                          onClick={() => setEditingSubmission(sub)}
+                          onClick={async () => {
+                            let fullSub = sub;
+                            if (!sub.omrImageUrl && sub.id) {
+                              const fromDb = await db.submissions.get(sub.id);
+                              if (fromDb) fullSub = fromDb;
+                            }
+                            setEditingSubmission(fullSub);
+                          }}
                           style={{ padding: '8px 16px', borderRadius: '12px', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
                         >
                           ✏️ Edit
@@ -2313,8 +2220,10 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                           
                           <div style={{ display: 'flex', gap: '4px' }}>
                             {options.map((opt) => {
-                              const isStudentPick = studentAns === opt;
-                              const isCorrect = correctAns === opt;
+                              const studentPicks = studentAns.split(',').map(s => s.trim()).filter(Boolean);
+                              const isStudentPick = studentPicks.includes(opt);
+                              const isMultiple = studentPicks.length > 1;
+                              const isCorrect = !isMultiple && correctAns === opt;
                               
                               let bubbleStyle: React.CSSProperties = {
                                 width: '20px',
@@ -2340,7 +2249,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                                   bubbleStyle.borderColor = '#ef4444';
                                   bubbleStyle.color = '#ffffff';
                                 }
-                              } else if (isCorrect) {
+                              } else if (correctAns === opt) {
                                 bubbleStyle.borderColor = '#10b981';
                                 bubbleStyle.color = '#10b981';
                                 bubbleStyle.boxShadow = '0 0 0 1px #10b981';
@@ -2396,7 +2305,32 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* ⚡ Auto Save Mode Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleAutoSave}
+                style={{
+                  background: autoSaveEnabled ? 'linear-gradient(135deg, #10b981, #059669)' : '#f1f5f9',
+                  color: autoSaveEnabled ? '#ffffff' : '#475569',
+                  border: autoSaveEnabled ? '1px solid #059669' : '1px solid #cbd5e1',
+                  borderRadius: '16px',
+                  padding: '4px 10px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s',
+                  boxShadow: autoSaveEnabled ? '0 2px 8px rgba(16, 185, 129, 0.4)' : 'none'
+                }}
+                title="Toggle Instant Auto Save after scanning"
+              >
+                <Zap size={13} fill={autoSaveEnabled ? '#fff' : 'none'} />
+                <span>Auto Save: {autoSaveEnabled ? 'ON' : 'OFF'}</span>
+              </button>
+
               {hasTorch && (
                 <button
                   type="button"
@@ -2406,8 +2340,8 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                     color: isTorchOn ? '#fff' : '#475569',
                     border: '1px solid #cbd5e1',
                     borderRadius: '16px',
-                    padding: '4px 12px',
-                    fontSize: '0.8rem',
+                    padding: '4px 10px',
+                    fontSize: '0.76rem',
                     fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
@@ -2417,7 +2351,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                   }}
                   title="Toggle Flashlight / Torch"
                 >
-                  <Zap size={14} fill={isTorchOn ? '#fff' : 'none'} />
+                  <Zap size={13} fill={isTorchOn ? '#fff' : 'none'} />
                   <span>{isTorchOn ? 'Flash On' : 'Flash Off'}</span>
                 </button>
               )}
@@ -2426,7 +2360,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 <select 
                   value={selectedCameraId}
                   onChange={(e) => setSelectedCameraId(e.target.value)}
-                  style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600 }}
+                  style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '4px 8px', fontSize: '0.76rem', fontWeight: 600 }}
                 >
                   {cameraDevices.map(d => (
                     <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</option>
@@ -2442,104 +2376,66 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
             {/* Transparent overlay canvas for drawing the detected corners and guide outline */}
             <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', zIndex: 10 }}></canvas>
 
-            {!lastScanOverlay && !hideAiScanning && (
+            {/* Instant Green Auto-Save Flash Confirmation Overlay */}
+            {autoSaveFlash && (
               <div style={{
                 position: 'absolute',
-                bottom: '16px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 30,
-                background: 'rgba(15, 23, 42, 0.8)',
-                backdropFilter: 'blur(12px)',
-                borderRadius: '24px',
-                padding: '4px',
+                inset: 0,
+                background: 'rgba(34, 197, 94, 0.25)',
+                border: '4px solid #22c55e',
+                zIndex: 45,
+                pointerEvents: 'none',
                 display: 'flex',
-                gap: '4px',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+                alignItems: 'center',
+                justifyContent: 'center',
+                animation: 'fadeIn 0.15s ease-out'
               }}>
-                <button
-                  type="button"
-                  onClick={() => setCameraScanMode('standard')}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '20px',
-                    border: 'none',
-                    background: cameraScanMode === 'standard' ? '#2563eb' : 'transparent',
-                    color: '#ffffff',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  ⚡ Standard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCameraScanMode('ai')}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '20px',
-                    border: 'none',
-                    background: cameraScanMode === 'ai' ? '#8b5cf6' : 'transparent',
-                    color: '#ffffff',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  🧠 AI Scanner
-                </button>
+                <div style={{
+                  background: 'rgba(22, 163, 74, 0.95)',
+                  color: '#ffffff',
+                  padding: '10px 20px',
+                  borderRadius: '24px',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+                }}>
+                  <CheckCircle size={22} />
+                  <span>SAVED & READY FOR NEXT SCAN</span>
+                </div>
               </div>
             )}
 
-            {!lastScanOverlay && (
-              <button
-                type="button"
-                onClick={() => {
-                  isScanningRef.current = true;
-                  setIsScanning(true);
-                  setTimeout(() => {
-                    captureCameraPhoto();
-                  }, 0);
-                }}
-                style={{
-                  position: 'absolute',
-                  bottom: '76px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: '58px',
-                  height: '58px',
-                  borderRadius: '50%',
-                  background: cameraScanMode === 'ai' ? '#7c3aed' : '#2563eb',
-                  border: '4px solid #ffffff',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
-                  cursor: 'pointer',
-                  zIndex: 30,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease',
-                  outline: 'none'
-                }}
-                title="Capture & Scan"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-              </button>
+            {/* Live Instant Misalignment Alert Banner */}
+            {cameraErrorMessage && (
+              <div style={{
+                position: 'absolute',
+                top: '16px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(220, 38, 38, 0.94)',
+                color: '#ffffff',
+                padding: '10px 18px',
+                borderRadius: '24px',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                zIndex: 40,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                textAlign: 'center',
+                maxWidth: '92%',
+                animation: 'fadeIn 0.2s ease-out'
+              }}>
+                <AlertTriangle size={18} />
+                <span>{cameraErrorMessage}</span>
+              </div>
             )}
 
-            {/* Dynamic Status Indicator Overlay (Extremely small, clean and mobile friendly) */}
+            {/* Dynamic Status Indicator Overlay */}
             <div style={{ 
               position: 'absolute', 
               top: '8px', 
@@ -2557,7 +2453,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              border: detectorStatus === 'ready' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
+              border: detectorStatus === 'ready' ? '1px solid #34d399' : (detectorStatus === 'invalid-length' ? '1px solid #f97316' : '1px solid rgba(255,255,255,0.15)'),
               transition: 'all 0.2s ease',
               whiteSpace: 'nowrap'
             }}>
@@ -2565,6 +2461,11 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
                 <>
                   <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#34d399', animation: 'ping 1s infinite' }}></span>
                   🟢 READY (HOLD STILL)
+                </>
+              ) : detectorStatus === 'invalid-length' ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#f97316' }}></span>
+                  ⚠️ ALIGN SHEET PROPERLY
                 </>
               ) : (
                 <>
@@ -2574,247 +2475,425 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               )}
             </div>
 
-            {isScanning && cameraScanMode === 'ai' && (
+            {/* 📋 Floating Persistent Candidate Scorecard Bar (Stays until next sheet is scanned) */}
+            {lastScannedStudentBar && (
               <div style={{
                 position: 'absolute',
-                inset: 0,
-                zIndex: 50,
-                background: 'rgba(15, 23, 42, 0.82)',
-                backdropFilter: 'blur(8px)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
+                bottom: '12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '92%',
+                maxWidth: '460px',
+                background: 'rgba(15, 23, 42, 0.94)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '14px',
+                padding: '10px 14px',
                 color: '#ffffff',
-                gap: '16px'
+                zIndex: 35,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px'
               }}>
-                <div style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '50%',
-                  border: '4px solid rgba(255,255,255,0.1)',
-                  borderTop: '4px solid #8b5cf6',
-                  animation: 'spin 1s linear infinite'
-                }} className="spin" />
-                <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
-                  🧠 AI Processing...
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ 
+                      background: '#16a34a', 
+                      color: '#ffffff', 
+                      fontSize: '0.62rem', 
+                      fontWeight: 800, 
+                      padding: '2px 6px', 
+                      borderRadius: '5px',
+                      letterSpacing: '0.5px'
+                    }}>
+                      SAVED
+                    </span>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      Roll: {lastScannedStudentBar.studentNum || 'N/A'} • {lastScannedStudentBar.studentName}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Score: <strong style={{ color: '#38bdf8' }}>{lastScannedStudentBar.score.toFixed(1)}</strong> Marks ({lastScannedStudentBar.correctCount} Correct, {lastScannedStudentBar.wrongCount} Wrong)
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
-                  Grading bubble sheet answers via Gemini API
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEvalbeeReviewData(lastScannedStudentBar);
+                    setIsEditingEvalbeeBubbles(true);
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '6px 12px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                    boxShadow: '0 2px 8px rgba(37,99,235,0.4)'
+                  }}
+                  title="Edit bubbles / roll number of this scanned sheet"
+                >
+                  <Edit3 size={13} /> Edit
+                </button>
               </div>
             )}
 
-            {isScanning && scanningStatus && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 55,
-                background: 'rgba(15, 23, 42, 0.85)',
-                backdropFilter: 'blur(8px)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                gap: '16px',
-                padding: '20px',
-                textAlign: 'center'
-              }}>
-                <div style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '50%',
-                  border: '4px solid rgba(255,255,255,0.1)',
-                  borderTop: '4px solid #0284c7',
-                  animation: 'spin 1s linear infinite'
-                }} className="spin" />
-                <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>
-                  ⚡ Multi-Pass OMR Analysis
-                </div>
-                <div style={{ width: '80%', background: 'rgba(255,255,255,0.15)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ width: `${scanningProgress}%`, height: '100%', background: '#0284c7', transition: 'width 0.2s ease' }} />
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
-                  {scanningStatus}
-                </div>
-              </div>
-            )}
-
-            {lastScanOverlay && (() => {
-              const totalMaxMarks = exam.sections && exam.sections.length > 0
-                ? exam.sections.reduce((acc, sec) => acc + ((sec.correctMarks || 4) * sec.qCount), 0)
-                : (exam.correctMarks ?? 4) * exam.numQuestions;
-              return (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  left: '12px',
-                  right: '12px',
-                  background: 'rgba(255, 255, 255, 0.98)',
-                  backdropFilter: 'blur(16px)',
-                  borderRadius: '16px',
-                  padding: '12px 14px',
-                  boxShadow: '0 8px 32px rgba(15, 23, 42, 0.25)',
-                  zIndex: 40,
-                  border: '1px solid rgba(226, 232, 240, 0.9)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  color: '#0f172a'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
-                    <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-                      <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {lastScanOverlay.studentName.split('/')[0].trim()}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
-                        Roll: {lastScanOverlay.studentNum}
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'inline-block' }}>
-                        {lastScanOverlay.score} / {totalMaxMarks} M
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                        ✔ {lastScanOverlay.correctCount} Right
-                      </span>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b91c1c', background: '#fef2f2', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                        ✖ {lastScanOverlay.wrongCount} Wrong
-                      </span>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', background: '#f8fafc', padding: '2px 6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                        ➖ {lastScanOverlay.unansweredCount} Left
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {(!lastScanOverlay.studentId || lastScanOverlay.studentId < 0) && lastScanOverlay.rawTranscribedName && (
-                        <button 
-                          type="button"
-                          onClick={async () => {
-                            const rawName = lastScanOverlay.rawTranscribedName || '';
-                            const rawFather = lastScanOverlay.rawTranscribedFatherName || '';
-                            
-                            try {
-                              const newStudentId = await db.students.add({
-                                studentNum: lastScanOverlay.studentNum,
-                                name: rawName,
-                                fatherName: rawFather,
-                                className: exam.className
-                              });
-                              
-                              // Update studentId in the saved submission in Dexie database!
-                              if (exam.id && lastScanOverlay.tempStudentId) {
-                                const existingSub = await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.tempStudentId]).first();
-                                if (existingSub) {
-                                  await db.submissions.where('[examId+studentId]').equals([exam.id, lastScanOverlay.tempStudentId]).delete();
-                                  existingSub.studentId = newStudentId;
-                                  const newSubId = await db.submissions.add(existingSub);
-                                  
-                                  const saved = await db.submissions.get(newSubId);
-                                  if (saved) {
-                                    const { syncSubmissionToCloud } = await import('../utils/cloudSync');
-                                    syncSubmissionToCloud(saved).catch(console.warn);
-                                  }
-                                }
-                              }
-                              
-                              // Sync new student to cloud
-                              const { syncStudentToCloud } = await import('../utils/cloudSync');
-                              const savedStudent = await db.students.get(newStudentId);
-                              if (savedStudent) {
-                                syncStudentToCloud(savedStudent).catch(console.warn);
-                              }
-                              
-                              pullCloudUpdatesToIndexedDB();
-                              refreshSubmissions();
-                              
-                              // Update lastScanOverlay state to show registered status
-                              setLastScanOverlay(prev => prev ? {
-                                ...prev,
-                                studentId: newStudentId,
-                                studentName: rawName
-                              } : null);
-                              
-                              alert(`Successfully registered student: ${rawName}`);
-                            } catch (err: any) {
-                              alert("Registration failed: " + (err.message || err));
-                            }
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '8px',
-                            background: '#7c3aed',
-                            color: '#ffffff',
-                            border: 'none',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            fontSize: '0.72rem',
-                            boxShadow: '0 2px 6px rgba(124, 58, 237, 0.2)'
-                          }}
-                        >
-                          📝 Register
-                        </button>
-                      )}
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setLastScanOverlay(null);
-                          isScanningRef.current = false;
-                          setIsScanning(false);
-                        }}
-                        style={{
-                          padding: '5px 10px',
-                          borderRadius: '8px',
-                          background: '#10b981',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          fontSize: '0.72rem',
-                          boxShadow: '0 2px 6px rgba(16,185,129,0.2)'
-                        }}
-                      >
-                        Scan Next
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          stopCameraStream();
-                          setShowCameraModal(false);
-                          setLastScanOverlay(null);
-                          isScanningRef.current = false;
-                          setIsScanning(false);
-                        }}
-                        style={{
-                          padding: '5px 10px',
-                          borderRadius: '8px',
-                          background: '#f1f5f9',
-                          color: '#475569',
-                          border: '1px solid #cbd5e1',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          fontSize: '0.72rem'
-                        }}
-                      >
-                        Finish
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
 
           <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
         </div>
       )}
 
+      {/* Duplicate Scan Warning Modal */}
+      {duplicateWarning && (
+        <DuplicateScanWarningModal
+          warning={duplicateWarning}
+          students={students}
+          exam={exam}
+          editRollInput={editRollInput}
+          setEditRollInput={setEditRollInput}
+          isEditingRoll={isEditingRollInDuplicateModal}
+          setIsEditingRoll={setIsEditingRollInDuplicateModal}
+          onOverwrite={handleOverwriteDuplicate}
+          onSaveWithNewRoll={handleSaveWithNewRoll}
+          onDiscard={handleDiscardDuplicate}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          SCREEN 3: EVALBEE VISUAL QUESTION BUBBLE EDITOR MODAL (SCREENSHOT 3)
+          ═══════════════════════════════════════════════════════════════════ */}
+      {evalbeeReviewData && isEditingEvalbeeBubbles && (
+        <EvalbeeQuestionBubbleEditorModal
+          scanData={evalbeeReviewData}
+          exam={exam}
+          students={students}
+          onCancel={() => setIsEditingEvalbeeBubbles(false)}
+          onSaveEdited={async (updated: EvalbeeScanData) => {
+            setEvalbeeReviewData(updated);
+            await handleSaveEvalbeeScan(updated);
+          }}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          SCREEN 2: EVALBEE RESULT OVERVIEW MODAL (SCREENSHOT 2)
+          ═══════════════════════════════════════════════════════════════════ */}
+      {evalbeeReviewData && !isEditingEvalbeeBubbles && (
+        <EvalbeeResultModal
+          scanData={evalbeeReviewData}
+          exam={exam}
+          students={students}
+          onCancel={() => {
+            setEvalbeeReviewData(null);
+            lastCaptureTimeRef.current = Date.now();
+          }}
+          onEdit={() => setIsEditingEvalbeeBubbles(true)}
+          onSave={handleSaveEvalbeeScan}
+        />
+      )}
+
+    </div>
+  );
+};
+
+interface DuplicateScanWarningModalProps {
+  warning: {
+    existingSubmission: ExamSubmission;
+    existingStudentName: string;
+    detectedRollNum: string;
+    newScanData: {
+      score: number;
+      correctCount: number;
+      wrongCount: number;
+      unansweredCount: number;
+      answers: Record<number, string>;
+      bookletSet: string;
+      omrImageUrl: string;
+      studentId: number | null;
+      rawTranscribedName?: string;
+      rawTranscribedFatherName?: string;
+    };
+  };
+  students: Student[];
+  exam: Exam;
+  editRollInput: string;
+  setEditRollInput: (val: string) => void;
+  isEditingRoll: boolean;
+  setIsEditingRoll: (val: boolean) => void;
+  onOverwrite: () => void;
+  onSaveWithNewRoll: () => void;
+  onDiscard: () => void;
+}
+
+export const DuplicateScanWarningModal: React.FC<DuplicateScanWarningModalProps> = ({
+  warning,
+  students,
+  exam,
+  editRollInput,
+  setEditRollInput,
+  isEditingRoll,
+  setIsEditingRoll,
+  onOverwrite,
+  onSaveWithNewRoll,
+  onDiscard
+}) => {
+  const classStudents = students.filter(s => s.className === exam.className);
+  const cleanInput = editRollInput.trim().replace(/^0+/, '');
+  const matchedStudentByRoll = cleanInput 
+    ? classStudents.find(s => s.studentNum.replace(/^0+/, '') === cleanInput)
+    : null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 99999,
+      background: 'rgba(15, 23, 42, 0.75)',
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '16px'
+    }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '16px',
+        maxWidth: '520px',
+        width: '100%',
+        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.2)',
+        overflow: 'hidden',
+        border: '1px solid #fed7aa',
+        animation: 'fadeIn 0.2s ease-out'
+      }}>
+        {/* Modal Header */}
+        <div style={{
+          background: '#fff7ed',
+          padding: '18px 22px',
+          borderBottom: '1px solid #fed7aa',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <div style={{
+            background: '#ffedd5',
+            color: '#c2410c',
+            borderRadius: '10px',
+            width: '40px',
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <AlertTriangle size={24} />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#9a3412' }}>
+              Duplicate Student Record Found
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#c2410c' }}>
+              A scanned submission for Roll No: <strong>{warning.detectedRollNum}</strong> already exists.
+            </p>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div style={{ padding: '20px 22px' }}>
+          
+          {/* Comparison Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
+            {/* Existing Card */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              padding: '12px'
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>
+                📁 Existing Record
+              </div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {warning.existingStudentName}
+              </div>
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                  {warning.existingSubmission.score.toFixed(1)}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Marks</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>
+                Scanned: {warning.existingSubmission.scannedAt ? new Date(warning.existingSubmission.scannedAt).toLocaleDateString() : 'Previously'}
+              </div>
+            </div>
+
+            {/* New Scanned Card */}
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '10px',
+              padding: '12px'
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', marginBottom: '4px' }}>
+                ✨ Newly Scanned Sheet
+              </div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e40af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Roll No: {warning.detectedRollNum}
+              </div>
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#2563eb' }}>
+                  {warning.newScanData.score.toFixed(1)}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#2563eb' }}>Marks</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#3b82f6', marginTop: '4px', display: 'flex', gap: '6px' }}>
+                <span>🟢 {warning.newScanData.correctCount}</span>
+                <span>🔴 {warning.newScanData.wrongCount}</span>
+                <span>⚫ {warning.newScanData.unansweredCount}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Edit Roll Input Accordion */}
+          {isEditingRoll ? (
+            <div style={{
+              background: '#fefce8',
+              border: '1px solid #fef08a',
+              borderRadius: '10px',
+              padding: '14px',
+              marginBottom: '16px'
+            }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#854d0e', marginBottom: '6px' }}>
+                Assign to a different Roll Number:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Enter new Roll Number..."
+                  value={editRollInput}
+                  onChange={(e) => setEditRollInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #ca8a04',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    outline: 'none',
+                    background: '#ffffff'
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={onSaveWithNewRoll}
+                  style={{
+                    background: '#eab308',
+                    color: '#713f12',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+              {matchedStudentByRoll && (
+                <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#15803d', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <UserCheck size={14} /> Matches Student: <strong>{matchedStudentByRoll.name}</strong>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.86rem', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.45 }}>
+              Choose whether to overwrite the existing score with this new scan, assign this sheet to a different roll number, or discard this scan.
+            </p>
+          )}
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={onOverwrite}
+              style={{
+                width: '100%',
+                padding: '11px 16px',
+                background: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                fontWeight: 700,
+                fontSize: '0.92rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.25)'
+              }}
+            >
+              <RefreshCw size={16} /> Update / Overwrite Existing Record
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsEditingRoll(!isEditingRoll)}
+              style={{
+                width: '100%',
+                padding: '10px 16px',
+                background: isEditingRoll ? '#f1f5f9' : '#fffbeb',
+                color: '#b45309',
+                border: '1px solid #fde68a',
+                borderRadius: '10px',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              <Edit3 size={16} /> {isEditingRoll ? 'Cancel Roll Number Change' : 'Edit Roll Number for this Sheet'}
+            </button>
+
+            <button
+              type="button"
+              onClick={onDiscard}
+              style={{
+                width: '100%',
+                padding: '9px 16px',
+                background: '#ffffff',
+                color: '#ef4444',
+                border: '1px solid #fecaca',
+                borderRadius: '10px',
+                fontWeight: 700,
+                fontSize: '0.86rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={15} /> Discard New Scan (Keep Existing Record)
+            </button>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 };
@@ -2858,9 +2937,15 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
   const handleBubbleClick = (qNum: number, opt: string) => {
     setEditedAnswers(prev => {
       const copy = { ...prev };
-      if (copy[qNum] === opt) {
-        copy[qNum] = ''; // Clear answer on double-click
+      const current = (copy[qNum] || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (current.length > 1) {
+        // If multiple were detected (e.g. A,B), clicking on an option resolves it to that single option
+        copy[qNum] = opt;
+      } else if (current.includes(opt)) {
+        // If single selected option clicked again, clear it (leave unattempted)
+        copy[qNum] = '';
       } else {
+        // Select the new option
         copy[qNum] = opt;
       }
       return copy;
@@ -2896,7 +2981,7 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
           const evaluated = attempted.slice(0, sec.maxAttempts);
           evaluated.forEach(item => {
             const correctAns = correctKey[item.q] || '';
-            if (item.ans === correctAns) {
+            if (isAnswerMatch(item.ans, correctAns)) {
               score += secCorrectMarks;
               correctCount++;
             } else {
@@ -2915,7 +3000,7 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
             if (studentAns === '') {
               score += secUnansweredMarks;
               unansweredCount++;
-            } else if (studentAns === correctAns) {
+            } else if (isAnswerMatch(studentAns, correctAns)) {
               score += secCorrectMarks;
               correctCount++;
             } else {
@@ -2937,7 +3022,7 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
         if (studentAns === '') {
           score += uMarks;
           unansweredCount++;
-        } else if (studentAns === correctAns) {
+        } else if (isAnswerMatch(studentAns, correctAns)) {
           score += cMarks;
           correctCount++;
         } else {
@@ -3229,6 +3314,8 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
               {Array.from({ length: exam.numQuestions }, (_, i) => {
                 const qNum = i + 1;
                 const studentAns = editedAnswers[qNum] || '';
+                const studentPicks = studentAns.split(',').map(s => s.trim()).filter(Boolean);
+                const isMultiple = studentPicks.length > 1;
                 
                 // Determine option list for this question
                 const sec = exam.sections?.find((s: any) => qNum >= s.qStart && qNum < s.qStart + s.qCount);
@@ -3236,27 +3323,50 @@ export const EditScannedSheetModal: React.FC<EditScannedSheetModalProps> = ({ su
                 const options = is5Option ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 
                 return (
-                  <div key={`edit-q-${qNum}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '24px', color: '#64748b' }}>
-                      {String(qNum).padStart(2, '0')}.
-                    </span>
+                  <div 
+                    key={`edit-q-${qNum}`} 
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      gap: '8px', 
+                      padding: '6px 10px', 
+                      background: isMultiple ? '#fff1f2' : '#ffffff', 
+                      borderRadius: '8px', 
+                      border: isMultiple ? '1px solid #fecaca' : '1px solid #e2e8f0' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '24px', color: isMultiple ? '#dc2626' : '#64748b' }}>
+                        {String(qNum).padStart(2, '0')}.
+                      </span>
+                      {isMultiple && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#dc2626', background: '#fee2e2', padding: '1px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }} title="Multiple bubbles detected on sheet">
+                          Multi ({studentPicks.join(',')})
+                        </span>
+                      )}
+                    </div>
                     
                     <div style={{ display: 'flex', gap: '4px' }}>
                       {options.map((opt) => {
-                        const isStudentPick = studentAns === opt;
+                        const isStudentPick = studentPicks.includes(opt);
                         
                         let bubbleStyle: React.CSSProperties = {
                           width: '22px',
                           height: '22px',
                           borderRadius: '50%',
-                          border: isStudentPick ? '1.5px solid #2563eb' : '1.5px solid #cbd5e1',
+                          border: isStudentPick 
+                            ? (isMultiple ? '1.5px solid #dc2626' : '1.5px solid #2563eb')
+                            : '1.5px solid #cbd5e1',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           fontSize: '0.75rem',
                           fontWeight: 700,
                           color: isStudentPick ? '#ffffff' : '#475569',
-                          background: isStudentPick ? '#2563eb' : 'transparent',
+                          background: isStudentPick 
+                            ? (isMultiple ? '#ef4444' : '#2563eb')
+                            : 'transparent',
                           cursor: 'pointer',
                           transition: 'all 0.1s ease',
                           userSelect: 'none'

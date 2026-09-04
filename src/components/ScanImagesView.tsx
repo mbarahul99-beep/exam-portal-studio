@@ -857,7 +857,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
               }
 
             const lockElapsed = lockStartTimeRef.current ? (now - lockStartTimeRef.current) : 0;
-            const lockDuration = 200; // Fast crisp 200ms lock sweep once 4 outer corners match
+            const lockDuration = 300; // Smooth 300ms circular lock sweep once 4 outer corners match
             const lockProgress = isMoving ? 0 : Math.min(1.0, lockElapsed / lockDuration);
 
             // Center Smooth Circular Lock Animation (Evalbee Video 00:11-00:13 Style)
@@ -1057,7 +1057,6 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       return;
     }
 
-    playShutterSound();
     isScanningRef.current = true;
     setIsScanning(true);
 
@@ -1085,6 +1084,9 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
         exam.sections ?? [],
         verifiedCorners
       );
+
+      // 📸 Play shutter sound ONLY now that the sheet has successfully passed fiducial verification!
+      playShutterSound();
 
       setScanningProgress(100);
 
@@ -1335,6 +1337,7 @@ export const ScanImagesView: React.FC<ScanImagesViewProps> = ({ exam, students, 
       setIsScanning(false);
       setScanningStatus(null);
       setScanningProgress(0);
+      lockStartTimeRef.current = null;
     }
   };
 

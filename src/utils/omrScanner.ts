@@ -1418,7 +1418,7 @@ export function findOMRSheetCornersInROI(
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
     const keys: Array<'tl' | 'tr' | 'bl' | 'br'> = ['tl', 'tr', 'bl', 'br'];
-    const detected: Record<string, { x: number; y: number } | null> = {
+    const detected: Record<string, { x: number; y: number; width: number; height: number; score: number } | null> = {
       tl: null,
       tr: null,
       bl: null,
@@ -1440,15 +1440,17 @@ export function findOMRSheetCornersInROI(
 
       try {
         cv.GaussianBlur(roiGray, roiBlurred, new cv.Size(5, 5), 0);
-        const adaptiveBlock = Math.max(31, Math.floor(rw / 2) | 1);
+        const adaptiveBlock = Math.max(25, Math.floor(rw / 2) | 1);
         const threshMethods = [
           () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU),
           () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, adaptiveBlock, 5)
         ];
 
-        let bestCand: { x: number; y: number; score: number } | null = null;
-        const minArea = Math.round(rw * rh * 0.005);
-        const maxArea = Math.round(rw * rh * 0.55);
+        let bestCand: { x: number; y: number; width: number; height: number; score: number } | null = null;
+        
+        // Expected square marker size for the 3.6mm fiducial square on the printed A4 sheet
+        // In the viewfinder, the sheet width is roughly rw / 0.24; the corner square is ~1.7% of sheet width
+        const expectedSquareSize = Math.max(12, Math.min(36, Math.round(rw * 0.09)));
 
         for (const applyThresh of threshMethods) {
           applyThresh();
@@ -1457,51 +1459,93 @@ export function findOMRSheetCornersInROI(
           for (let i = 0; i < contours.size(); ++i) {
             const cnt = contours.get(i);
             const bRect = cv.boundingRect(cnt);
-            const bArea = bRect.width * bRect.height;
-            const isSizeValid = bArea >= minArea && bArea <= maxArea;
-            const aspectRatio = bRect.width / bRect.height;
-            const isSquare = aspectRatio >= 0.60 && aspectRatio <= 1.65;
+            const bw = bRect.width;
+            const bh = bRect.height;
+            const bArea = bw * bh;
+
+            // 1. Strict Physical Dimension & Area Filtering
+            // Reject tiny noise or oversized objects/icons (never allow 100px+ icons or banners)
+            if (bw < 8 || bw > 46 || bh < 8 || bh > 46) {
+              cnt.delete();
+              continue;
+            }
+            if (bArea < 64 || bArea > 2100) {
+              cnt.delete();
+              continue;
+            }
+
+            // 2. Aspect Ratio: Must be an equilateral square
+            const aspectRatio = bw / bh;
+            if (aspectRatio < 0.72 || aspectRatio > 1.38) {
+              cnt.delete();
+              continue;
+            }
+
+            // 3. Solidity: Must be a solid filled shape (not hollow text, letters, or curved icon)
             const cArea = cv.contourArea(cnt);
             const solidity = bArea > 0 ? cArea / bArea : 0;
-            const isSolid = solidity >= 0.60;
-
-            if (isSizeValid && isSquare && isSolid) {
-              const M = cv.moments(cnt, false);
-              const cx = (M && M.m00 !== 0) ? (M.m10 / M.m00) : (bRect.x + bRect.width / 2);
-              const cy = (M && M.m00 !== 0) ? (M.m01 / M.m00) : (bRect.y + bRect.height / 2);
-
-              // Explicit Black Square Darkness Verification: Verifies center interior is solid black
-              const sampleR = Math.max(2, Math.round(Math.min(bRect.width, bRect.height) * 0.25));
-              const centerGray = calculateBubbleAverageGray(roiGray, cx, cy, sampleR);
-              const isBlackSquare = centerGray <= 135;
-
-              if (isBlackSquare) {
-                const normX = rw > 0 ? cx / rw : 0;
-                const normY = rh > 0 ? cy / rh : 0;
-
-                let locationFactor = 1.0;
-                if (key === 'tl') locationFactor = 1.0 / (1.0 + (normX * 1.5 + normY * 3.5));
-                if (key === 'tr') locationFactor = 1.0 + (normX * 2.0 - normY * 2.0);
-                if (key === 'bl') locationFactor = 1.0 + (normY * 2.0 - normX * 2.0);
-                if (key === 'br') locationFactor = 1.0 + (normX * 2.0 + normY * 2.0);
-
-                const score = cArea * solidity * locationFactor * ((255 - centerGray) / 255);
-
-                if (!bestCand || score > bestCand.score) {
-                  bestCand = {
-                    x: rx + cx,
-                    y: ry + cy,
-                    score
-                  };
-                }
-              }
+            if (solidity < 0.68) {
+              cnt.delete();
+              continue;
             }
+
+            const M = cv.moments(cnt, false);
+            const cx = (M && M.m00 !== 0) ? (M.m10 / M.m00) : (bRect.x + bw / 2);
+            const cy = (M && M.m00 !== 0) ? (M.m01 / M.m00) : (bRect.y + bh / 2);
+
+            // 4. Center Core Darkness: Solid black ink (never gray or paper)
+            const sampleR = Math.max(2, Math.min(4, Math.round(Math.min(bw, bh) * 0.25)));
+            const centerGray = calculateBubbleAverageGray(roiGray, cx, cy, sampleR);
+            if (centerGray > 125) {
+              cnt.delete();
+              continue;
+            }
+
+            // 5. Surrounding White Paper Ring: Must sit on bright white paper!
+            // This immediately eliminates dark icons, keys, table corners, and desk clutter.
+            const rInner = Math.max(bw, bh) * 0.70;
+            const rOuter = Math.max(bw, bh) * 1.35;
+            const paperGray = calculateRingAverageGray(roiGray, cx, cy, rInner, rOuter);
+            if (paperGray < 135) {
+              cnt.delete();
+              continue;
+            }
+
+            const contrast = paperGray - centerGray;
+            if (contrast < 35) {
+              cnt.delete();
+              continue;
+            }
+
+            // 6. Optimal Fiducial Marker Scoring (Peaks on genuine 3.6mm corner square)
+            const sizeDiff = Math.abs(bw - expectedSquareSize);
+            const sizeScore = Math.exp(-(sizeDiff * sizeDiff) / (2 * 9 * 9));
+            const squareScore = 1.0 - Math.abs(aspectRatio - 1.0);
+            const solidScore = Math.min(1.0, solidity);
+            const contrastScore = Math.min(1.0, contrast / 160);
+
+            // Centering score relative to viewfinder box center
+            const distFromBoxCenter = Math.hypot(cx - rw / 2, cy - rh / 2);
+            const centerScore = Math.exp(-(distFromBoxCenter * distFromBoxCenter) / (2 * (rw * 0.38) * (rw * 0.38)));
+
+            const score = sizeScore * 0.35 + squareScore * 0.25 + solidScore * 0.15 + contrastScore * 0.15 + centerScore * 0.10;
+
+            if (!bestCand || score > bestCand.score) {
+              bestCand = {
+                x: rx + cx,
+                y: ry + cy,
+                width: bw,
+                height: bh,
+                score
+              };
+            }
+
             cnt.delete();
           }
         }
 
         if (bestCand) {
-          detected[key] = { x: bestCand.x, y: bestCand.y };
+          detected[key] = bestCand;
         }
       } finally {
         roiGray.delete();
@@ -1518,41 +1562,75 @@ export function findOMRSheetCornersInROI(
       const tr = detected.tr!;
       const bl = detected.bl!;
       const br = detected.br!;
-      
+
+      // ── CHECK 1: Size Homogeneity Across the 4 Corners ──
+      // Real printed corner fiducials are 4 identical squares of the same size.
+      const candWidths = [tl.width, tr.width, bl.width, br.width];
+      const minW = Math.min(...candWidths);
+      const maxW = Math.max(...candWidths);
+      if (minW <= 0 || maxW / minW > 1.85) {
+        allFound = false;
+      }
+
+      // ── CHECK 2: Sheet Quadrilateral Geometry ──
       const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
       const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
       const heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
       const heightRight = Math.hypot(br.x - tr.x, br.y - tr.y);
-      
+
       const avgW = (widthTop + widthBottom) / 2;
       const avgH = (heightLeft + heightRight) / 2;
       const sheetAspect = avgW > 0 ? avgH / avgW : 0;
-      
+
       const layout = getDynamicOMRQuestionLayout(_numQuestions);
       const expectedAspect = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
 
       const isA4Proportion = sheetAspect >= (expectedAspect - 0.20) && sheetAspect <= (expectedAspect + 0.20);
-      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 65, 115);
+      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 72, 108);
+
+      const isWidthsEqual = Math.abs(widthTop - widthBottom) / avgW <= 0.14;
+      const isHeightsEqual = Math.abs(heightLeft - heightRight) / avgH <= 0.14;
+
+      const diag1 = Math.hypot(br.x - tl.x, br.y - tl.y);
+      const diag2 = Math.hypot(bl.x - tr.x, bl.y - tr.y);
+      const isDiagsEqual = Math.abs(diag1 - diag2) / Math.max(diag1, diag2) <= 0.14;
 
       const topEdgeSkew = Math.abs(tl.y - tr.y) / avgH;
       const botEdgeSkew = Math.abs(bl.y - br.y) / avgH;
       const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgW;
       const rightEdgeSkew = Math.abs(tr.x - br.x) / avgW;
       const isStraight = topEdgeSkew <= 0.12 && botEdgeSkew <= 0.12 && leftEdgeSkew <= 0.12 && rightEdgeSkew <= 0.12;
-      
-      if (!isA4Proportion || !isAngleValid || !isStraight) {
+
+      // ── CHECK 3: Sheet Interior Whiteness (Must enclose real paper, not dark desk/monitor) ──
+      const sheetCenterX = Math.round((tl.x + tr.x + br.x + bl.x) / 4);
+      const sheetCenterY = Math.round((tl.y + tr.y + br.y + bl.y) / 4);
+      let isSheetInteriorValid = true;
+      if (sheetCenterX >= 15 && sheetCenterX < vW - 15 && sheetCenterY >= 15 && sheetCenterY < vH - 15) {
+        const centerGrayVal = calculateBubbleAverageGray(gray, sheetCenterX, sheetCenterY, 15);
+        if (centerGrayVal < 130) {
+          isSheetInteriorValid = false;
+        }
+      }
+
+      if (!isA4Proportion || !isAngleValid || !isStraight || !isWidthsEqual || !isHeightsEqual || !isDiagsEqual || !isSheetInteriorValid) {
         allFound = false;
       }
     }
+
     const corners = allFound
-      ? [detected.tl!, detected.tr!, detected.br!, detected.bl!]
+      ? [
+          { x: detected.tl!.x, y: detected.tl!.y },
+          { x: detected.tr!.x, y: detected.tr!.y },
+          { x: detected.br!.x, y: detected.br!.y },
+          { x: detected.bl!.x, y: detected.bl!.y }
+        ]
       : null;
 
     return {
-      tl: detected.tl,
-      tr: detected.tr,
-      bl: detected.bl,
-      br: detected.br,
+      tl: detected.tl ? { x: detected.tl.x, y: detected.tl.y } : null,
+      tr: detected.tr ? { x: detected.tr.x, y: detected.tr.y } : null,
+      bl: detected.bl ? { x: detected.bl.x, y: detected.bl.y } : null,
+      br: detected.br ? { x: detected.br.x, y: detected.br.y } : null,
       allFound,
       corners
     };

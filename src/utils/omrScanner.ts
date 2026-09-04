@@ -712,18 +712,18 @@ export function findOuterGridCorners(
     const avgH = (hLeft + hRight) / 2;
     const quadArea = avgW * avgH;
 
-    if (avgW > 50 && avgH > 60 && quadArea > pageArea * 0.18) {
+    if (avgW > 50 && avgH > 60 && quadArea > pageArea * 0.14) {
       const ratio = avgH / avgW;
-      const minRatio = Math.max(0.95, expectedRatio - 0.18);
-      const maxRatio = Math.min(1.85, expectedRatio + 0.18);
-      const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) <= 0.12;
-      const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) <= 0.12;
-      const isAnglesValid = validateQuadAngles(tlExt.center, trExt.center, brExt.center, blExt.center, 75, 105);
+      const minRatio = Math.max(0.90, expectedRatio - 0.22);
+      const maxRatio = Math.min(1.90, expectedRatio + 0.22);
+      const isWidthSimilar = Math.abs(wTop - wBot) / Math.max(wTop, wBot) <= 0.16;
+      const isHeightSimilar = Math.abs(hLeft - hRight) / Math.max(hLeft, hRight) <= 0.16;
+      const isAnglesValid = validateQuadAngles(tlExt.center, trExt.center, brExt.center, blExt.center, 70, 110);
 
-      const isTopStraight = Math.abs(tlExt.center.y - trExt.center.y) / avgH <= 0.10;
-      const isBotStraight = Math.abs(blExt.center.y - brExt.center.y) / avgH <= 0.10;
-      const isLeftStraight = Math.abs(tlExt.center.x - blExt.center.x) / avgW <= 0.10;
-      const isRightStraight = Math.abs(trExt.center.x - brExt.center.x) / avgW <= 0.10;
+      const isTopStraight = Math.abs(tlExt.center.y - trExt.center.y) / avgH <= 0.15;
+      const isBotStraight = Math.abs(blExt.center.y - brExt.center.y) / avgH <= 0.15;
+      const isLeftStraight = Math.abs(tlExt.center.x - blExt.center.x) / avgW <= 0.15;
+      const isRightStraight = Math.abs(trExt.center.x - brExt.center.x) / avgW <= 0.15;
 
       if (
         ratio >= minRatio &&
@@ -805,13 +805,15 @@ export async function scanOMRSheet(
     }
 
     const thresholdAttempts = [
-      { adaptive: true, blockSize: 15, C: 9 },
-      { adaptive: true, blockSize: 25, C: 9 },
-      { adaptive: true, blockSize: 35, C: 9 },
-      { adaptive: false, threshold: 90 },
-      { adaptive: false, threshold: 110 },
-      { adaptive: false, threshold: 130 },
-      { adaptive: false, threshold: 150 }
+      { adaptive: true, blockSize: 19, C: 8 },
+      { adaptive: true, blockSize: 27, C: 9 },
+      { adaptive: true, blockSize: 35, C: 10 },
+      { adaptive: true, blockSize: 15, C: 6 },
+      { adaptive: true, blockSize: 45, C: 11 },
+      { adaptive: false, threshold: 85 },
+      { adaptive: false, threshold: 105 },
+      { adaptive: false, threshold: 125 },
+      { adaptive: false, threshold: 145 }
     ];
 
     for (const attempt of thresholdAttempts) {
@@ -1440,10 +1442,13 @@ export function findOMRSheetCornersInROI(
 
       try {
         cv.GaussianBlur(roiGray, roiBlurred, new cv.Size(5, 5), 0);
-        const adaptiveBlock = Math.max(25, Math.floor(rw / 2) | 1);
+        // Multi-scale local adaptive thresholding: specifically engineered to subtract illumination gradients and shadows from hands/phone
         const threshMethods = [
-          () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU),
-          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, adaptiveBlock, 5)
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 21, 8),
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 10),
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 25, 7),
+          () => cv.adaptiveThreshold(roiBlurred, roiThresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 6),
+          () => cv.threshold(roiBlurred, roiThresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
         ];
 
         let bestCand: { x: number; y: number; width: number; height: number; score: number } | null = null;
@@ -1465,18 +1470,18 @@ export function findOMRSheetCornersInROI(
 
             // 1. Strict Physical Dimension & Area Filtering
             // Reject tiny noise or oversized objects/icons (never allow 100px+ icons or banners)
-            if (bw < 8 || bw > 46 || bh < 8 || bh > 46) {
+            if (bw < 7 || bw > 48 || bh < 7 || bh > 48) {
               cnt.delete();
               continue;
             }
-            if (bArea < 64 || bArea > 2100) {
+            if (bArea < 49 || bArea > 2400) {
               cnt.delete();
               continue;
             }
 
             // 2. Aspect Ratio: Must be an equilateral square
             const aspectRatio = bw / bh;
-            if (aspectRatio < 0.72 || aspectRatio > 1.38) {
+            if (aspectRatio < 0.65 || aspectRatio > 1.48) {
               cnt.delete();
               continue;
             }
@@ -1484,7 +1489,7 @@ export function findOMRSheetCornersInROI(
             // 3. Solidity: Must be a solid filled shape (not hollow text, letters, or curved icon)
             const cArea = cv.contourArea(cnt);
             const solidity = bArea > 0 ? cArea / bArea : 0;
-            if (solidity < 0.68) {
+            if (solidity < 0.62) {
               cnt.delete();
               continue;
             }
@@ -1493,40 +1498,41 @@ export function findOMRSheetCornersInROI(
             const cx = (M && M.m00 !== 0) ? (M.m10 / M.m00) : (bRect.x + bw / 2);
             const cy = (M && M.m00 !== 0) ? (M.m01 / M.m00) : (bRect.y + bh / 2);
 
-            // 4. Center Core Darkness: Solid black ink (never gray or paper)
+            // 4. Center Core Darkness: Solid black ink (never paper)
             const sampleR = Math.max(2, Math.min(4, Math.round(Math.min(bw, bh) * 0.25)));
             const centerGray = calculateBubbleAverageGray(roiGray, cx, cy, sampleR);
-            if (centerGray > 125) {
-              cnt.delete();
-              continue;
-            }
 
-            // 5. Surrounding White Paper Ring: Must sit on bright white paper!
-            // This immediately eliminates dark icons, keys, table corners, and desk clutter.
-            const rInner = Math.max(bw, bh) * 0.70;
+            // 5. Surrounding Paper Ring: Must sit on paper (shadow-adaptive)
+            // In deep shadows from a hand or phone, paperGray can drop from ~210 down to 45-80.
+            // Dark desk / fabric / clutter is typically < 30.
+            const rInner = Math.max(bw, bh) * 0.68;
             const rOuter = Math.max(bw, bh) * 1.35;
             const paperGray = calculateRingAverageGray(roiGray, cx, cy, rInner, rOuter);
-            if (paperGray < 135) {
+
+            if (paperGray < 42) {
               cnt.delete();
               continue;
             }
 
             const contrast = paperGray - centerGray;
-            if (contrast < 35) {
+            const relContrast = paperGray > 0 ? contrast / paperGray : 0;
+
+            // Fiducial square is black ink on paper: must be distinctly darker than local paper
+            if (contrast < 16 || relContrast < 0.16 || centerGray > 145) {
               cnt.delete();
               continue;
             }
 
             // 6. Optimal Fiducial Marker Scoring (Peaks on genuine 3.6mm corner square)
             const sizeDiff = Math.abs(bw - expectedSquareSize);
-            const sizeScore = Math.exp(-(sizeDiff * sizeDiff) / (2 * 9 * 9));
+            const sizeScore = Math.exp(-(sizeDiff * sizeDiff) / (2 * 10 * 10));
             const squareScore = 1.0 - Math.abs(aspectRatio - 1.0);
             const solidScore = Math.min(1.0, solidity);
-            const contrastScore = Math.min(1.0, contrast / 160);
+            const contrastScore = Math.min(1.0, contrast / 70);
 
             // Centering score relative to viewfinder box center
             const distFromBoxCenter = Math.hypot(cx - rw / 2, cy - rh / 2);
-            const centerScore = Math.exp(-(distFromBoxCenter * distFromBoxCenter) / (2 * (rw * 0.38) * (rw * 0.38)));
+            const centerScore = Math.exp(-(distFromBoxCenter * distFromBoxCenter) / (2 * (rw * 0.40) * (rw * 0.40)));
 
             const score = sizeScore * 0.35 + squareScore * 0.25 + solidScore * 0.15 + contrastScore * 0.15 + centerScore * 0.10;
 
@@ -1565,10 +1571,11 @@ export function findOMRSheetCornersInROI(
 
       // ── CHECK 1: Size Homogeneity Across the 4 Corners ──
       // Real printed corner fiducials are 4 identical squares of the same size.
+      // Under shadow thresholding, allow up to 2.25x variance.
       const candWidths = [tl.width, tr.width, bl.width, br.width];
       const minW = Math.min(...candWidths);
       const maxW = Math.max(...candWidths);
-      if (minW <= 0 || maxW / minW > 1.85) {
+      if (minW <= 0 || maxW / minW > 2.25) {
         allFound = false;
       }
 
@@ -1585,31 +1592,54 @@ export function findOMRSheetCornersInROI(
       const layout = getDynamicOMRQuestionLayout(_numQuestions);
       const expectedAspect = (layout.bottomAnchorY - layout.topAnchorY) / (layout.gridRight - layout.gridLeft);
 
-      const isA4Proportion = sheetAspect >= (expectedAspect - 0.20) && sheetAspect <= (expectedAspect + 0.20);
-      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 72, 108);
+      const isA4Proportion = sheetAspect >= (expectedAspect - 0.22) && sheetAspect <= (expectedAspect + 0.22);
+      const isAngleValid = validateQuadAngles(tl, tr, br, bl, 70, 110);
 
-      const isWidthsEqual = Math.abs(widthTop - widthBottom) / avgW <= 0.14;
-      const isHeightsEqual = Math.abs(heightLeft - heightRight) / avgH <= 0.14;
+      const isWidthsEqual = Math.abs(widthTop - widthBottom) / avgW <= 0.16;
+      const isHeightsEqual = Math.abs(heightLeft - heightRight) / avgH <= 0.16;
 
       const diag1 = Math.hypot(br.x - tl.x, br.y - tl.y);
       const diag2 = Math.hypot(bl.x - tr.x, bl.y - tr.y);
-      const isDiagsEqual = Math.abs(diag1 - diag2) / Math.max(diag1, diag2) <= 0.14;
+      const isDiagsEqual = Math.abs(diag1 - diag2) / Math.max(diag1, diag2) <= 0.16;
 
       const topEdgeSkew = Math.abs(tl.y - tr.y) / avgH;
       const botEdgeSkew = Math.abs(bl.y - br.y) / avgH;
       const leftEdgeSkew = Math.abs(tl.x - bl.x) / avgW;
       const rightEdgeSkew = Math.abs(tr.x - br.x) / avgW;
-      const isStraight = topEdgeSkew <= 0.12 && botEdgeSkew <= 0.12 && leftEdgeSkew <= 0.12 && rightEdgeSkew <= 0.12;
+      const isStraight = topEdgeSkew <= 0.15 && botEdgeSkew <= 0.15 && leftEdgeSkew <= 0.15 && rightEdgeSkew <= 0.15;
 
-      // ── CHECK 3: Sheet Interior Whiteness (Must enclose real paper, not dark desk/monitor) ──
+      // ── CHECK 3: Sheet Interior Whiteness (Shadow-Resilient Multi-Point Sampling) ──
+      // When user holds mobile phone over the sheet, phone shadow falls directly on the center.
+      // We sample multiple interior points so shadow in one area does not falsely fail the check.
       const sheetCenterX = Math.round((tl.x + tr.x + br.x + bl.x) / 4);
       const sheetCenterY = Math.round((tl.y + tr.y + br.y + bl.y) / 4);
+      
+      const samplePoints = [
+        { x: sheetCenterX, y: sheetCenterY },
+        { x: Math.round((tl.x * 2 + tr.x + bl.x) / 4), y: Math.round((tl.y * 2 + tr.y + bl.y) / 4) },
+        { x: Math.round((tr.x * 2 + tl.x + br.x) / 4), y: Math.round((tr.y * 2 + tl.y + br.y) / 4) },
+        { x: Math.round((bl.x * 2 + tl.x + br.x) / 4), y: Math.round((bl.y * 2 + tl.y + br.y) / 4) },
+        { x: Math.round((br.x * 2 + tr.x + bl.x) / 4), y: Math.round((br.y * 2 + tr.y + bl.y) / 4) }
+      ];
+
       let isSheetInteriorValid = true;
-      if (sheetCenterX >= 15 && sheetCenterX < vW - 15 && sheetCenterY >= 15 && sheetCenterY < vH - 15) {
-        const centerGrayVal = calculateBubbleAverageGray(gray, sheetCenterX, sheetCenterY, 15);
-        if (centerGrayVal < 130) {
-          isSheetInteriorValid = false;
+      let validSamples = 0;
+      let sumGray = 0;
+      let maxSampleGray = 0;
+
+      for (const sp of samplePoints) {
+        if (sp.x >= 10 && sp.x < vW - 10 && sp.y >= 10 && sp.y < vH - 10) {
+          const gVal = calculateBubbleAverageGray(gray, sp.x, sp.y, 12);
+          sumGray += gVal;
+          if (gVal > maxSampleGray) maxSampleGray = gVal;
+          validSamples++;
         }
+      }
+
+      const avgInteriorGray = validSamples > 0 ? sumGray / validSamples : 255;
+      // Real paper even with hand/phone shadow has avg >= 42 and at least one region >= 65
+      if (avgInteriorGray < 42 || maxSampleGray < 65) {
+        isSheetInteriorValid = false;
       }
 
       if (!isA4Proportion || !isAngleValid || !isStraight || !isWidthsEqual || !isHeightsEqual || !isDiagsEqual || !isSheetInteriorValid) {

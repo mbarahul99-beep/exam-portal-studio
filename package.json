@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "postinstall": "node scratch/patch_dexie.cjs && npm run build",
+    "build": "vite build",
+    "postinstall": "node scratch/patch_dexie.cjs",
     "start": "node server.js",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -37,7 +37,6 @@
     "wmf": "^1.0.2"
   },
   "devDependencies": {
-    "oxlint": "^1.71.0",
-    "puppeteer": "^25.5.0"
+    "oxlint": "^1.71.0"
   }
 }
